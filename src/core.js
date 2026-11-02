@@ -687,7 +687,7 @@
   };
 
   var DEVICE_PRESETS = {
-    ts: { label: '全站儀', order: ['L14', 'L20', 'L02'], ext: 'CSV' },   // 同 TS01.xls
+    ts: { label: '全站儀', order: ['L14', 'L20', 'L02'], ext: 'csv' },   // 順序同 TS01.xls
     gps: { label: 'GPS 控制器', order: ['L02', 'L14', 'L20'], ext: 'csv' } // 同 TrimblePointInputV3.jar
   };
 
@@ -776,7 +776,8 @@
     var base = opts.outName || (sorted.length ? baseName(sorted[0].name) : '未命名');
     var files = [];
     if (points.length) {
-      files.push({ name: base + '.' + preset.ext, content: joinLines(lines), main: true,
+      var ext = opts.ext === 'txt' ? 'txt' : preset.ext;
+      files.push({ name: base + '.' + ext, content: joinLines(lines), main: true,
         desc: '給' + preset.label + '匯入：點號,' + (opts.swapXY ? '第2坐標,第1坐標' : 'Y,X') + '（共 ' + points.length + ' 點）' });
     }
     return {

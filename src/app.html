@@ -223,6 +223,17 @@ svg .pt.click{cursor:pointer}
 .devbar .seg button.on{background:var(--brand);color:#fff}
 .choice.three{grid-template-columns:1fr 1fr 1fr}
 @media (max-width:760px){.choice.three{grid-template-columns:1fr}}
+
+header.top .linkbtn+.linkbtn{margin-left:8px}
+.updatebar{background:#fff7e0;border-bottom:1px solid #f0d58c;color:#5c3d00}
+.updatebar .wrap{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:10px;padding-bottom:10px}
+.updatebar .ut{font-weight:800}
+.updatebar .grow{flex:1;min-width:200px;font-size:14.5px}
+.changelog h4{margin:14px 0 4px;font-size:16px}
+.changelog h4 .muted{font-weight:400;margin-left:6px}
+.changelog ul{margin:0;padding-left:22px}
+.changelog li{margin:2px 0}
+.changelog .cur{background:var(--brand);color:#fff;border-radius:999px;font-size:12px;padding:1px 8px;margin-left:6px;vertical-align:2px}
 </style>
 </head>
 <body>
@@ -234,9 +245,12 @@ svg .pt.click{cursor:pointer}
       <div class="sub">全站儀 ‧ GPS 控制器 ⇄ 土地重測系統</div>
     </div>
     <div class="spacer"></div>
+    <button class="linkbtn" id="btnVersion" title="更新歷程">v?</button>
     <button class="linkbtn" id="btnAbout">說明</button>
   </div>
 </header>
+
+<div class="updatebar hidden" id="updateBar"></div>
 
 <main class="wrap">
   <!-- ═════════ 首頁 ═════════ -->
@@ -362,6 +376,7 @@ svg .pt.click{cursor:pointer}
 <div class="toast hidden" id="toast"></div>
 
 <script>
+/*@@INFO@@*/
 /*@@CORE@@*/
 </script>
 <script src="app.js"></script>

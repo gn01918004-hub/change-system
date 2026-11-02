@@ -43,7 +43,7 @@
       next: function (r) {
         var dev = DEVICE_NAME[r.device];
         return [
-          (r.device === 'both' ? '<b>_全站儀.CSV</b> 給全站儀、<b>_GPS.csv</b> 給 GPS 控制器，' : '') +
+          (r.device === 'both' ? '<b>_全站儀.' + r.ext + '</b> 給全站儀、<b>_GPS.' + r.ext + '</b> 給 GPS 控制器，' : '') +
           '把存好的檔案複製到隨身碟 / SD 卡，或用傳輸線傳到' + (r.device === 'both' ? '各儀器' : dev) + '。',
           '在' + (r.device === 'both' ? '各儀器' : dev) + '上選「匯入坐標」，格式選 <b>點號, ' + (r.swapXY ? '第2坐標, 第1坐標' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
           '匯入後隨便抽查幾個點的坐標，確認沒有 X、Y 對調。'
@@ -59,7 +59,7 @@
   var state = { kind: null, device: 'ts', inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null };
 
   function loadOpts() {
-    var d = { codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
+    var d = { ext: 'csv', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
     try { var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}'); for (var k in s) if (k in d) d[k] = s[k]; } catch (e) {}
     return d;
   }
@@ -160,10 +160,10 @@
       var groups = lGroups(state.inputs);
       parts = groups.map(function (g) {
         var base = (groups.length === 1 && o.outName) || g.label;
-        var common = { swapXY: o.swapXY, stripCode: o.stripCode };
+        var common = { swapXY: o.swapXY, stripCode: o.stripCode, ext: o.ext };
         var x;
         if (state.device === 'both') {
-          // 兩種儀器都要：各出一個檔，檔名加上儀器名稱（Windows 不分大小寫，.CSV 與 .csv 會撞名）
+          // 兩種儀器都要：各出一個檔，檔名加上儀器名稱區分
           x = Core.lToCsv(g.files, Object.assign({ device: 'ts', outName: base + '_全站儀' }, common));
           var y = Core.lToCsv(g.files, Object.assign({ device: 'gps', outName: base + '_GPS' }, common));
           x.files = x.files.concat(y.files);
@@ -185,7 +185,7 @@
         return x;
       });
     }
-    var r = { kind: state.kind, device: state.device, swapXY: o.swapXY, files: [], report: [], parts: parts, stats: {} };
+    var r = { kind: state.kind, device: state.device, swapXY: o.swapXY, ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], report: [], parts: parts, stats: {} };
     parts.forEach(function (p) {
       r.files = r.files.concat(p.files);
       p.report.forEach(function (it) {
@@ -257,6 +257,15 @@
         dseg.appendChild(b);
       });
       db.appendChild(dseg);
+      db.appendChild(el('span', { 'class': 'lbl', style: 'margin-left:14px' }, '副檔名：'));
+      var eseg = el('div', { 'class': 'seg' });
+      [['csv', '.csv'], ['txt', '.txt']].forEach(function (c) {
+        var b = el('button', { type: 'button', 'class': (state.opts.ext || 'csv') === c[0] ? 'on' : '', title: c[0] === 'csv' ? '預設' : '儀器只認 .txt 時使用' }, c[1]);
+        b.onclick = function () { state.opts.ext = c[0]; saveOpts(); run(); };
+        eseg.appendChild(b);
+      });
+      db.appendChild(eseg);
+      db.appendChild(el('span', { 'class': 'muted' }, '內容相同，只差副檔名；會記住你的選擇'));
     }
 
     // 檔案
@@ -993,6 +1002,115 @@
       run();
     });
   }
+
+  // ═════════════ 版本、更新歷程、新版本提醒 ═════════════
+
+  var INFO = window.APP_INFO || { version: '0.0.0', changelog: [] };
+  var RAW_BASE = 'https://raw.githubusercontent.com/' + INFO.repo + '/HEAD/';
+
+  /** 比較版本號：a > b 回傳正數 */
+  function cmpVer(a, b) {
+    var x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var d = (x[i] || 0) - (y[i] || 0);
+      if (d) return d;
+    }
+    return 0;
+  }
+
+  function changelogHtml(list, current) {
+    return '<div class="changelog">' + list.map(function (c) {
+      return '<h4>v' + esc(c.version) + (c.version === current ? '<span class="cur">目前版本</span>' : '') +
+        '<span class="muted">' + esc(c.date || '') + '</span></h4><ul>' +
+        c.items.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>';
+    }).join('') + '</div>';
+  }
+
+  function showChangelog() {
+    modal('<h3>' + esc(INFO.name || '') + ' v' + esc(INFO.version) + '</h3>' +
+      '<div class="muted">發布日期 ' + esc(INFO.date || '') + '</div>' + changelogHtml(INFO.changelog || [], INFO.version) +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">' +
+      '<button class="btn" id="chkNow">檢查有沒有新版本</button><button class="btn primary" id="closeLog">關閉</button></div>');
+    $('closeLog').onclick = closeModal;
+    $('chkNow').onclick = function () { checkUpdate(true); };
+  }
+  $('btnVersion').textContent = 'v' + INFO.version;
+  $('btnVersion').onclick = showChangelog;
+
+  function fetchWithTimeout(url, ms) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var t = setTimeout(function () { if (ctl) ctl.abort(); }, ms);
+    return fetch(url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined }).then(function (r) {
+      clearTimeout(t);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r;
+    });
+  }
+
+  function checkUpdate(manual) {
+    if (!INFO.repo || !window.fetch) return;
+    fetchWithTimeout(RAW_BASE + 'version.json?t=' + Date.now(), 8000).then(function (r) { return r.json(); }).then(function (remote) {
+      if (cmpVer(remote.version, INFO.version) > 0) {
+        var skipped = null;
+        try { skipped = localStorage.getItem('chsys-skip-version'); } catch (e) {}
+        if (manual || skipped !== remote.version) showUpdate(remote);
+        if (manual) closeModal();
+      } else if (manual) {
+        toast('已經是最新版本 v' + INFO.version);
+      }
+    }).catch(function () {
+      if (manual) toast('無法連線到 GitHub 檢查更新（沒有網路也能正常使用）');
+    });
+  }
+
+  function showUpdate(remote) {
+    var newer = (remote.changelog || []).filter(function (c) { return cmpVer(c.version, INFO.version) > 0; });
+    var first = newer.length ? newer[0].items[0] : '';
+    var bar = $('updateBar');
+    bar.innerHTML = '<div class="wrap"><span class="ut">🔔 有新版本 v' + esc(remote.version) + '</span>' +
+      '<span class="grow">目前是 v' + esc(INFO.version) + (first ? '。新內容：' + esc(first) + (newer.length > 1 || newer[0].items.length > 1 ? '…' : '') : '') + '</span>' +
+      '<button class="btn small" id="upWhat">看更新內容</button>' +
+      '<button class="btn small primary" id="upGet">⬇ 下載新版</button>' +
+      '<button class="btn small" id="upSkip">這版先不要</button></div>';
+    bar.classList.remove('hidden');
+    $('upWhat').onclick = function () {
+      modal('<h3>v' + esc(remote.version) + ' 更新了什麼</h3>' + changelogHtml(newer, null) +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button class="btn" id="cl2">關閉</button><button class="btn primary" id="get2">⬇ 下載新版</button></div>');
+      $('cl2').onclick = closeModal;
+      $('get2').onclick = function () { closeModal(); downloadUpdate(remote); };
+    };
+    $('upGet').onclick = function () { downloadUpdate(remote); };
+    $('upSkip').onclick = function () {
+      try { localStorage.setItem('chsys-skip-version', remote.version); } catch (e) {}
+      bar.classList.add('hidden');
+    };
+  }
+
+  function downloadUpdate(remote) {
+    var file = remote.file || INFO.file;
+    var name = file.replace(/^.*\//, '');
+    var page = 'https://github.com/' + INFO.repo + '/blob/HEAD/' + file.split('/').map(encodeURIComponent).join('/');
+    toast('下載中…');
+    fetchWithTimeout(RAW_BASE + file.split('/').map(encodeURIComponent).join('/') + '?t=' + Date.now(), 30000)
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        download({ name: name, content: html }, true);
+        modal('<h3>新版 v' + esc(remote.version) + ' 已下載</h3>' +
+          '<ol class="next"><li><div>到瀏覽器的「下載」資料夾找到 <b>' + esc(name) + '</b>。</div></li>' +
+          '<li><div>用它<b>取代</b>你原本放的舊檔（或直接改用新檔）。</div></li>' +
+          '<li><div>關掉這個頁面，打開新檔就是新版了。</div></li></ol>' +
+          '<div style="text-align:right;margin-top:14px"><button class="btn primary" id="okUp">知道了</button></div>');
+        $('okUp').onclick = closeModal;
+      })
+      .catch(function () {
+        modal('<h3>自動下載失敗</h3><p>請到 GitHub 頁面手動下載新版：</p><p><a href="' + esc(page) + '" target="_blank" rel="noopener">' + esc(page) + '</a></p>' +
+          '<p class="muted">進去後按右上角的「⬇ Download raw file」。</p><div style="text-align:right"><button class="btn primary" id="okUp2">好</button></div>');
+        $('okUp2').onclick = closeModal;
+      });
+  }
+
+  // 開啟後稍等再檢查，不影響使用；沒有網路就安靜略過
+  setTimeout(function () { checkUpdate(false); }, 1500);
 
   // ─────────── 首頁卡片 ───────────
   Array.prototype.forEach.call(document.querySelectorAll('.card[data-kind]'), function (c) {
