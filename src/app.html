@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>土地重測資料轉換系統</title>
+<style>
+:root{
+  --bg:#f4f6f8; --card:#ffffff; --ink:#1d2733; --ink2:#5b6776; --line:#dde3ea;
+  --brand:#1f6feb; --brand-ink:#ffffff; --brand-soft:#e8f0fe;
+  --in:#0f8a5f; --in-soft:#e3f5ec; --out:#b45309; --out-soft:#fdf0e1;
+  --ok:#11845b; --ok-soft:#e6f6ee; --warn:#a15c00; --warn-soft:#fff4dc; --err:#c62828; --err-soft:#fdeaea;
+  --info:#1f5fbf; --info-soft:#e9f1fd; --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06);
+  --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:17px/1.6 "Microsoft JhengHei","微軟正黑體","PingFang TC","Noto Sans TC",system-ui,sans-serif}
+button,input,select{font:inherit}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+header.top{background:#16324f;color:#fff}
+header.top .wrap{display:flex;align-items:center;gap:14px;min-height:68px}
+header.top h1{font-size:22px;margin:0;font-weight:700;letter-spacing:.5px}
+header.top .sub{opacity:.75;font-size:14px}
+header.top .spacer{flex:1}
+.linkbtn{white-space:nowrap;background:none;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:999px;padding:6px 14px;cursor:pointer;font-size:14px}
+.linkbtn:hover{background:rgba(255,255,255,.1)}
+main.wrap{padding-top:28px;padding-bottom:60px}
+.hidden{display:none!important}
+
+/* 拖放區 */
+.drop{border:3px dashed #9fb3c8;border-radius:var(--radius);background:var(--card);text-align:center;padding:34px 20px;cursor:pointer;transition:.15s;box-shadow:var(--shadow)}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand-soft)}
+.drop .big{font-size:24px;font-weight:700;margin:6px 0}
+.drop .small{color:var(--ink2);font-size:15px}
+.drop svg{width:56px;height:56px;color:var(--brand)}
+.drop.compact{padding:16px;display:flex;align-items:center;justify-content:center;gap:14px;text-align:left}
+.drop.compact svg{width:34px;height:34px}
+.drop.compact .big{font-size:18px;margin:0}
+
+.or{display:flex;align-items:center;gap:12px;color:var(--ink2);margin:28px 0 18px;font-size:15px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+
+.groups{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.group h2{font-size:17px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.group h2 .tag{font-size:13px;padding:2px 10px;border-radius:999px;font-weight:700}
+.group.in h2 .tag{background:var(--in-soft);color:var(--in)}
+.group.out h2 .tag{background:var(--out-soft);color:var(--out)}
+.card{display:flex;gap:14px;align-items:center;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;cursor:pointer;box-shadow:var(--shadow);transition:.15s;color:inherit}
+.card:hover{transform:translateY(-1px);border-color:var(--brand)}
+.card .ico{flex:none;width:52px;height:52px;border-radius:12px;display:grid;place-items:center}
+.group.in .card .ico{background:var(--in-soft);color:var(--in)}
+.group.out .card .ico{background:var(--out-soft);color:var(--out)}
+.card .ico svg{width:30px;height:30px}
+.card .t,.card .d,.card .flow{display:block}
+.card .t{font-weight:700;font-size:18px}
+.card .d{color:var(--ink2);font-size:14.5px}
+.card .flow{font-size:13px;color:var(--ink2);margin-top:2px}
+.card .flow b{font-family:Consolas,monospace;color:var(--ink);background:#eef1f4;border-radius:4px;padding:0 5px;font-weight:600}
+
+/* 工作頁 */
+.backbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 16px;cursor:pointer;font-weight:600}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.btn.primary:hover{filter:brightness(1.08);color:#fff}
+.btn.go{background:var(--ok);border-color:var(--ok);color:#fff;font-size:18px;padding:12px 22px}
+.btn.go:hover{filter:brightness(1.08);color:#fff}
+.btn.small{padding:5px 12px;font-size:14px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.title{font-size:24px;font-weight:800;margin:0}
+.steps{display:flex;gap:8px;margin:0 0 18px;padding:0;list-style:none;flex-wrap:wrap}
+.steps li{flex:1;min-width:150px;display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;color:var(--ink2);font-weight:600}
+.steps li .n{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#e6eaef;color:var(--ink2);flex:none}
+.steps li.done{color:var(--ok)}
+.steps li.done .n{background:var(--ok);color:#fff}
+.steps li.now{color:var(--brand);border-color:var(--brand)}
+.steps li.now .n{background:var(--brand);color:#fff}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.panel h3{margin:0 0 12px;font-size:18px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#eef1f4;border-radius:999px;padding:4px 6px 4px 12px;font-size:14px}
+.chip button{border:none;background:#d7dde4;border-radius:50%;width:22px;height:22px;cursor:pointer;line-height:1;color:#333}
+.chip button:hover{background:var(--err);color:#fff}
+
+.status{border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;display:flex;gap:16px;align-items:center;border:1px solid}
+.status .si{font-size:34px;line-height:1}
+.status .st{font-size:21px;font-weight:800}
+.status .ss{font-size:15px}
+.status.ok{background:var(--ok-soft);border-color:#b7e3cd;color:#0b5c40}
+.status.warn{background:var(--warn-soft);border-color:#f3d48f;color:#6b3f00}
+.status.err{background:var(--err-soft);border-color:#f2b8b8;color:#8e1c1c}
+
+.files{display:grid;gap:12px}
+.file{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:12px;padding:14px 16px;flex-wrap:wrap}
+.file.rec{border-color:var(--ok);background:var(--ok-soft)}
+.file .fn{font-family:Consolas,"Courier New",monospace;font-size:18px;font-weight:700;word-break:break-all}
+.file .fd{color:var(--ink2);font-size:14.5px}
+.file .grow{flex:1;min-width:220px}
+.badge{display:inline-block;font-size:12.5px;font-weight:700;border-radius:999px;padding:1px 9px;margin-left:6px;vertical-align:2px}
+.badge.rec{background:var(--ok);color:#fff}
+.saveall{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.muted{color:var(--ink2);font-size:14.5px}
+pre.view{background:#0f1720;color:#d6e2ee;border-radius:10px;padding:12px 14px;max-height:280px;overflow:auto;font:14px/1.5 Consolas,"Courier New",monospace;margin:10px 0 0;white-space:pre}
+
+ol.next{margin:0;padding-left:0;list-style:none;counter-reset:n}
+ol.next li{counter-increment:n;display:flex;gap:12px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line)}
+ol.next li:last-child{border-bottom:none}
+ol.next li::before{content:counter(n);flex:none;width:28px;height:28px;border-radius:50%;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-weight:800;font-size:15px}
+
+ul.report{list-style:none;margin:0;padding:0;max-height:320px;overflow:auto}
+ul.report li{display:flex;gap:10px;padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:15.5px}
+ul.report li .lv{flex:none;font-weight:800;font-size:13px;border-radius:6px;padding:1px 8px;height:fit-content;margin-top:2px}
+ul.report li.error{background:var(--err-soft)} ul.report li.error .lv{background:var(--err);color:#fff}
+ul.report li.warn{background:var(--warn-soft)} ul.report li.warn .lv{background:#d98a00;color:#fff}
+ul.report li.info{background:var(--info-soft)} ul.report li.info .lv{background:var(--info);color:#fff}
+ul.report li .ln{color:var(--ink2);font-size:13px;white-space:nowrap}
+
+details.panel>summary{cursor:pointer;font-weight:700;font-size:18px;list-style:none;display:flex;align-items:center;gap:8px}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary::before{content:"▸";transition:.15s;color:var(--ink2)}
+details.panel[open]>summary::before{transform:rotate(90deg)}
+details.panel[open]>summary{margin-bottom:12px}
+
+.tablewrap{overflow:auto;max-height:440px;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{padding:6px 10px;border-bottom:1px solid #edf0f3;text-align:right;white-space:nowrap}
+th{position:sticky;top:0;background:#f0f3f6;text-align:right;font-weight:700}
+td.l,th.l{text-align:left}
+td.mono{font-family:Consolas,monospace}
+tr.station td{background:#f6f9ff;font-weight:700}
+td.bad{color:var(--err);font-weight:700}
+td.hl{color:var(--ok);font-weight:700}
+
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px 22px}
+.opt label.h{display:block;font-weight:700;margin-bottom:4px}
+.opt .hint{color:var(--ink2);font-size:13.5px;margin-top:3px}
+.opt select,.opt input[type=text]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.opt .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.opt .seg button{flex:1;border:none;background:#fff;padding:8px 10px;cursor:pointer;color:var(--ink2);font-weight:600}
+.opt .seg button.on{background:var(--brand);color:#fff}
+.opt .chk{display:flex;gap:8px;align-items:flex-start;cursor:pointer}
+.opt .chk input{width:20px;height:20px;margin-top:3px;flex:none}
+
+.modal{position:fixed;inset:0;background:rgba(10,20,30,.45);display:grid;place-items:center;padding:20px;z-index:10}
+.modal .box{background:#fff;border-radius:16px;max-width:640px;width:100%;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.25);max-height:90vh;overflow:auto}
+.modal h3{margin:0 0 6px;font-size:22px}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+.choice button{border:2px solid var(--line);background:#fff;border-radius:14px;padding:18px;cursor:pointer;text-align:center;font-weight:700;font-size:18px}
+.choice button:hover{border-color:var(--brand);background:var(--brand-soft)}
+.choice button small{display:block;font-weight:400;color:var(--ink2);font-size:14px;margin-top:4px}
+.about table td,.about table th{text-align:left;white-space:normal}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#16324f;color:#fff;padding:12px 20px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:20;font-weight:600}
+
+footer{color:var(--ink2);font-size:13.5px;text-align:center;padding:10px 0 30px}
+
+@media (max-width:760px){
+  .groups{grid-template-columns:1fr}
+  .choice{grid-template-columns:1fr}
+  header.top .sub{display:none}
+  .wrap{padding:0 16px}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 22h16L12 2z"/><path d="M12 2v20"/><path d="M8 14h8"/></svg>
+    <div>
+      <h1>土地重測資料轉換系統</h1>
+      <div class="sub">全站儀 ‧ GPS 控制器 ⇄ 土地重測系統</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="linkbtn" id="btnAbout">說明</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- ═════════ 首頁 ═════════ -->
+  <section id="home">
+    <div class="drop" id="homeDrop" tabindex="0" role="button" aria-label="選擇檔案">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+      <div class="big">把檔案拖到這裡（或點一下選檔案）</div>
+      <div class="small">系統會自動認出檔案種類：<b>.RAW</b>（全站儀）、<b>.CSV</b>（GPS）、<b>.L02 / .L14 / .L20</b>（重測系統）</div>
+    </div>
+
+    <div class="or">或是直接選擇要做哪一種轉換</div>
+
+    <div class="groups">
+      <div class="group in">
+        <h2><span class="tag">匯入</span>外業資料 → 重測系統</h2>
+        <button class="card" data-kind="raw2mac">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M12 12v4"/><path d="m8 22 4-6 4 6"/><path d="M10 8h4"/></svg></span>
+          <span><span class="t">全站儀觀測檔 → 重測系統</span>
+            <span class="d">Nikon 全站儀下載的觀測資料</span>
+            <span class="flow"><b>.RAW</b> → <b>.mac</b></span></span>
+        </button>
+        <button class="card" data-kind="csv2cntmac">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+          <span><span class="t">GPS 坐標檔 → 重測系統</span>
+            <span class="d">GPS / VRS 控制器輸出的坐標</span>
+            <span class="flow"><b>.CSV</b> → <b>.cnt</b> ＋ <b>.mac</b></span></span>
+        </button>
+      </div>
+      <div class="group out">
+        <h2><span class="tag">匯出</span>重測系統 → 外業儀器</h2>
+        <button class="card" data-kind="l2csv" data-device="ts">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M12 12v4"/><path d="m8 22 4-6 4 6"/><path d="M10 8h4"/></svg></span>
+          <span><span class="t">重測資料 → 全站儀</span>
+            <span class="d">控制點、界址點、補點坐標放樣用</span>
+            <span class="flow"><b>.L02</b> <b>.L14</b> <b>.L20</b> → <b>.CSV</b></span></span>
+        </button>
+        <button class="card" data-kind="l2csv" data-device="gps">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+          <span><span class="t">重測資料 → GPS 控制器</span>
+            <span class="d">匯入 Trimble 等 GPS 控制器</span>
+            <span class="flow"><b>.L02</b> <b>.L14</b> <b>.L20</b> → <b>.csv</b></span></span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ 工作頁 ═════════ -->
+  <section id="work" class="hidden">
+    <div class="backbar">
+      <button class="btn" id="btnBack">← 回首頁</button>
+      <h2 class="title" id="workTitle"></h2>
+    </div>
+
+    <ol class="steps" id="steps">
+      <li data-s="1"><span class="n">1</span>放入檔案</li>
+      <li data-s="2"><span class="n">2</span>檢查結果</li>
+      <li data-s="3"><span class="n">3</span>存檔</li>
+    </ol>
+
+    <div class="panel">
+      <h3 id="pickTitle">第 1 步：放入檔案</h3>
+      <div class="drop compact" id="workDrop" tabindex="0" role="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+        <div><div class="big" id="pickBig">把檔案拖進來，或點這裡選擇</div><div class="small" id="pickHint"></div></div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div id="resultArea" class="hidden">
+      <div class="status" id="status"></div>
+
+      <div class="panel" id="filesPanel">
+        <h3>第 3 步：存檔 — 按綠色按鈕下載</h3>
+        <div class="files" id="files"></div>
+        <div class="saveall" id="saveAll"></div>
+      </div>
+
+      <div class="panel" id="nextPanel">
+        <h3>接下來在重測系統 / 儀器上這樣做</h3>
+        <ol class="next" id="next"></ol>
+      </div>
+
+      <div class="panel" id="reportPanel">
+        <h3 id="reportTitle">需要注意的地方</h3>
+        <ul class="report" id="report"></ul>
+      </div>
+
+      <details class="panel" id="previewPanel">
+        <summary id="previewTitle">看轉換後的資料表</summary>
+        <div class="tablewrap" id="preview"></div>
+      </details>
+
+      <details class="panel" id="optsPanel">
+        <summary>進階設定（一般不用改）</summary>
+        <div class="opts" id="opts"></div>
+      </details>
+    </div>
+  </section>
+
+  <input type="file" id="fileInput" multiple class="hidden">
+</main>
+
+<footer>所有轉換都在你的電腦上完成，檔案不會上傳到任何地方。</footer>
+
+<div class="modal hidden" id="modal"><div class="box" id="modalBox"></div></div>
+<div class="toast hidden" id="toast"></div>
+
+<script>
+/*@@CORE@@*/
+</script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function el(tag, attrs, html) { var e = document.createElement(tag); if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]); if (html != null) e.innerHTML = html; return e; }
+
+  // ─────────── 各種轉換的說明文字 ───────────
+  var KINDS = {
+    raw2mac: {
+      title: '全站儀觀測檔 → 重測系統',
+      accept: '.raw,.txt',
+      hint: '可一次放多個 .RAW 檔，每個檔會各自產生一個 .mac',
+      multi: true,
+      next: function (r) {
+        var s = [];
+        var hasZero = r.files.some(function (f) { return /_Zero\.mac$/i.test(f.name); });
+        if (hasZero) s.push('有測站的後視讀數不是 0，建議讀入 <b>_Zero.mac</b>（後視已歸零）；若重測系統會自己用後視觀測定向，則讀一般的 <b>.mac</b>。');
+        else s.push('開啟土地重測系統，讀入剛剛存的 <b>.mac</b> 檔。');
+        if (r.stats.freeStations) s.push('有自由測站：請先把「自由測站 .cnt」裡的坐標加入重測系統，再讀 .mac。');
+        s.push('在重測系統裡檢查計算結果，點號後面的小數是編碼（例如 1001.01 = 點號 1001、編碼 01）。');
+        return s;
+      }
+    },
+    csv2cntmac: {
+      title: 'GPS 坐標檔 → 重測系統',
+      accept: '.csv,.txt,.asc',
+      hint: 'GPS / VRS 控制器輸出的 .CSV（格式：點名,N,E,編碼）',
+      multi: true,
+      next: function () {
+        return [
+          '開啟土地重測系統，<b>先讀 .cnt 檔</b>（虛擬測站 99999 與後視點 99998 的坐標）。',
+          '<b>再讀 .mac 檔</b>，系統會算出所有點的坐標。',
+          '計算完成後，<b>刪除點號 99999 和 99998</b>（它們只是轉換用的虛擬點）。'
+        ];
+      }
+    },
+    l2csv: {
+      title: '重測資料 → 外業儀器',
+      accept: '.l02,.l14,.l20,.txt',
+      hint: '可一次放 .L02（控制點）、.L14（界址點）、.L20（補點），會合併成一個檔',
+      multi: true,
+      next: function (r) {
+        var dev = r.device === 'gps' ? 'GPS 控制器' : '全站儀';
+        return [
+          '把存好的檔案複製到隨身碟 / SD 卡，或用傳輸線傳到' + dev + '。',
+          '在' + dev + '上選「匯入坐標」，格式選 <b>點號, ' + (r.swapXY ? '第2坐標, 第1坐標' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
+          '匯入後隨便抽查幾個點的坐標，確認沒有 X、Y 對調。'
+        ];
+      }
+    }
+  };
+
+  // ─────────── 狀態 ───────────
+  var state = { kind: null, device: 'ts', inputs: [], opts: loadOpts(), result: null };
+
+  function loadOpts() {
+    var d = { codeMode: 'pad2', sep: 'space', alwaysZero: false, codeCol: 4, angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
+    try { var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}'); for (var k in s) if (k in d) d[k] = s[k]; } catch (e) {}
+    return d;
+  }
+  function saveOpts() { try { localStorage.setItem('chsys-opts', JSON.stringify(state.opts)); } catch (e) {} }
+
+  // ─────────── 讀檔（自動判斷 UTF-8 / Big5） ───────────
+  function decode(buf) {
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch (e) { try { return new TextDecoder('big5').decode(buf); } catch (e2) { return new TextDecoder().decode(buf); } }
+  }
+  function readFiles(fileList) {
+    return Promise.all(Array.prototype.map.call(fileList, function (f) {
+      return f.arrayBuffer().then(function (b) { return { name: f.name, text: decode(b) }; });
+    }));
+  }
+
+  // ─────────── 畫面切換 ───────────
+  function showHome() {
+    $('toast').classList.add('hidden');
+    state.kind = null; state.inputs = []; state.result = null;
+    $('home').classList.remove('hidden'); $('work').classList.add('hidden');
+    window.scrollTo(0, 0);
+  }
+  function openKind(kind, device) {
+    state.kind = kind;
+    if (device) state.device = device;
+    state.inputs = []; state.result = null; state.opts.outName = '';
+    $('home').classList.add('hidden'); $('work').classList.remove('hidden');
+    renderWork();
+    window.scrollTo(0, 0);
+  }
+  function kindTitle() {
+    if (state.kind === 'l2csv') return state.device === 'gps' ? '重測資料 → GPS 控制器' : '重測資料 → 全站儀';
+    return KINDS[state.kind].title;
+  }
+
+  function setSteps(n) {
+    Array.prototype.forEach.call($('steps').children, function (li) {
+      var s = +li.getAttribute('data-s');
+      li.className = s < n ? 'done' : (s === n ? 'now' : '');
+      li.querySelector('.n').textContent = s < n ? '✓' : s;
+    });
+  }
+
+  function renderWork() {
+    var K = KINDS[state.kind];
+    $('workTitle').textContent = kindTitle();
+    $('pickHint').textContent = K.hint;
+    $('fileInput').setAttribute('accept', K.accept);
+    var chips = $('chips'); chips.innerHTML = '';
+    state.inputs.forEach(function (f, i) {
+      var c = el('span', { 'class': 'chip' }, esc(f.name) + ' ');
+      var b = el('button', { title: '移除', 'aria-label': '移除 ' + f.name }, '×');
+      b.onclick = function () { state.inputs.splice(i, 1); run(); };
+      c.appendChild(b); chips.appendChild(c);
+    });
+    $('pickBig').textContent = state.inputs.length ? '要換檔案或再加檔案？拖進來或點這裡' : '把檔案拖進來，或點這裡選擇';
+    $('pickTitle').textContent = state.inputs.length ? '第 1 步：已放入 ' + state.inputs.length + ' 個檔案' : '第 1 步：放入檔案';
+    if (!state.inputs.length) { $('resultArea').classList.add('hidden'); setSteps(1); }
+  }
+
+  // ─────────── 執行轉換 ───────────
+  function run() {
+    renderWork();
+    if (!state.inputs.length) return;
+    var o = state.opts, r;
+    if (state.kind === 'l2csv') {
+      r = Core.lToCsv(state.inputs, { device: state.device, swapXY: o.swapXY, stripCode: o.stripCode, outName: o.outName || undefined });
+      r.swapXY = o.swapXY;
+    } else {
+      // 每個檔各自轉換後合併顯示
+      var parts = state.inputs.map(function (inp) {
+        var opt = { codeMode: o.codeMode, sep: o.sep, alwaysZero: o.alwaysZero, codeCol: o.codeCol,
+          angleDecimals: o.angleDecimals, distDecimals: o.distDecimals,
+          outName: state.inputs.length === 1 ? (o.outName || undefined) : undefined };
+        var x = state.kind === 'raw2mac' ? Core.rawToMac(inp.text, inp.name, opt) : Core.csvToCntMac(inp.text, inp.name, opt);
+        x.source = inp.name;
+        return x;
+      });
+      r = { kind: state.kind, files: [], report: [], parts: parts, stats: {} };
+      parts.forEach(function (p) {
+        r.files = r.files.concat(p.files);
+        p.report.forEach(function (it) {
+          r.report.push({ level: it.level, msg: (parts.length > 1 ? '【' + p.source + '】' : '') + it.msg, line: it.line });
+        });
+        for (var k in p.stats) if (typeof p.stats[k] === 'number') r.stats[k] = (r.stats[k] || 0) + p.stats[k];
+      });
+      if (state.kind === 'csv2cntmac') r.stats.maxErrMm = Math.max.apply(null, parts.map(function (p) { return p.stats.maxErrMm || 0; }));
+    }
+    state.result = r;
+    renderResult();
+  }
+
+  function count(r, lv) { return r.report.filter(function (x) { return x.level === lv; }).length; }
+
+  function summaryText(r) {
+    var s = r.stats;
+    if (r.kind === 'raw2mac') {
+      var t = '共 ' + (s.stations || 0) + ' 個測站、' + (s.observations || 0) + ' 筆觀測';
+      if (s.nonZeroStations) t += '；其中 ' + s.nonZeroStations + ' 站後視不為 0';
+      if (s.freeStations) t += '；自由測站 ' + s.freeStations + ' 個';
+      return t;
+    }
+    if (r.kind === 'csv2cntmac') {
+      var t2 = '共 ' + (s.points || 0) + ' 個點';
+      if (s.maxErrMm != null && s.points) t2 += '；反算檢核最大誤差 ' + s.maxErrMm.toFixed(2) + ' mm';
+      return t2;
+    }
+    return '共 ' + s.points + ' 個點（' + r.perFile.map(function (f) { return f.type + ' ' + f.count; }).join('、') + '）';
+  }
+
+  function renderResult() {
+    var r = state.result;
+    $('resultArea').classList.remove('hidden');
+    var nErr = count(r, 'error'), nWarn = count(r, 'warn');
+    var st = $('status');
+    if (!r.files.length) {
+      st.className = 'status err';
+      st.innerHTML = '<div class="si">✕</div><div><div class="st">沒辦法轉換</div><div class="ss">請看下面紅色的錯誤說明，確認是不是放錯檔案。</div></div>';
+      setSteps(1);
+    } else if (nErr) {
+      st.className = 'status warn';
+      st.innerHTML = '<div class="si">!</div><div><div class="st">轉好了，但有 ' + nErr + ' 個錯誤要先檢查</div><div class="ss">' + esc(summaryText(r)) + '</div></div>';
+      setSteps(2);
+    } else if (nWarn) {
+      st.className = 'status warn';
+      st.innerHTML = '<div class="si">!</div><div><div class="st">轉換完成，有 ' + nWarn + ' 個地方請確認</div><div class="ss">' + esc(summaryText(r)) + '</div></div>';
+      setSteps(3);
+    } else {
+      st.className = 'status ok';
+      st.innerHTML = '<div class="si">✓</div><div><div class="st">轉換成功！</div><div class="ss">' + esc(summaryText(r)) + '</div></div>';
+      setSteps(3);
+    }
+
+    // 檔案
+    var fw = $('files'); fw.innerHTML = '';
+    $('filesPanel').classList.toggle('hidden', !r.files.length);
+    r.files.forEach(function (f) {
+      var d = el('div', { 'class': 'file' + (f.recommended ? ' rec' : '') });
+      var lines = f.content.split('\r\n').length - 1;
+      d.innerHTML = '<div class="grow"><div class="fn">' + esc(f.name) + (f.recommended ? '<span class="badge rec">建議使用</span>' : '') + '</div>' +
+        '<div class="fd">' + esc(f.desc || '') + '（' + lines + ' 行）</div></div>';
+      var view = el('button', { 'class': 'btn small' }, '看內容');
+      var dl = el('button', { 'class': 'btn go' }, '⬇ 下載');
+      var pre = el('pre', { 'class': 'view hidden' });
+      pre.textContent = f.content.length > 200000 ? f.content.slice(0, 200000) + '\n…（太長，只顯示前段）' : f.content;
+      view.onclick = function () { pre.classList.toggle('hidden'); view.textContent = pre.classList.contains('hidden') ? '看內容' : '收起來'; };
+      dl.onclick = function () { download(f); };
+      d.appendChild(view); d.appendChild(dl); d.appendChild(pre);
+      fw.appendChild(d);
+    });
+    var sa = $('saveAll'); sa.innerHTML = '';
+    if (r.files.length > 1) {
+      var all = el('button', { 'class': 'btn primary' }, '全部下載（' + r.files.length + ' 個）');
+      all.onclick = function () { r.files.forEach(function (f, i) { setTimeout(function () { download(f, true); }, i * 400); }); toast('已開始下載 ' + r.files.length + ' 個檔案'); };
+      sa.appendChild(all);
+    }
+    if (r.files.length && window.showDirectoryPicker) {
+      var dir = el('button', { 'class': 'btn' }, '📁 全部存到指定資料夾…');
+      dir.onclick = function () { saveToDir(r.files); };
+      sa.appendChild(dir);
+      sa.appendChild(el('span', { 'class': 'muted' }, '可以直接選擇要存放的資料夾（例如重測系統或隨身碟）'));
+    }
+
+    // 下一步
+    var nx = $('next'); nx.innerHTML = '';
+    $('nextPanel').classList.toggle('hidden', !r.files.length);
+    KINDS[r.kind].next(r).forEach(function (t) { nx.appendChild(el('li', null, '<div>' + t + '</div>')); });
+
+    // 問題清單
+    var rp = $('report'); rp.innerHTML = '';
+    var order = { error: 0, warn: 1, info: 2 };
+    var items = r.report.slice().sort(function (a, b) { return order[a.level] - order[b.level]; });
+    $('reportPanel').classList.toggle('hidden', !items.length);
+    $('reportTitle').textContent = '需要注意的地方（' + items.length + '）';
+    var LV = { error: '錯誤', warn: '注意', info: '說明' };
+    items.forEach(function (it) {
+      rp.appendChild(el('li', { 'class': it.level }, '<span class="lv">' + LV[it.level] + '</span><span>' + esc(it.msg) +
+        (it.line ? ' <span class="ln">（原檔第 ' + it.line + ' 行）</span>' : '') + '</span>'));
+    });
+
+    renderPreview(r);
+    renderOpts();
+  }
+
+  var MAX_ROWS = 500;
+  function renderPreview(r) {
+    var h = '', rows = 0, total = 0;
+    if (r.kind === 'raw2mac') {
+      var zero = r.stats.nonZeroStations > 0;
+      h = '<table><thead><tr><th class="l">點號</th><th>水平角</th>' + (zero ? '<th>歸零後水平角</th>' : '') + '<th>天頂角</th><th>斜距</th><th>原檔行</th></tr></thead><tbody>';
+      r.parts.forEach(function (p) {
+        var last = null;
+        p.preview.forEach(function (x) {
+          total++;
+          if (rows >= MAX_ROWS) return;
+          var key = x.station + '|' + x.back + '|' + p.source;
+          if (key !== last) { h += '<tr class="station"><td class="l" colspan="' + (zero ? 6 : 5) + '">' + (r.parts.length > 1 ? esc(p.source) + '　' : '') + '測站 ' + esc(x.station) + '　後視 ' + esc(x.back) + '</td></tr>'; last = key; }
+          h += '<tr><td class="l mono">' + esc(x.name) + '</td><td class="mono">' + esc(x.ha) + '</td>' +
+            (zero ? '<td class="mono' + (x.ha0 !== x.ha ? ' hl' : '') + '">' + esc(x.ha0) + '</td>' : '') +
+            '<td class="mono">' + esc(x.va) + '</td><td class="mono">' + esc(x.sd) + '</td><td>' + x.line + '</td></tr>';
+          rows++;
+        });
+      });
+      h += '</tbody></table>';
+      if (r.parts.some(function (p) { return p.freeStations.length; })) {
+        h += '<div style="padding:10px"><b>自由測站坐標</b>（請自行加入重測系統）<table><thead><tr><th class="l">點號</th><th>N</th><th>E</th></tr></thead><tbody>';
+        r.parts.forEach(function (p) { p.freeStations.forEach(function (f) { h += '<tr><td class="l mono">' + esc(f.name) + '</td><td class="mono">' + esc(f.n) + '</td><td class="mono">' + esc(f.e) + '</td></tr>'; }); });
+        h += '</tbody></table></div>';
+      }
+    } else if (r.kind === 'csv2cntmac') {
+      h = '<table><thead><tr><th class="l">點號</th><th>N</th><th>E</th><th>角度（度.分秒）</th><th>水平距離</th><th>反算誤差 mm</th></tr></thead><tbody>';
+      r.parts.forEach(function (p) {
+        if (r.parts.length > 1) h += '<tr class="station"><td class="l" colspan="6">' + esc(p.source) + '</td></tr>';
+        p.preview.forEach(function (x, i) {
+          total++;
+          if (rows >= MAX_ROWS) return;
+          var tag = x.role === 'station' ? '（測站 99999）' : (x.role === 'backsight' ? '（後視 99998）' : '');
+          h += '<tr><td class="l mono">' + esc(x.name) + ' <span class="muted">' + tag + '</span></td><td class="mono">' + esc(x.n) + '</td><td class="mono">' + esc(x.e) + '</td><td class="mono">' + esc(x.ang) + '</td><td class="mono">' + esc(x.dist) + '</td><td class="' + (x.errMm > 2 ? 'bad' : '') + '">' + x.errMm.toFixed(2) + '</td></tr>';
+          rows++;
+        });
+      });
+      h += '</tbody></table>';
+    } else {
+      var sw = r.swapXY;
+      h = '<table><thead><tr><th class="l">點號</th><th>' + (sw ? '第 2 坐標' : 'Y') + '</th><th>' + (sw ? '第 1 坐標' : 'X') + '</th><th class="l">種類</th><th class="l">來源檔案</th></tr></thead><tbody>';
+      r.preview.forEach(function (p) {
+        total++;
+        if (rows >= MAX_ROWS) return;
+        h += '<tr><td class="l mono">' + esc(p.name) + '</td><td class="mono">' + esc(sw ? p.x : p.y) + '</td><td class="mono">' + esc(sw ? p.y : p.x) + '</td><td class="l">' + esc(p.type) + '</td><td class="l">' + esc(p.src) + '</td></tr>';
+        rows++;
+      });
+      h += '</tbody></table>';
+    }
+    if (total > MAX_ROWS) h += '<div class="muted" style="padding:8px 10px">只顯示前 ' + MAX_ROWS + ' 筆，共 ' + total + ' 筆（檔案裡是完整的）。</div>';
+    $('preview').innerHTML = h;
+    $('previewTitle').textContent = '看轉換後的資料表（' + total + ' 筆）';
+  }
+
+  // ─────────── 進階設定 ───────────
+  function seg(label, key, choices, hint) {
+    var w = el('div', { 'class': 'opt' });
+    w.appendChild(el('label', { 'class': 'h' }, esc(label)));
+    var s = el('div', { 'class': 'seg' });
+    choices.forEach(function (c) {
+      var b = el('button', { type: 'button', 'class': state.opts[key] === c[0] ? 'on' : '' }, esc(c[1]));
+      b.onclick = function () { state.opts[key] = c[0]; saveOpts(); run(); };
+      s.appendChild(b);
+    });
+    w.appendChild(s);
+    if (hint) w.appendChild(el('div', { 'class': 'hint' }, hint));
+    return w;
+  }
+  function chk(label, key, hint) {
+    var w = el('div', { 'class': 'opt' });
+    var l = el('label', { 'class': 'chk' });
+    var i = el('input', { type: 'checkbox' }); i.checked = !!state.opts[key];
+    i.onchange = function () { state.opts[key] = i.checked; saveOpts(); run(); };
+    l.appendChild(i); l.appendChild(el('span', null, '<b>' + esc(label) + '</b>' + (hint ? '<div class="hint">' + hint + '</div>' : '')));
+    w.appendChild(l);
+    return w;
+  }
+  function renderOpts() {
+    var o = $('opts'); o.innerHTML = '';
+    var k = state.kind;
+    // 輸出檔名
+    if (k === 'l2csv' || state.inputs.length === 1) {
+      var w = el('div', { 'class': 'opt' });
+      w.appendChild(el('label', { 'class': 'h', 'for': 'outName' }, '輸出檔名（不含副檔名）'));
+      var inp = el('input', { type: 'text', id: 'outName', placeholder: '預設跟原檔同名' });
+      inp.value = state.opts.outName || '';
+      inp.onchange = function () { state.opts.outName = inp.value.trim(); run(); };
+      w.appendChild(inp);
+      o.appendChild(w);
+    }
+    if (k === 'raw2mac' || k === 'csv2cntmac') {
+      o.appendChild(seg('點號編碼格式', 'codeMode', [['pad2', '補兩位 1001.05'], ['raw', '照原樣 1001.5']],
+        '重測系統的「點號.編碼」。舊 Excel 版是補兩位，舊 jar 版是照原樣。'));
+      o.appendChild(seg('欄位分隔', 'sep', [['space', '空白'], ['tab', 'Tab']], '重測系統兩種都能讀，通常不用改。'));
+    }
+    if (k === 'raw2mac') {
+      o.appendChild(chk('一律輸出後視歸零檔（_Zero.mac）', 'alwaysZero', '預設只有在後視讀數不為 0 時才會產生。'));
+    }
+    if (k === 'csv2cntmac') {
+      var maxCols = Math.max.apply(null, (state.result && state.result.parts || []).map(function (p) { return p.maxCols || 4; }).concat([4]));
+      var ch = [[0, '沒有編碼']];
+      for (var c = 4; c <= maxCols; c++) ch.push([c, '第 ' + c + ' 欄']);
+      o.appendChild(seg('編碼（CD 碼）在第幾欄', 'codeCol', ch, '第 1 欄點名、第 2 欄 N、第 3 欄 E。'));
+      o.appendChild(seg('角度秒數的小數位', 'angleDecimals', [[0, '整數秒'], [1, '1 位'], [2, '2 位']],
+        '整數秒與舊 Excel 版相同。反算誤差太大時可改 1 位（需確認重測系統可讀）。'));
+      o.appendChild(seg('距離小數位', 'distDecimals', [[3, '3 位 (mm)'], [4, '4 位']]));
+    }
+    if (k === 'l2csv') {
+      var dev = el('div', { 'class': 'opt' });
+      dev.appendChild(el('label', { 'class': 'h' }, '要給哪種儀器'));
+      var s = el('div', { 'class': 'seg' });
+      [['ts', '全站儀'], ['gps', 'GPS 控制器']].forEach(function (c) {
+        var b = el('button', { type: 'button', 'class': state.device === c[0] ? 'on' : '' }, c[1]);
+        b.onclick = function () { state.device = c[0]; run(); };
+        s.appendChild(b);
+      });
+      dev.appendChild(s);
+      dev.appendChild(el('div', { 'class': 'hint' }, '全站儀：界址→補點→控制點順序、副檔名 .CSV；GPS：控制點→界址→補點順序、副檔名 .csv。'));
+      o.appendChild(dev);
+      o.appendChild(chk('交換坐標欄位順序', 'swapXY', '儀器匯入後如果點位 X、Y 顛倒，勾這個。'));
+      o.appendChild(chk('去掉點號後面的編碼', 'stripCode', '例如 1001.05 → 1001（.00 一律會自動去掉）。'));
+    }
+  }
+
+  // ─────────── 存檔 ───────────
+  function blobOf(f) { return new Blob([f.content], { type: 'text/plain' }); }
+  function download(f, silent) {
+    var a = el('a', { href: URL.createObjectURL(blobOf(f)), download: f.name });
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    if (!silent) toast('已下載 ' + f.name + '（在瀏覽器的「下載」資料夾）');
+  }
+  function saveToDir(files) {
+    window.showDirectoryPicker({ mode: 'readwrite' }).then(function (dir) {
+      return files.reduce(function (p, f) {
+        return p.then(function () {
+          return dir.getFileHandle(f.name, { create: true }).then(function (h) {
+            return h.createWritable().then(function (w) { return w.write(blobOf(f)).then(function () { return w.close(); }); });
+          });
+        });
+      }, Promise.resolve()).then(function () { toast('已存好 ' + files.length + ' 個檔案到「' + dir.name + '」'); });
+    }).catch(function (e) { if (e && e.name !== 'AbortError') toast('存檔失敗：' + e.message); });
+  }
+
+  var toastTimer;
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.add('hidden'); }, 3200);
+  }
+
+  // ─────────── 對話框 ───────────
+  function modal(html) { $('modalBox').innerHTML = html; $('modal').classList.remove('hidden'); }
+  function closeModal() { $('modal').classList.add('hidden'); }
+  $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeModal(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+
+  function askDevice(files) {
+    modal('<h3>這些重測資料要給哪種儀器？</h3><div class="muted">已讀到：' + files.map(function (f) { return esc(f.name); }).join('、') + '</div>' +
+      '<div class="choice"><button data-d="ts">全站儀<small>Nikon 等全站儀放樣</small></button><button data-d="gps">GPS 控制器<small>Trimble 等 GPS 控制器</small></button></div>');
+    Array.prototype.forEach.call($('modalBox').querySelectorAll('[data-d]'), function (b) {
+      b.onclick = function () { closeModal(); openKind('l2csv', b.getAttribute('data-d')); state.inputs = files; run(); };
+    });
+  }
+
+  $('btnAbout').onclick = function () {
+    modal('<div class="about"><h3>使用說明</h3>' +
+      '<p>三個步驟：<b>① 放入檔案 → ② 看有沒有紅色/黃色提醒 → ③ 按綠色「下載」</b>。檔案只在你的電腦上處理，不會上傳。</p>' +
+      '<table><thead><tr><th>功能</th><th>放入</th><th>得到</th></tr></thead><tbody>' +
+      '<tr><td>全站儀 → 重測系統</td><td>Nikon .RAW</td><td>.mac（必要時加 _Zero.mac）</td></tr>' +
+      '<tr><td>GPS → 重測系統</td><td>.CSV（點名,N,E,編碼）</td><td>.cnt ＋ .mac</td></tr>' +
+      '<tr><td>重測 → 全站儀 / GPS</td><td>.L02 .L14 .L20</td><td>.csv（點號,Y,X）</td></tr></tbody></table>' +
+      '<p class="muted">整合自：RawToMACV2.0.jar、NIKON轉MAC 0714F5.xls、CSV TO 重測 CT02.xls、TrimblePointInputV3.jar、重測轉CSV TS01.xls。</p>' +
+      '<div style="text-align:right;margin-top:14px"><button class="btn primary" id="closeAbout">知道了</button></div></div>');
+    $('closeAbout').onclick = closeModal;
+  };
+
+  // ─────────── 拖放／選檔 ───────────
+  var pickTarget = 'home';
+  function bindDrop(zone, target) {
+    zone.addEventListener('click', function () { pickTarget = target; $('fileInput').value = ''; $('fileInput').click(); });
+    zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); zone.click(); } });
+    ['dragenter', 'dragover'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('over'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('over'); }); });
+    zone.addEventListener('drop', function (e) { if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, target); });
+  }
+  bindDrop($('homeDrop'), 'home');
+  bindDrop($('workDrop'), 'work');
+  ['dragover', 'drop'].forEach(function (ev) { window.addEventListener(ev, function (e) { e.preventDefault(); }); });
+  $('fileInput').addEventListener('change', function () { if (this.files.length) handleFiles(this.files, pickTarget); });
+
+  function handleFiles(list, target) {
+    readFiles(list).then(function (files) {
+      if (state.kind) {
+        // 同名檔案取代，其餘加入
+        files.forEach(function (f) {
+          var i = state.inputs.findIndex(function (x) { return x.name === f.name; });
+          if (i >= 0) state.inputs[i] = f; else state.inputs.push(f);
+        });
+        run();
+        return;
+      }
+      // 首頁：自動判斷
+      var kinds = {};
+      var unknown = [];
+      files.forEach(function (f) {
+        var k = Core.detectKind(f.name, f.text);
+        if (k) (kinds[k] = kinds[k] || []).push(f); else unknown.push(f.name);
+      });
+      var ks = Object.keys(kinds);
+      if (!ks.length) {
+        modal('<h3>認不出這個檔案</h3><p>' + esc(unknown.join('、')) + '</p><p>請直接在首頁點選要做的轉換，再放入檔案。</p><div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
+        $('ok1').onclick = closeModal;
+        return;
+      }
+      var k = ks[0];
+      if (ks.length > 1 || unknown.length) toast('一次只能做一種轉換，先處理「' + KINDS[k].title + '」的檔案');
+      if (k === 'l2csv') { askDevice(kinds[k]); return; }
+      openKind(k);
+      state.inputs = kinds[k];
+      run();
+    });
+  }
+
+  // ─────────── 首頁卡片 ───────────
+  Array.prototype.forEach.call(document.querySelectorAll('.card[data-kind]'), function (c) {
+    c.onclick = function () { openKind(c.getAttribute('data-kind'), c.getAttribute('data-device')); };
+  });
+  $('btnBack').onclick = showHome;
+})();
+</script>
+</body>
+</html>

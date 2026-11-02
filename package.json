@@ -1,0 +1,10 @@
+{
+  "name": "change-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "土地重測資料轉換系統：全站儀 / GPS 控制器 與 土地重測系統 之間的資料轉換",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node --test test/core.test.js"
+  }
+}
