@@ -2070,12 +2070,49 @@ svg .pt.click{cursor:pointer}
 
   // ─────────── 拖放／選檔 ───────────
 
-  /** 拖放：支援直接拖資料夾進來（遞迴讀取） */
+  /**
+   * 拖放：支援直接拖資料夾進來（遞迴讀取）。
+   * 直接雙擊開啟的網頁（file://）在 Chrome / Edge 不能用舊的 webkitGetAsEntry 讀資料夾內容，
+   * 所以先用新的 getAsFileSystemHandle，不行再退回舊方法；都被擋時回傳 blocked。
+   */
   function collectDropped(dt) {
     var items = dt.items ? Array.prototype.slice.call(dt.items) : [];
-    var entries = items.map(function (it) { return it.webkitGetAsEntry ? it.webkitGetAsEntry() : null; }).filter(Boolean);
-    var hasDir = entries.some(function (e) { return e.isDirectory; });
-    if (!hasDir) return Promise.resolve({ files: Array.prototype.slice.call(dt.files), folder: null });
+    var plainFiles = Array.prototype.slice.call(dt.files || []);
+    // 這兩個都必須在 drop 事件當下同步呼叫
+    var entries = items.map(function (it) { return it.webkitGetAsEntry ? it.webkitGetAsEntry() : null; });
+    var handleProms = items.map(function (it) {
+      if (it.kind !== 'file' || !it.getAsFileSystemHandle) return Promise.resolve(null);
+      try { return it.getAsFileSystemHandle().catch(function () { return null; }); } catch (e) { return Promise.resolve(null); }
+    });
+    var dirEntry = entries.filter(function (e) { return e && e.isDirectory; })[0];
+    if (!dirEntry) return Promise.resolve({ files: plainFiles, folder: null });
+    var dirName = dirEntry.name;
+
+    return Promise.all(handleProms)
+      .then(function (handles) {
+        if (!handles.some(function (h) { return h && h.kind === 'directory'; })) return [];
+        return walkHandles(handles).catch(function () { return []; });
+      })
+      .then(function (out) { return out.length ? out : walkEntries(entries.filter(Boolean)); })
+      .then(function (out) { return { files: out, folder: dirName, blocked: !out.length }; });
+  }
+
+  /** 新方法（File System Access API）：逐層讀資料夾 */
+  async function walkHandles(handles) {
+    var out = [];
+    async function walk(h, prefix) {
+      if (h.kind === 'file') {
+        out.push({ file: await h.getFile(), path: prefix + h.name });
+      } else if (h.kind === 'directory') {
+        for await (var child of h.values()) await walk(child, prefix + h.name + '/');
+      }
+    }
+    for (var i = 0; i < handles.length; i++) if (handles[i]) await walk(handles[i], '');
+    return out;
+  }
+
+  /** 舊方法（webkitGetAsEntry），網頁從 http 開啟時可用 */
+  function walkEntries(entries) {
     var out = [];
     var walk = function (entry) {
       if (entry.isFile) {
@@ -2095,12 +2132,20 @@ svg .pt.click{cursor:pointer}
       }
       return Promise.resolve();
     };
-    var dirName = entries.filter(function (e) { return e.isDirectory; })[0].name;
-    var plain = Array.prototype.slice.call(dt.files || []).filter(function (f) { return f.size > 0 || /\.[^.]+$/.test(f.name); });
-    return Promise.all(entries.map(walk)).then(function () {
-      if (!out.length && plain.length) return { files: plain, folder: null };
-      return { files: out, folder: dirName };
-    });
+    return Promise.all(entries.map(walk)).then(function () { return out; });
+  }
+
+  /** 瀏覽器不讓網頁讀拖進來的資料夾時：說明並提供一鍵改用「選資料夾」 */
+  function dropBlocked(folder) {
+    modal('<h3>瀏覽器不讓網頁讀取拖進來的「' + esc(folder) + '」資料夾</h3>' +
+      '<p>這是 Chrome / Edge 對「直接從電腦打開的網頁」的安全限制，不是檔案的問題，檔案也沒有上傳到任何地方。</p>' +
+      '<p>請改用下面兩種方法之一：</p><ol class="next">' +
+      '<li><div>按下面的藍色按鈕，選同一個「' + esc(folder) + '」資料夾（最簡單）。</div></li>' +
+      '<li><div>打開資料夾，按 <b>Ctrl + A</b> 全選裡面的檔案，再把<b>檔案</b>（不是資料夾）拖進來。</div></li></ol>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px"><button class="btn" id="dbCancel">取消</button>' +
+      '<button class="btn primary" id="dbPick">📁 選擇「' + esc(folder) + '」資料夾</button></div>');
+    $('dbCancel').onclick = closeModal;
+    $('dbPick').onclick = function () { closeModal(); $('dirInput').value = ''; $('dirInput').click(); };
   }
 
   var pickTarget = 'home';
@@ -2139,7 +2184,8 @@ svg .pt.click{cursor:pointer}
     dragDepth = 0; showOverlay(false);
     if (!e.dataTransfer) return;
     collectDropped(e.dataTransfer).then(function (res) {
-      if (res.folder) handleFolder(res.files, res.folder);
+      if (res.blocked) dropBlocked(res.folder);
+      else if (res.folder) handleFolder(res.files, res.folder);
       else if (res.files.length) handleFiles(res.files);
       else toast('沒有讀到檔案，請改用「📁 選資料夾」按鈕');
     }).catch(function (err) {
