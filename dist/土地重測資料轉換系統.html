@@ -211,6 +211,18 @@ svg .pt.click{cursor:pointer}
 .fsec .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;justify-content:flex-end}
 .extb{display:inline-block;font-family:Consolas,monospace;font-size:12.5px;background:#eef1f4;border-radius:4px;padding:0 5px;margin-right:4px}
 .extb.miss{opacity:.35;text-decoration:line-through}
+
+.dropover{position:fixed;inset:0;z-index:30;background:rgba(31,111,235,.12);border:4px dashed var(--brand);display:grid;place-items:center;pointer-events:none}
+.dropover>div{background:#fff;border-radius:16px;padding:22px 34px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.2);color:var(--ink2)}
+.dropover .big{font-size:26px;font-weight:800;color:var(--brand)}
+
+.devbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.devbar .lbl{font-weight:700}
+.devbar .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.devbar .seg button{border:none;background:#fff;padding:8px 16px;cursor:pointer;color:var(--ink2);font-weight:700}
+.devbar .seg button.on{background:var(--brand);color:#fff}
+.choice.three{grid-template-columns:1fr 1fr 1fr}
+@media (max-width:760px){.choice.three{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -312,6 +324,7 @@ svg .pt.click{cursor:pointer}
 
       <div class="panel" id="filesPanel">
         <h3>第 3 步：存檔 — 按綠色按鈕下載</h3>
+        <div class="devbar hidden" id="deviceBar"></div>
         <div class="files" id="files"></div>
         <div class="saveall" id="saveAll"></div>
       </div>
@@ -344,6 +357,7 @@ svg .pt.click{cursor:pointer}
 
 <footer>所有轉換都在你的電腦上完成，檔案不會上傳到任何地方。</footer>
 
+<div class="dropover hidden" id="dropOverlay"><div><div class="big">放開滑鼠</div><div>檔案或整個資料夾都可以</div></div></div>
 <div class="modal hidden" id="modal"><div class="box" id="modalBox"></div></div>
 <div class="toast hidden" id="toast"></div>
 
@@ -1263,15 +1277,19 @@ svg .pt.click{cursor:pointer}
       hint: '同一案件的 .L02、.L14、.L20 會合併成一個檔；也可以直接選整個資料夾',
       step2: '檢查結果',
       next: function (r) {
-        var dev = r.device === 'gps' ? 'GPS 控制器' : '全站儀';
+        var dev = DEVICE_NAME[r.device];
         return [
-          '把存好的檔案複製到隨身碟 / SD 卡，或用傳輸線傳到' + dev + '。',
-          '在' + dev + '上選「匯入坐標」，格式選 <b>點號, ' + (r.swapXY ? '第2坐標, 第1坐標' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
+          (r.device === 'both' ? '<b>_全站儀.CSV</b> 給全站儀、<b>_GPS.csv</b> 給 GPS 控制器，' : '') +
+          '把存好的檔案複製到隨身碟 / SD 卡，或用傳輸線傳到' + (r.device === 'both' ? '各儀器' : dev) + '。',
+          '在' + (r.device === 'both' ? '各儀器' : dev) + '上選「匯入坐標」，格式選 <b>點號, ' + (r.swapXY ? '第2坐標, 第1坐標' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
           '匯入後隨便抽查幾個點的坐標，確認沒有 X、Y 對調。'
         ];
       }
     }
   };
+
+  var DEVICE_NAME = { ts: '全站儀', gps: 'GPS 控制器', both: '全站儀 ＋ GPS 控制器' };
+  var DEVICE_CHOICES = [['ts', '全站儀'], ['gps', 'GPS 控制器'], ['both', '兩種都要']];
 
   // ─────────── 狀態 ───────────
   var state = { kind: null, device: 'ts', inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null };
@@ -1316,7 +1334,7 @@ svg .pt.click{cursor:pointer}
     window.scrollTo(0, 0);
   }
   function kindTitle() {
-    if (state.kind === 'l2csv') return state.device === 'gps' ? '重測資料 → GPS 控制器' : '重測資料 → 全站儀';
+    if (state.kind === 'l2csv') return '重測資料 → ' + DEVICE_NAME[state.device];
     return KINDS[state.kind].title;
   }
 
@@ -1377,8 +1395,17 @@ svg .pt.click{cursor:pointer}
     if (state.kind === 'l2csv') {
       var groups = lGroups(state.inputs);
       parts = groups.map(function (g) {
-        var x = Core.lToCsv(g.files, { device: state.device, swapXY: o.swapXY, stripCode: o.stripCode,
-          outName: groups.length === 1 ? (o.outName || undefined) : undefined });
+        var base = (groups.length === 1 && o.outName) || g.label;
+        var common = { swapXY: o.swapXY, stripCode: o.stripCode };
+        var x;
+        if (state.device === 'both') {
+          // 兩種儀器都要：各出一個檔，檔名加上儀器名稱（Windows 不分大小寫，.CSV 與 .csv 會撞名）
+          x = Core.lToCsv(g.files, Object.assign({ device: 'ts', outName: base + '_全站儀' }, common));
+          var y = Core.lToCsv(g.files, Object.assign({ device: 'gps', outName: base + '_GPS' }, common));
+          x.files = x.files.concat(y.files);
+        } else {
+          x = Core.lToCsv(g.files, Object.assign({ device: state.device, outName: base }, common));
+        }
         x.source = g.label;
         return x;
       });
@@ -1453,6 +1480,20 @@ svg .pt.click{cursor:pointer}
 
     renderThumbs(r);
     renderReview(r);
+
+    // 儀器選擇（重測資料匯出時顯示在存檔區最上面）
+    var db = $('deviceBar'); db.innerHTML = '';
+    db.classList.toggle('hidden', r.kind !== 'l2csv');
+    if (r.kind === 'l2csv') {
+      db.appendChild(el('span', { 'class': 'lbl' }, '要給哪種儀器：'));
+      var dseg = el('div', { 'class': 'seg' });
+      DEVICE_CHOICES.forEach(function (c) {
+        var b = el('button', { type: 'button', 'class': state.device === c[0] ? 'on' : '' }, c[1]);
+        b.onclick = function () { state.device = c[0]; $('workTitle').textContent = kindTitle(); run(); };
+        dseg.appendChild(b);
+      });
+      db.appendChild(dseg);
+    }
 
     // 檔案
     var fw = $('files'); fw.innerHTML = '';
@@ -1852,17 +1893,6 @@ svg .pt.click{cursor:pointer}
       o.appendChild(seg('距離小數位', 'distDecimals', [[3, '3 位 (mm)'], [4, '4 位']]));
     }
     if (k === 'l2csv') {
-      var dev = el('div', { 'class': 'opt' });
-      dev.appendChild(el('label', { 'class': 'h' }, '要給哪種儀器'));
-      var s = el('div', { 'class': 'seg' });
-      [['ts', '全站儀'], ['gps', 'GPS 控制器']].forEach(function (c) {
-        var b = el('button', { type: 'button', 'class': state.device === c[0] ? 'on' : '' }, c[1]);
-        b.onclick = function () { state.device = c[0]; run(); };
-        s.appendChild(b);
-      });
-      dev.appendChild(s);
-      dev.appendChild(el('div', { 'class': 'hint' }, '全站儀：界址→補點→控制點順序、副檔名 .CSV；GPS：控制點→界址→補點順序、副檔名 .csv。'));
-      o.appendChild(dev);
       o.appendChild(chk('交換坐標欄位順序', 'swapXY', '儀器匯入後如果點位 X、Y 顛倒，勾這個。'));
       o.appendChild(chk('去掉點號後面的編碼', 'stripCode', '例如 1001.05 → 1001（.0、.00 一律會自動去掉）。'));
     }
@@ -1914,7 +1944,7 @@ svg .pt.click{cursor:pointer}
 
   function askDevice(files) {
     modal('<h3>這些重測資料要給哪種儀器？</h3><div class="muted">已讀到：' + files.map(function (f) { return esc(f.name); }).join('、') + '</div>' +
-      '<div class="choice"><button data-d="ts">全站儀<small>Nikon 等全站儀放樣</small></button><button data-d="gps">GPS 控制器<small>Trimble 等 GPS 控制器</small></button></div>');
+      '<div class="choice three"><button data-d="ts">全站儀<small>Nikon 等全站儀放樣</small></button><button data-d="gps">GPS 控制器<small>Trimble 等 GPS 控制器</small></button><button data-d="both">兩種都要<small>各輸出一個檔</small></button></div>');
     Array.prototype.forEach.call($('modalBox').querySelectorAll('[data-d]'), function (b) {
       b.onclick = function () { startL2csv(files, b.getAttribute('data-d')); };
     });
@@ -1938,7 +1968,13 @@ svg .pt.click{cursor:pointer}
   function handleFolder(entries, folderName) {
     var list = entries.map(function (x) { return { name: x.file.name, path: x.path, file: x.file }; });
     var g = Core.groupFolderFiles(list);
-    var kinds = state.kind ? [state.kind] : ['l2csv', 'raw2mac', 'csv2cntmac'];
+    var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'];
+    var kinds = state.kind ? [state.kind] : ALL;
+    // 目前頁面要的檔案在資料夾裡沒有，但有其他種類：列出來讓使用者改做那一種
+    if (state.kind && !g[state.kind].length && ALL.some(function (k) { return g[k].length; })) {
+      kinds = ALL;
+      toast('資料夾裡沒有這個轉換要用的檔案，以下是找到的其他資料');
+    }
     var total = kinds.reduce(function (n, k) { return n + g[k].length; }, 0);
     if (!total) {
       modal('<h3>資料夾裡沒有找到可以轉換的檔案</h3><p class="muted">「' + esc(folderName) + '」裡共 ' + entries.length + ' 個檔案，沒有 ' +
@@ -1969,8 +2005,8 @@ svg .pt.click{cursor:pointer}
           (det ? '<div class="det">' + det + '</div>' : '') + (item.dir ? '<div class="det">📁 ' + esc(item.dir) + '</div>' : '') + '</span></label>';
       });
       h += '<div class="acts">';
-      if (k === 'l2csv' && !state.kind) {
-        h += '<button class="btn primary go-btn" data-d="ts" disabled>轉給全站儀 →</button><button class="btn primary go-btn" data-d="gps" disabled>轉給 GPS 控制器 →</button>';
+      if (k === 'l2csv' && state.kind !== 'l2csv') {
+        h += '<button class="btn primary go-btn" data-d="ts" disabled>轉給全站儀 →</button><button class="btn primary go-btn" data-d="gps" disabled>轉給 GPS 控制器 →</button><button class="btn primary go-btn" data-d="both" disabled>兩種都要 →</button>';
       } else {
         h += '<button class="btn primary go-btn" disabled>轉換勾選的項目 →</button>';
       }
@@ -2060,7 +2096,11 @@ svg .pt.click{cursor:pointer}
       return Promise.resolve();
     };
     var dirName = entries.filter(function (e) { return e.isDirectory; })[0].name;
-    return Promise.all(entries.map(walk)).then(function () { return { files: out, folder: dirName }; });
+    var plain = Array.prototype.slice.call(dt.files || []).filter(function (f) { return f.size > 0 || /\.[^.]+$/.test(f.name); });
+    return Promise.all(entries.map(walk)).then(function () {
+      if (!out.length && plain.length) return { files: plain, folder: null };
+      return { files: out, folder: dirName };
+    });
   }
 
   var pickTarget = 'home';
@@ -2070,18 +2110,42 @@ svg .pt.click{cursor:pointer}
       pickTarget = target; $('fileInput').value = ''; $('fileInput').click();
     });
     zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); zone.click(); } });
-    ['dragenter', 'dragover'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('over'); }); });
-    ['dragleave', 'drop'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('over'); }); });
-    zone.addEventListener('drop', function (e) {
-      collectDropped(e.dataTransfer).then(function (res) {
-        if (res.folder) handleFolder(res.files, res.folder);
-        else if (res.files.length) handleFiles(res.files);
-      });
-    });
   }
   bindDrop($('homeDrop'), 'home');
   bindDrop($('workDrop'), 'work');
-  ['dragover', 'drop'].forEach(function (ev) { window.addEventListener(ev, function (e) { e.preventDefault(); }); });
+
+  // 整個視窗都可以放檔案／資料夾（不必剛好放在虛線框裡）
+  var dragDepth = 0;
+  var isFileDrag = function (e) {
+    var t = e.dataTransfer && e.dataTransfer.types;
+    return !!t && Array.prototype.indexOf.call(t, 'Files') >= 0;
+  };
+  var showOverlay = function (on) { $('dropOverlay').classList.toggle('hidden', !on); };
+  window.addEventListener('dragenter', function (e) {
+    if (!isFileDrag(e)) return;
+    e.preventDefault(); dragDepth++; showOverlay(true);
+  });
+  window.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    if (isFileDrag(e)) { e.dataTransfer.dropEffect = 'copy'; showOverlay(true); }
+  });
+  window.addEventListener('dragleave', function (e) {
+    if (!isFileDrag(e)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) showOverlay(false);
+  });
+  window.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dragDepth = 0; showOverlay(false);
+    if (!e.dataTransfer) return;
+    collectDropped(e.dataTransfer).then(function (res) {
+      if (res.folder) handleFolder(res.files, res.folder);
+      else if (res.files.length) handleFiles(res.files);
+      else toast('沒有讀到檔案，請改用「📁 選資料夾」按鈕');
+    }).catch(function (err) {
+      toast('讀取拖入的檔案失敗，請改用「📁 選資料夾」按鈕（' + (err && err.message || err) + '）');
+    });
+  });
   $('fileInput').addEventListener('change', function () { if (this.files.length) handleFiles(this.files); });
 
   var openDir = function () { $('dirInput').value = ''; $('dirInput').click(); };

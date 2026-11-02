@@ -211,6 +211,18 @@ svg .pt.click{cursor:pointer}
 .fsec .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;justify-content:flex-end}
 .extb{display:inline-block;font-family:Consolas,monospace;font-size:12.5px;background:#eef1f4;border-radius:4px;padding:0 5px;margin-right:4px}
 .extb.miss{opacity:.35;text-decoration:line-through}
+
+.dropover{position:fixed;inset:0;z-index:30;background:rgba(31,111,235,.12);border:4px dashed var(--brand);display:grid;place-items:center;pointer-events:none}
+.dropover>div{background:#fff;border-radius:16px;padding:22px 34px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.2);color:var(--ink2)}
+.dropover .big{font-size:26px;font-weight:800;color:var(--brand)}
+
+.devbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.devbar .lbl{font-weight:700}
+.devbar .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.devbar .seg button{border:none;background:#fff;padding:8px 16px;cursor:pointer;color:var(--ink2);font-weight:700}
+.devbar .seg button.on{background:var(--brand);color:#fff}
+.choice.three{grid-template-columns:1fr 1fr 1fr}
+@media (max-width:760px){.choice.three{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -312,6 +324,7 @@ svg .pt.click{cursor:pointer}
 
       <div class="panel" id="filesPanel">
         <h3>第 3 步：存檔 — 按綠色按鈕下載</h3>
+        <div class="devbar hidden" id="deviceBar"></div>
         <div class="files" id="files"></div>
         <div class="saveall" id="saveAll"></div>
       </div>
@@ -344,6 +357,7 @@ svg .pt.click{cursor:pointer}
 
 <footer>所有轉換都在你的電腦上完成，檔案不會上傳到任何地方。</footer>
 
+<div class="dropover hidden" id="dropOverlay"><div><div class="big">放開滑鼠</div><div>檔案或整個資料夾都可以</div></div></div>
 <div class="modal hidden" id="modal"><div class="box" id="modalBox"></div></div>
 <div class="toast hidden" id="toast"></div>
 
