@@ -173,6 +173,7 @@
     var freeStations = [];
     var cur = null;
     var meta = { angleUnits: '', distUnits: '' };
+    var known = {}; // 檔案內已知坐標（UP/MP/CC 紀錄）
 
     lines.forEach(function (raw, idx) {
       var lineNo = idx + 1;
@@ -205,8 +206,13 @@
       }
       if (type === 'F1' || type === 'F2') {
         if (cur && !cur.backObs && f[1] === cur.back) {
-          cur.backObs = { ha: f[4] || '', line: lineNo, src: type };
+          cur.backObs = { ha: f[4] || '', sd: f[3] || '', va: f[5] || '', line: lineNo, src: type };
         }
+        return;
+      }
+      if (type === 'UP' || type === 'MP' || type === 'CC') {
+        // UP,點號,編碼,N,E,Z,...
+        if (f[1] && isNum(f[3] || '') && isNum(f[4] || '')) known[f[1]] = { N: parseFloat(f[3]), E: parseFloat(f[4]) };
         return;
       }
       if (type === 'SS') {
@@ -242,7 +248,66 @@
     if (meta.distUnits && !/met/i.test(meta.distUnits)) {
       report.error('儀器距離單位是「' + meta.distUnits + '」，重測系統需要「公尺」');
     }
-    return { sessions: sessions, freeStations: freeStations, meta: meta };
+    return { sessions: sessions, freeStations: freeStations, meta: meta, known: known };
+  }
+
+  /** 水平距離 = 斜距 × sin(天頂角) */
+  function horizDist(sd, va) {
+    var v = dmsToSec(va);
+    var d = parseFloat(sd);
+    if (v === null || !isFinite(d)) return null;
+    return d * Math.sin(v / 3600 * Math.PI / 180);
+  }
+
+  /**
+   * 用檔案裡的已知坐標（UP 等）推算各觀測點的大略位置，給縮圖用；
+   * 同時做後視檢核（觀測距離 vs 坐標反算距離）。
+   */
+  function computeRawPlot(parsed, report) {
+    var known = {};
+    Object.keys(parsed.known).forEach(function (k) { known[k] = parsed.known[k]; });
+    var pts = [];
+    var rays = [];
+    var missing = 0;
+    var addPt = function (name, N, E, kind) { pts.push({ name: name, N: N, E: E, kind: kind }); };
+    Object.keys(parsed.known).forEach(function (k) { addPt(k, known[k].N, known[k].E, 'known'); });
+
+    parsed.sessions.forEach(function (s) {
+      var S = known[s.station], B = known[s.back];
+      if (!S || !B) { if (s.obs.length) missing++; return; }
+      var azB = Math.atan2(B.E - S.E, B.N - S.N);
+      var ref = s.backObs ? dmsToSec(s.backObs.ha) : null;
+      if (ref === null) {
+        for (var i = 0; i < s.obs.length; i++) if (s.obs[i].pt === s.back) { ref = dmsToSec(s.obs[i].ha); break; }
+      }
+      if (ref === null) ref = 0;
+      addPt(s.station, S.N, S.E, 'station');
+
+      // 後視檢核
+      if (s.backObs && s.backObs.sd) {
+        var hd = horizDist(s.backObs.sd, s.backObs.va);
+        var dc = Math.hypot(B.N - S.N, B.E - S.E);
+        if (hd !== null) {
+          var diff = (hd - dc) * 1000;
+          var msg = '測站 ' + s.station + ' 後視 ' + s.back + ' 檢核：觀測水平距離 ' + hd.toFixed(3) + ' m，坐標反算 ' + dc.toFixed(3) + ' m，差 ' + diff.toFixed(0) + ' mm';
+          if (Math.abs(diff) > 50) report.warn(msg + '，差距偏大，請確認測站或後視點是否正確', s.backObs.line);
+          else report.info(msg, s.backObs.line);
+        }
+      }
+
+      s.obs.forEach(function (o) {
+        var hd2 = horizDist(o.sd, o.va), ha = dmsToSec(o.ha);
+        if (hd2 === null || ha === null) return;
+        var az = azB + (ha - ref) / 3600 * Math.PI / 180;
+        var P = { N: S.N + hd2 * Math.cos(az), E: S.E + hd2 * Math.sin(az) };
+        addPt(o.pt, P.N, P.E, 'obs');
+        rays.push({ from: s.station, N1: S.N, E1: S.E, N2: P.N, E2: P.E });
+        if (!known[o.pt]) known[o.pt] = P; // 例如先觀測、後來當測站的點（QT60-2）
+      });
+    });
+    var focus = {};
+    parsed.sessions.forEach(function (s) { focus[s.station] = 1; focus[s.back] = 1; });
+    return { points: pts, rays: rays, missingStations: missing, focus: focus };
   }
 
   function rawToMac(text, filename, opts) {
@@ -307,6 +372,8 @@
       } else if (!seen[p.name]) seen[p.name] = p.line;
     });
 
+    var plot = computeRawPlot(parsed, report);
+
     if (parsed.freeStations.length) {
       report.warn('有 ' + parsed.freeStations.length + ' 個自由測站，請自行新增至重測系統（或使用下方的自由測站 .cnt 檔）');
     }
@@ -341,6 +408,7 @@
         freeStations: parsed.freeStations.length
       },
       preview: preview,
+      plot: plot,
       freeStations: parsed.freeStations,
       meta: parsed.meta
     };
@@ -354,32 +422,154 @@
     return line.trim().split(/\s+/).map(stripQuotes);
   }
 
-  /** 讀 GPS 控制器輸出的 CSV（預設欄位：點名,N,E,CD碼）。 */
-  function parseGpsCsv(text, opts, report) {
-    var nameCol = (opts.nameCol || 1) - 1;
-    var nCol = (opts.nCol || 2) - 1;
-    var eCol = (opts.eCol || 3) - 1;
-    var codeCol = opts.codeCol === 0 ? -1 : ((opts.codeCol || 4) - 1);
-    var pts = [];
-    var maxCols = 0;
+  function median(arr) {
+    if (!arr.length) return 0;
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    var m = a.length >> 1;
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+
+  /** 去掉多餘的 0（2707967.750 → 2707967.75），與 Excel 存出的 CSV 相同。 */
+  function trimNum(s) {
+    if (!isNum(s)) return s;
+    var v = parseFloat(s);
+    return String(Math.round(v * 1e6) / 1e6);
+  }
+
+  /**
+   * 自動判斷 GPS CSV 的欄位：
+   *   點名,N,E,編碼           （整理後的格式）
+   *   點名,N,E,高程,編碼      （控制器直接輸出的格式）
+   *   點名,N,E,高程           （沒有編碼）
+   * opts.codeCol：'auto'（預設）、0 = 沒有編碼、4/5/... = 指定欄位。
+   */
+  function detectGpsColumns(rows, opts) {
+    var cols = { name: 0, n: 1, e: 2, h: -1, code: -1, auto: true };
+    var manual = opts.codeCol;
+    if (manual === 0) { cols.auto = false; return cols; }
+    if (typeof manual === 'number' && manual >= 4) {
+      cols.auto = false;
+      cols.code = manual - 1;
+      if (manual >= 5) cols.h = 3;
+      return cols;
+    }
+    var data = rows.filter(function (f) { return isNum(f[1] || '') && isNum(f[2] || ''); });
+    var vals = function (i) { return data.map(function (f) { return (f[i] || '').trim(); }).filter(Boolean); };
+    var intLike = function (v) { return /^\d{1,4}$/.test(v); };
+    var decLike = function (v) { return /^-?\d+\.\d+$/.test(v); };
+    var c4 = vals(3), c5 = vals(4);
+    var mostly = function (a, fn) { return a.length && a.filter(fn).length >= a.length * 0.8; };
+    if (c5.length && mostly(c5, intLike)) {
+      cols.code = 4;
+      if (mostly(c4, decLike) || !c4.length) cols.h = 3;
+    } else if (mostly(c4, intLike)) {
+      cols.code = 3;
+    } else if (mostly(c4, decLike)) {
+      cols.h = 3;
+    }
+    return cols;
+  }
+
+  var FLAG_TEXT = {
+    junk: '雜點：坐標是 0 或不是數字',
+    check: '現場核對點（沒有編碼）',
+    far: '離其他點太遠',
+    dup: '點名重複',
+    nocode: '沒有編碼',
+    badcode: '編碼不是數字',
+    samexy: '與其他點坐標相同'
+  };
+  // 這些狀況預設剔除，其他只提醒
+  var EXCLUDE_FLAGS = { junk: 1, check: 1, far: 1, dup: 1 };
+
+  /** 讀 GPS CSV 並逐點檢查，標出有疑慮的點與預設是否轉換。 */
+  function analyzeGpsCsv(text, opts, report) {
+    var rows = [];
     splitLines(text).forEach(function (raw, idx) {
-      var lineNo = idx + 1;
       if (!raw.trim()) return;
       var f = splitCsvLine(raw);
-      maxCols = Math.max(maxCols, f.length);
-      var name = f[nameCol] || '';
-      var n = f[nCol] || '';
-      var e = f[eCol] || '';
-      if (!isNum(n) || !isNum(e)) {
-        if (pts.length === 0) report.info('第 ' + lineNo + ' 行不是坐標資料（可能是標題列），已略過', lineNo);
-        else report.warn('第 ' + lineNo + ' 行的 N/E 不是數字，已略過：' + raw.trim(), lineNo);
-        return;
-      }
-      if (!name) { report.error('第 ' + lineNo + ' 行沒有點名，已略過', lineNo); return; }
-      pts.push({ name: name, n: n.trim(), e: e.trim(), N: parseFloat(n), E: parseFloat(e),
-        code: codeCol >= 0 ? (f[codeCol] || '') : '', line: lineNo, cols: f });
+      f.line = idx + 1;
+      f.raw = raw.trim();
+      rows.push(f);
     });
-    return { points: pts, maxCols: maxCols };
+    // 第一行若 N/E 不是數字，當成標題列
+    if (rows.length && !(isNum(rows[0][1] || '') && isNum(rows[0][2] || '')) && !/^\d+$/.test(rows[0][0] || '')) {
+      report.info('第 ' + rows[0].line + ' 行是標題列，已略過', rows[0].line);
+      rows.shift();
+    }
+    var cols = detectGpsColumns(rows, opts);
+    var maxCols = rows.reduce(function (m, f) { return Math.max(m, f.length); }, 0);
+
+    var pts = rows.map(function (f) {
+      var p = {
+        line: f.line, raw: f.raw,
+        name: (f[cols.name] || '').trim(),
+        n: (f[cols.n] || '').trim(),
+        e: (f[cols.e] || '').trim(),
+        h: cols.h >= 0 ? (f[cols.h] || '').trim() : '',
+        code: cols.code >= 0 ? (f[cols.code] || '').trim() : '',
+        flags: [], note: {}
+      };
+      p.N = parseFloat(p.n); p.E = parseFloat(p.e); p.H = parseFloat(p.h);
+      return p;
+    });
+
+    var hasAnyCode = pts.some(function (p) { return p.code !== ''; });
+    var hasHeights = pts.some(function (p) { return isFinite(p.H) && p.H !== 0; });
+
+    pts.forEach(function (p) {
+      if (!p.name || !isNum(p.n) || !isNum(p.e) || p.N === 0 || p.E === 0) {
+        p.flags.push('junk');
+      } else if (hasAnyCode && p.code === '') {
+        if (!/^\d+$/.test(p.name) || (hasHeights && (!isFinite(p.H) || p.H === 0))) p.flags.push('check');
+        else p.flags.push('nocode');
+      }
+      if (p.code !== '' && !/^\d+(\.0*)?$/.test(p.code)) p.flags.push('badcode');
+    });
+
+    var cand = pts.filter(function (p) { return !p.flags.some(function (f) { return EXCLUDE_FLAGS[f]; }); });
+
+    // 離群點：與中位數中心的距離超過「一般距離的 10 倍且至少 200 m」
+    if (cand.length >= 3) {
+      var cN = median(cand.map(function (p) { return p.N; }));
+      var cE = median(cand.map(function (p) { return p.E; }));
+      var ds = cand.map(function (p) { return Math.hypot(p.N - cN, p.E - cE); });
+      var thr = Math.max(200, 10 * median(ds));
+      cand.forEach(function (p, i) {
+        if (ds[i] > thr) { p.flags.push('far'); p.note.far = Math.round(ds[i]); }
+      });
+      cand = cand.filter(function (p) { return p.flags.indexOf('far') < 0; });
+    }
+
+    // 點名重複：保留第一筆
+    var seenName = {};
+    cand.forEach(function (p) {
+      if (seenName[p.name]) { p.flags.push('dup'); p.note.dup = seenName[p.name].line; }
+      else seenName[p.name] = p;
+    });
+    // 坐標相同但點名不同
+    var seenXY = {};
+    cand.forEach(function (p) {
+      if (p.flags.indexOf('dup') >= 0) return;
+      var k = Math.round(p.N * 1000) + ',' + Math.round(p.E * 1000);
+      if (seenXY[k]) { p.flags.push('samexy'); p.note.samexy = seenXY[k].name; }
+      else seenXY[k] = p;
+    });
+
+    var decisions = opts.decisions || {};
+    pts.forEach(function (p) {
+      p.auto = !p.flags.some(function (f) { return EXCLUDE_FLAGS[f]; });
+      p.include = Object.prototype.hasOwnProperty.call(decisions, p.line) ? !!decisions[p.line] : p.auto;
+      p.reasons = p.flags.map(function (f) {
+        var t = FLAG_TEXT[f];
+        if (f === 'far') t += '（約 ' + p.note.far + ' m）';
+        if (f === 'dup') t += '（與第 ' + p.note.dup + ' 行相同）';
+        if (f === 'samexy') t += '（' + p.note.samexy + '）';
+        return t;
+      });
+    });
+
+    return { points: pts, cols: cols, maxCols: maxCols };
   }
 
   function csvToCntMac(text, filename, opts) {
@@ -389,15 +579,31 @@
     var distDec = opts.distDecimals == null ? 3 : opts.distDecimals;
     var sep = opts.sep === 'tab' ? '\t' : ' ';
     var report = new Report();
-    var parsed = parseGpsCsv(text, opts, report);
-    var pts = parsed.points;
+    var an = analyzeGpsCsv(text, opts, report);
+    var all = an.points;
+    var pts = all.filter(function (p) { return p.include; });
     var base = opts.outName || baseName(filename);
 
-    var result = { kind: 'csv2cntmac', files: [], report: report.items, preview: [],
-      stats: { points: pts.length, maxErrMm: null }, maxCols: parsed.maxCols };
+    var excluded = all.filter(function (p) { return !p.include; });
+    var flagged = all.filter(function (p) { return p.flags.length; });
+    var result = { kind: 'csv2cntmac', files: [], report: report.items, preview: [], points: all,
+      cols: an.cols, maxCols: an.maxCols,
+      stats: { points: pts.length, total: all.length, excluded: excluded.length, flagged: flagged.length, maxErrMm: null } };
+
+    if (excluded.length) {
+      var byReason = {};
+      excluded.forEach(function (p) {
+        var k = p.flags.filter(function (f) { return EXCLUDE_FLAGS[f]; }).map(function (f) { return FLAG_TEXT[f]; })[0] || '手動剔除';
+        byReason[k] = (byReason[k] || 0) + 1;
+      });
+      report.info('剔除 ' + excluded.length + ' 點不轉換：' + Object.keys(byReason).map(function (k) { return k + ' ' + byReason[k] + ' 點'; }).join('、') + '（可在「點位檢查」改）');
+    }
+    all.forEach(function (p) {
+      if (p.include && p.flags.length) report.warn('點 ' + (p.name || '(無名)') + '：' + p.reasons.join('、') + '，仍會轉換，請確認', p.line);
+    });
 
     if (pts.length < 2) {
-      report.error('至少需要 2 個點才能轉換（目前 ' + pts.length + ' 個）');
+      report.error('至少需要 2 個點才能轉換（目前勾選 ' + pts.length + ' 個）');
       return result;
     }
 
@@ -424,6 +630,7 @@
     var azBs = azimuthSec(bs.N - st.N, bs.E - st.E);
     var azBsRad = azBs / 3600 * Math.PI / 180;
     var mac = ['LS', STATION_ID + sep + BACKSIGHT_ID];
+    var clean = [];
     var maxErr = 0;
     var seen = {};
 
@@ -437,6 +644,7 @@
       if (seen[name]) report.warn('點號 ' + name + ' 重複（第 ' + seen[name] + ' 行與第 ' + p.line + ' 行）', p.line);
       else seen[name] = p.line;
       mac.push([name, angStr, distStr].join(sep));
+      clean.push([p.name, trimNum(p.n), trimNum(p.e)].concat(an.cols.code >= 0 ? [p.code] : []).join(','));
 
       // 反算檢核：用寫進檔案的（已四捨五入的）角度、距離推回坐標
       var a = azBsRad + dmsToSec(angStr) / 3600 * Math.PI / 180;
@@ -462,6 +670,11 @@
       desc: '虛擬測站 99999（= ' + st.name + '）與後視點 99998（= ' + bs.name + '）坐標' });
     result.files.push({ name: base + '.mac', content: joinLines(mac), main: true,
       desc: pts.length + ' 點的角度與水平距離' });
+    var needClean = excluded.length || an.cols.h >= 0 || an.cols.code > 3;
+    if (needClean) {
+      result.files.push({ name: base + '_整理.csv', content: joinLines(clean),
+        desc: '整理後的 CSV（點名,N,E' + (an.cols.code >= 0 ? ',編碼' : '') + '），已移除高程欄與剔除的點，可留存備查' });
+    }
     return result;
   }
 
@@ -469,7 +682,7 @@
 
   var L_TYPES = {
     L02: '控制點',
-    L14: '界址點',
+    L14: '界址點/參考點',
     L20: '補點'
   };
 
@@ -577,6 +790,50 @@
     };
   }
 
+  // ───────────────────────── 資料夾掃描 ─────────────────────────
+
+  /** 同一個案件的 L02/L14/L20 視為一組：同資料夾、同主檔名（例如 KC0390.L02 + KC0390.L14）。 */
+  function lGroupKey(path) {
+    var p = String(path || '').replace(/\\/g, '/');
+    var dir = p.indexOf('/') >= 0 ? p.slice(0, p.lastIndexOf('/') + 1) : '';
+    return (dir + baseName(p)).toUpperCase();
+  }
+
+  /**
+   * 把資料夾裡的檔案依轉換種類分組，給使用者勾選。
+   * list：[{ name, path }]，回傳 { l2csv:[...], raw2mac:[...], csv2cntmac:[...] }，
+   * 每一項 { key, label, dir, files:[原物件...] }。
+   */
+  function groupFolderFiles(list) {
+    var out = { l2csv: [], raw2mac: [], csv2cntmac: [] };
+    var lmap = {};
+    list.forEach(function (f) {
+      var path = f.path || f.name;
+      var ext = extName(f.name);
+      var dir = path.indexOf('/') >= 0 ? path.slice(0, path.lastIndexOf('/')) : '';
+      if (L_TYPES[ext]) {
+        var k = lGroupKey(path);
+        if (!lmap[k]) {
+          lmap[k] = { key: k, label: baseName(f.name), dir: dir, files: [], exts: [] };
+          out.l2csv.push(lmap[k]);
+        }
+        lmap[k].files.push(f);
+        lmap[k].exts.push(ext);
+      } else if (ext === 'RAW') {
+        out.raw2mac.push({ key: path, label: f.name, dir: dir, files: [f] });
+      } else if (ext === 'CSV' || ext === 'ASC') {
+        out.csv2cntmac.push({ key: path, label: f.name, dir: dir, files: [f] });
+      }
+    });
+    var byLabel = function (a, b) { return (a.dir + '/' + a.label).localeCompare(b.dir + '/' + b.label, 'zh-Hant'); };
+    out.l2csv.forEach(function (g) {
+      var order = ['L02', 'L14', 'L20'];
+      g.exts.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+    });
+    out.l2csv.sort(byLabel); out.raw2mac.sort(byLabel); out.csv2cntmac.sort(byLabel);
+    return out;
+  }
+
   // ───────────────────────── 自動判斷 ─────────────────────────
 
   /** 依副檔名與內容猜測要用哪一種轉換。 */
@@ -595,6 +852,9 @@
     csvToCntMac: csvToCntMac,
     lToCsv: lToCsv,
     detectKind: detectKind,
+    groupFolderFiles: groupFolderFiles,
+    lGroupKey: lGroupKey,
+    L_TYPES: L_TYPES,
     // 以下為工具函式（測試用）
     dmsToSec: dmsToSec,
     secToDms: secToDms,

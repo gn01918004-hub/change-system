@@ -66,8 +66,14 @@ test('Nikon RAW：角度單位不是度分秒要報錯', () => {
   assert.ok(r.report.some((x) => x.level === 'error' && /角度單位/.test(x.msg)));
 });
 
-test('GPS CSV → CNT + MAC，反算誤差很小', () => {
+test('GPS CSV（控制器原始檔）：自動剔除核對點與雜點、去掉高程欄', () => {
   const r = Core.csvToCntMac(sample('範例_GPS.csv'), '範例_GPS.csv');
+  assert.deepStrictEqual(r.cols, { name: 0, n: 1, e: 2, h: 3, code: 4, auto: true });
+  assert.strictEqual(r.stats.points, 4);
+  assert.strictEqual(r.stats.excluded, 4);
+  const byName = Object.fromEntries(r.points.map((p) => [p.name, p]));
+  assert.deepStrictEqual(byName.BAC026.flags, ['check']);
+  assert.deepStrictEqual(byName['193'].flags, ['junk']);
   const cnt = lines(r.files[0].content);
   assert.deepStrictEqual(cnt, ['99999 2650123.456 250987.654', '99998 2650200.120 251010.030']);
   const mac = lines(r.files[1].content);
@@ -77,6 +83,36 @@ test('GPS CSV → CNT + MAC，反算誤差很小', () => {
   assert.match(mac[3], /^5002\.01 0\.0000 79\.863$/);
   assert.match(mac[5], /^5004\.12 /);
   assert.ok(r.stats.maxErrMm < 1, 'maxErr ' + r.stats.maxErrMm);
+  // 整理後的 CSV：與 Excel 存出的格式相同（點名,N,E,編碼，去掉多餘的 0）
+  assert.deepStrictEqual(lines(r.files[2].content), [
+    '5001,2650123.456,250987.654,1',
+    '5002,2650200.12,251010.03,1',
+    '5003,2650150.789,250900.111,3',
+    '5004,2650080.002,250950.5,12'
+  ]);
+});
+
+test('GPS CSV：整理後的檔再轉一次結果相同；使用者可改變剔除決定', () => {
+  const raw = Core.csvToCntMac(sample('範例_GPS.csv'), 'a.csv');
+  const again = Core.csvToCntMac(raw.files[2].content, 'a.csv');
+  assert.strictEqual(again.cols.code, 3);
+  assert.strictEqual(again.files[1].content, raw.files[1].content);
+  // 把核對點 GC06（第 3 行）改成要轉換：會出現在 MAC，並提醒
+  const r = Core.csvToCntMac(sample('範例_GPS.csv'), 'a.csv', { decisions: { 3: true } });
+  assert.strictEqual(r.stats.points, 5);
+  assert.ok(lines(r.files[1].content).some((l) => l.startsWith('GC06 ')));
+  assert.ok(r.report.some((x) => x.level === 'warn' && /GC06/.test(x.msg)));
+});
+
+test('GPS CSV：離群點與重複點名預設剔除', () => {
+  const csv = ['1,1000.000,1000.000,1', '2,1010.000,1000.000,1', '3,1005.000,1008.000,1', '4,1003.000,1002.000,1',
+    '5,9000.000,9000.000,1', '3,1006.000,1009.000,1'].join('\n');
+  const r = Core.csvToCntMac(csv, 'x.csv');
+  const p5 = r.points.find((p) => p.name === '5');
+  assert.ok(p5.flags.includes('far') && !p5.include);
+  const dup = r.points.filter((p) => p.name === '3')[1];
+  assert.ok(dup.flags.includes('dup') && !dup.include);
+  assert.strictEqual(r.stats.points, 4);
 });
 
 test('GPS CSV：標題列略過、第 2 點重合時換後視點', () => {
@@ -109,4 +145,35 @@ test('自動判斷檔案類型', () => {
   assert.strictEqual(Core.detectKind('a.txt', 'CO,x\nST,1,,2\n'), 'raw2mac');
   assert.strictEqual(Core.detectKind('a.csv', '1,2,3'), 'csv2cntmac');
   assert.strictEqual(Core.detectKind('a.l14', ''), 'l2csv');
+});
+
+test('Nikon RAW：用 UP 已知坐標推算點位並做後視檢核', () => {
+  const raw = ['CO,Angle Units: DDDMMSS', 'UP,A,,1000.000,1000.000,,', 'UP,B,,1100.000,1000.000,,',
+    'ST,A,,B,,0.0000,0.0000,0.0000', 'F1,B,0.0000,100.002,0.0000,90.0000,1', 'SS,P,0.0000,10.000,90.0000,90.0000,1,3',
+    'ST,P,,A,,0.0000,0.0000,0.0000', 'SS,Q,0.0000,10.000,90.0000,90.0000,1,3'].join('\n');
+  const r = Core.rawToMac(raw, 'a.raw');
+  const P = r.plot.points.find((p) => p.name === 'P' && p.kind === 'obs');
+  assert.ok(Math.abs(P.N - 1000) < 1e-6 && Math.abs(P.E - 1010) < 1e-6);
+  const Q = r.plot.points.find((p) => p.name === 'Q');
+  assert.ok(Math.abs(Q.N - 1010) < 1e-6 && Math.abs(Q.E - 1010) < 1e-6, JSON.stringify(Q));
+  assert.ok(r.report.some((x) => /後視 B 檢核.*差 2 mm/.test(x.msg)));
+});
+
+test('資料夾掃描：同資料夾同主檔名的 L 檔合為一組', () => {
+  const g = Core.groupFolderFiles([
+    { name: 'KC0390.L02', path: 'job/KC0390.L02' }, { name: 'KC0390.L14', path: 'job/KC0390.L14' },
+    { name: 'kc0390.L20', path: 'job/kc0390.L20' }, { name: 'KC0390.L14', path: 'job/old/KC0390.L14' },
+    { name: 'a.RAW', path: 'job/a.RAW' }, { name: 'b.csv', path: 'job/b.csv' }, { name: 'x.doc', path: 'job/x.doc' }
+  ]);
+  assert.deepStrictEqual(g.l2csv.map((x) => [x.label, x.dir, x.exts]), [
+    ['KC0390', 'job', ['L02', 'L14', 'L20']], ['KC0390', 'job/old', ['L14']]
+  ]);
+  assert.strictEqual(g.raw2mac.length, 1);
+  assert.strictEqual(g.csv2cntmac.length, 1);
+});
+
+test('L 檔：每行 3 點、PAGE 標題列、點號 .0 去掉', () => {
+  const t = 'PAGE 1/2\r\n  4240.0     2701039.308   218159.992     4569.0     2701011.383   218122.205     4653.0     2701058.068   218175.406   \r\n\r\nPAGE 2/2\r\n  4711.0     2701061.516   218184.435\r\n';
+  const r = Core.lToCsv([{ name: 'K.L14', text: t }], { device: 'gps' });
+  assert.deepStrictEqual(lines(r.files[0].content), ['4240,2701039.308,218159.992', '4569,2701011.383,218122.205', '4653,2701058.068,218175.406', '4711,2701061.516,218184.435']);
 });
