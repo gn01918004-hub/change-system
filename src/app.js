@@ -51,10 +51,10 @@
   };
 
   // ─────────── 狀態 ───────────
-  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {} };
+  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {} };
 
   function loadOpts() {
-    var d = { ext: 'csv', neOrder: 'auto', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
+    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
     try { var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}'); for (var k in s) if (k in d) d[k] = s[k]; } catch (e) {}
     return d;
   }
@@ -86,7 +86,7 @@
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {};
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {};
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -192,7 +192,7 @@
       parts = state.inputs.map(function (inp) {
         var key = inputKey(inp);
         var opt = { codeMode: o.codeMode, sep: o.sep, alwaysZero: o.alwaysZero, codeCol: o.codeColumn, neOrder: o.neOrder,
-          angleDecimals: o.angleDecimals, distDecimals: o.distDecimals, decisions: state.decisions[key] || {},
+          angleDecimals: o.angleDecimals, distDecimals: o.distDecimals, decisions: state.decisions[key] || {}, codeOverrides: state.codes[key] || {}, noCodeAs: state.askAs[key], badCodeTo: o.badCodeTo,
           outName: state.inputs.length === 1 ? (o.outName || undefined) : undefined };
         var x = state.kind === 'raw2mac' ? Core.rawToMac(inp.text, inp.name, opt) : Core.csvToCntMac(inp.text, inp.name, opt);
         x.source = inp.name;
@@ -239,7 +239,12 @@
     $('resultArea').classList.remove('hidden');
     var nErr = count(r, 'error'), nWarn = count(r, 'warn');
     var st = $('status');
-    if (!r.files.length) {
+    var nPending = r.kind === 'csv2cntmac' ? (r.stats.pending || 0) : 0;
+    if (nPending && r.files.length) {
+      st.className = 'status warn';
+      st.innerHTML = '<div class="si">?</div><div><div class="st">還差一步：有 ' + nPending + ' 點要決定編碼</div><div class="ss">沒有編碼但有高程，可能是現場收的點。請在下面「點位檢查」回答要編成幾號（00～99），回答後就能下載。</div></div>';
+      setSteps(2);
+    } else if (!r.files.length) {
       st.className = 'status err';
       st.innerHTML = '<div class="si">✕</div><div><div class="st">沒辦法轉換</div><div class="ss">請看下面紅色的錯誤說明，確認是不是放錯檔案。</div></div>';
       setSteps(r.kind === 'csv2cntmac' ? 2 : 1);
@@ -275,34 +280,42 @@
       db.appendChild(el('span', { 'class': 'muted' }, '內容相同，只差副檔名；會記住你的選擇'));
     }
 
-    // 檔案
+    // 檔案（GPS 還有點沒決定編碼時先不給下載，避免存到暫用的 .00）
     var fw = $('files'); fw.innerHTML = '';
-    $('filesPanel').classList.toggle('hidden', !r.files.length);
-    r.files.forEach(function (f) {
-      var d = el('div', { 'class': 'file' + (f.recommended ? ' rec' : '') });
-      var lines = f.content.split('\r\n').length - 1;
-      d.innerHTML = '<div class="grow"><div class="fn">' + esc(f.name) + (f.recommended ? '<span class="badge rec">建議使用</span>' : '') + '</div>' +
-        '<div class="fd">' + esc(f.desc || '') + '（' + lines + ' 行）</div></div>';
-      var view = el('button', { 'class': 'btn small' }, '看內容');
-      var dl = el('button', { 'class': 'btn go' }, '⬇ 下載');
-      var pre = el('pre', { 'class': 'view hidden' });
-      pre.textContent = f.content.length > 200000 ? f.content.slice(0, 200000) + '\n…（太長，只顯示前段）' : f.content;
-      view.onclick = function () { pre.classList.toggle('hidden'); view.textContent = pre.classList.contains('hidden') ? '看內容' : '收起來'; };
-      dl.onclick = function () { download(f); };
-      d.appendChild(view); d.appendChild(dl); d.appendChild(pre);
-      fw.appendChild(d);
-    });
-    var sa = $('saveAll'); sa.innerHTML = '';
-    if (r.files.length > 1) {
-      var all = el('button', { 'class': 'btn primary' }, '全部下載（' + r.files.length + ' 個）');
-      all.onclick = function () { r.files.forEach(function (f, i) { setTimeout(function () { download(f, true); }, i * 400); }); toast('已開始下載 ' + r.files.length + ' 個檔案'); };
-      sa.appendChild(all);
-    }
-    if (r.files.length && window.showDirectoryPicker) {
-      var dir = el('button', { 'class': 'btn' }, '📁 全部存到指定資料夾…');
-      dir.onclick = function () { saveToDir(r.files); };
-      sa.appendChild(dir);
-      sa.appendChild(el('span', { 'class': 'muted' }, '可以直接選擇要存放的資料夾（例如重測系統或隨身碟）'));
+    if (nPending && r.files.length) {
+      $('filesPanel').classList.remove('hidden');
+      $('saveAll').innerHTML = '';
+      fw.innerHTML = '<div class="blocked">🔒 還有 <b>' + nPending + '</b> 點沒有決定編碼，回答上面「點位檢查」的問題後，這裡就會出現下載按鈕。' +
+        ' <button class="btn small" type="button" id="goAsk">回到問題</button></div>';
+      $('goAsk').onclick = function () { var a = document.querySelector('.askbox'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+    } else {
+      $('filesPanel').classList.toggle('hidden', !r.files.length);
+      r.files.forEach(function (f) {
+        var d = el('div', { 'class': 'file' + (f.recommended ? ' rec' : '') });
+        var lines = f.content.split('\r\n').length - 1;
+        d.innerHTML = '<div class="grow"><div class="fn">' + esc(f.name) + (f.recommended ? '<span class="badge rec">建議使用</span>' : '') + '</div>' +
+          '<div class="fd">' + esc(f.desc || '') + '（' + lines + ' 行）</div></div>';
+        var view = el('button', { 'class': 'btn small' }, '看內容');
+        var dl = el('button', { 'class': 'btn go' }, '⬇ 下載');
+        var pre = el('pre', { 'class': 'view hidden' });
+        pre.textContent = f.content.length > 200000 ? f.content.slice(0, 200000) + '\n…（太長，只顯示前段）' : f.content;
+        view.onclick = function () { pre.classList.toggle('hidden'); view.textContent = pre.classList.contains('hidden') ? '看內容' : '收起來'; };
+        dl.onclick = function () { download(f); };
+        d.appendChild(view); d.appendChild(dl); d.appendChild(pre);
+        fw.appendChild(d);
+      });
+      var sa = $('saveAll'); sa.innerHTML = '';
+      if (r.files.length > 1) {
+        var all = el('button', { 'class': 'btn primary' }, '全部下載（' + r.files.length + ' 個）');
+        all.onclick = function () { r.files.forEach(function (f, i) { setTimeout(function () { download(f, true); }, i * 400); }); toast('已開始下載 ' + r.files.length + ' 個檔案'); };
+        sa.appendChild(all);
+      }
+      if (r.files.length && window.showDirectoryPicker) {
+        var dir = el('button', { 'class': 'btn' }, '📁 全部存到指定資料夾…');
+        dir.onclick = function () { saveToDir(r.files); };
+        sa.appendChild(dir);
+        sa.appendChild(el('span', { 'class': 'muted' }, '可以直接選擇要存放的資料夾（例如重測系統或隨身碟）'));
+      }
     }
 
     // 下一步
@@ -497,6 +510,15 @@
   }
 
   var REVIEW_MAX = 800;
+
+  /** 點位檢查表的「寫入編碼」欄：要改編碼的點給輸入框，其他顯示文字 */
+  function codeCell(p, q) {
+    if (!q.include) return '';
+    var editable = q.flags.indexOf('badcode') >= 0 || q.flags.indexOf('ask') >= 0 || q.codeFrom === 'manual';
+    var v = q.useCode == null ? '' : q.useCode;
+    if (!editable) return esc(v);
+    return '<input class="pcode' + (q.codeFrom === 'pending' ? ' need' : '') + '" data-key="' + esc(p.key) + '" data-line="' + q.line + '" inputmode="numeric" maxlength="2" value="' + esc(v) + '" placeholder="??" title="00～99，留空恢復自動">';
+  }
   function renderReview(r) {
     var panel = $('reviewPanel');
     if (r.kind !== 'csv2cntmac') { panel.classList.add('hidden'); return; }
@@ -510,9 +532,32 @@
     var list = all.filter(function (x) {
       return f === 'all' || (f === 'flag' && x.q.flags.length) || (f === 'in' && x.q.include) || (f === 'out' && !x.q.include);
     });
+    // 需要你注意的排前面：待決定編碼 → 會轉換但有改動/疑慮 → 剔除的（同一級保持原檔順序）
+    var rank = function (q) { return q.codeFrom === 'pending' ? 0 : (q.include && q.flags.length ? 1 : (q.include ? 2 : 3)); };
+    if (f === 'flag' || f === 'all') {
+      list = list.map(function (x, i) { return { x: x, i: i }; })
+        .sort(function (a, b) { return (rank(a.x.q) - rank(b.x.q)) || (a.i - b.i); })
+        .map(function (o) { return o.x; });
+    }
 
     var cols = r.parts[0].cols || {};
-    var h = '<p class="sum">檔案裡共 <b>' + all.length + '</b> 點：會轉換 <b style="color:var(--ok)">' + nInc + '</b> 點、剔除 <b style="color:var(--err)">' + nOff + '</b> 點' +
+    var h = '';
+    // 沒有編碼但有高程的點：問使用者要編幾號
+    r.parts.forEach(function (p) {
+      var askPts = p.points.filter(function (q) { return q.include && q.flags.indexOf('ask') >= 0; });
+      if (!askPts.length) return;
+      var cur = state.askAs[p.key];
+      var names = askPts.slice(0, 8).map(function (q) { return q.name; }).join('、') + (askPts.length > 8 ? '…' : '');
+      var decided = cur != null && cur !== '';
+      h += '<div class="askbox' + (decided ? ' done' : '') + '" data-key="' + esc(p.key) + '">' +
+        '<div class="aq">' + (decided ? '✅' : '📝') + ' ' + (r.parts.length > 1 ? '【' + esc(p.source) + '】' : '') +
+        '有 <b>' + askPts.length + '</b> 點沒有編碼但有高程（' + esc(names) + '），可能是現場收的點。<b>要編成幾號？</b></div>' +
+        '<div class="aa"><span>編碼</span><input class="askcode" inputmode="numeric" maxlength="2" placeholder="00～99" value="' + esc(decided ? cur : '') + '">' +
+        '<button class="btn primary small askok" type="button">' + (decided ? '更新' : '套用') + '</button>' +
+        '<button class="btn small askskip" type="button">這些點不轉換</button>' +
+        '<span class="muted">也可以在下面表格個別改。</span><span class="askerr"></span></div></div>';
+    });
+    h += '<p class="sum">檔案裡共 <b>' + all.length + '</b> 點：會轉換 <b style="color:var(--ok)">' + nInc + '</b> 點、剔除 <b style="color:var(--err)">' + nOff + '</b> 點' +
       (nFlag ? '；其中 <b>' + nFlag + '</b> 點系統覺得有疑慮（已先幫你決定，可以改）' : '；沒有發現可疑的點') + '。</p>' +
       '<p class="muted" style="margin:-4px 0 10px">欄位判斷：第 1 欄點名、第 ' + (cols.n + 1) + ' 欄 N、第 ' + (cols.e + 1) + ' 欄 E' + (cols.swapNE ? '（N、E 已對調）' : '') +
       (cols.h >= 0 ? '、第 ' + (cols.h + 1) + ' 欄高程（不轉換）' : '') + (cols.code >= 0 ? '、第 ' + (cols.code + 1) + ' 欄編碼' : '、沒有編碼欄') + '。不對的話到「進階設定」改。</p>';
@@ -527,18 +572,19 @@
       h += '<div class="muted" style="padding:10px">這個分類沒有點。</div>';
     } else {
       h += '<div class="tablewrap"><table><thead><tr><th class="c">轉換</th><th class="l">點名</th><th>N</th><th>E</th>' +
-        (cols.h >= 0 ? '<th>高程</th>' : '') + '<th>編碼</th><th class="l">狀態</th><th>原檔行</th></tr></thead><tbody>';
+        (cols.h >= 0 ? '<th>高程</th>' : '') + '<th>原編碼</th><th>寫入編碼</th><th class="l">狀態</th><th>原檔行</th></tr></thead><tbody>';
       var lastSrc = null;
       list.slice(0, REVIEW_MAX).forEach(function (x) {
         var q = x.q;
-        if (r.parts.length > 1 && x.p.source !== lastSrc) { lastSrc = x.p.source; h += '<tr class="station"><td class="l" colspan="8">' + esc(lastSrc) + '</td></tr>'; }
+        if (r.parts.length > 1 && x.p.source !== lastSrc) { lastSrc = x.p.source; h += '<tr class="station"><td class="l" colspan="9">' + esc(lastSrc) + '</td></tr>'; }
         var badges = q.flags.length ? q.reasons.map(function (t, k) {
           var hard = { junk: 1, check: 1, far: 1, dup: 1 }[q.flags[k]];
-          return '<span class="flagb ' + (hard ? 'x' : 'w') + '">' + esc(t) + '</span>';
+          var pend = q.flags[k] === 'ask' && q.codeFrom === 'pending';
+          return '<span class="flagb ' + (hard ? 'x' : (pend ? 'w' : 'w')) + '">' + esc(t) + (pend ? '：待決定' : '') + '</span>';
         }).join('') : '<span class="flagb ok">正常</span>';
         h += '<tr class="' + (q.include ? '' : 'off') + '"><td class="c"><input type="checkbox" data-key="' + esc(x.p.key) + '" data-line="' + q.line + '" ' + (q.include ? 'checked' : '') + ' aria-label="轉換 ' + esc(q.name) + '"></td>' +
           '<td class="l mono">' + esc(q.name || '（無）') + '</td><td class="mono">' + esc(q.n) + '</td><td class="mono">' + esc(q.e) + '</td>' +
-          (cols.h >= 0 ? '<td class="mono">' + esc(q.h) + '</td>' : '') + '<td class="mono">' + esc(q.code) + '</td><td class="l">' + badges + '</td><td>' + q.line + '</td></tr>';
+          (cols.h >= 0 ? '<td class="mono">' + esc(q.h) + '</td>' : '') + '<td class="mono">' + esc(q.code) + '</td><td class="mono">' + codeCell(x.p, q) + '</td><td class="l">' + badges + '</td><td>' + q.line + '</td></tr>';
       });
       h += '</tbody></table></div>';
       if (list.length > REVIEW_MAX) h += '<div class="muted" style="padding:8px">只列出前 ' + REVIEW_MAX + ' 點，共 ' + list.length + ' 點。</div>';
@@ -551,7 +597,37 @@
     Array.prototype.forEach.call($('review').querySelectorAll('input[type=checkbox][data-line]'), function (c) {
       c.onchange = function () { setDecision(c.getAttribute('data-key'), +c.getAttribute('data-line'), c.checked); };
     });
-    $('rvReset').onclick = function () { state.decisions = {}; run(); };
+    // 個別改編碼
+    Array.prototype.forEach.call($('review').querySelectorAll('input.pcode'), function (c) {
+      c.onchange = function () {
+        var key = c.getAttribute('data-key'), line = +c.getAttribute('data-line'), v = c.value.trim();
+        var m = state.codes[key] = state.codes[key] || {};
+        if (v === '') { delete m[line]; run(); return; }
+        if (!/^\d{1,2}$/.test(v)) { toast('編碼要是 00～99 的數字'); c.value = ''; return; }
+        m[line] = v; run();
+      };
+    });
+    // 統一編號
+    Array.prototype.forEach.call($('review').querySelectorAll('.askbox'), function (box) {
+      var key = box.getAttribute('data-key');
+      var inp = box.querySelector('.askcode');
+      var apply = function () {
+        var v = inp.value.trim();
+        if (!/^\d{1,2}$/.test(v)) { box.querySelector('.askerr').textContent = '請輸入 00～99 的數字'; inp.focus(); return; }
+        state.askAs[key] = v.length === 1 ? '0' + v : v;
+        run();
+        toast('已把沒有編碼的點編成 ' + state.askAs[key]);
+      };
+      box.querySelector('.askok').onclick = apply;
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') apply(); });
+      box.querySelector('.askskip').onclick = function () {
+        var part = r.parts.filter(function (p) { return p.key === key; })[0];
+        var d = state.decisions[key] = state.decisions[key] || {};
+        part.points.forEach(function (q) { if (q.flags.indexOf('ask') >= 0) d[q.line] = false; });
+        run();
+      };
+    });
+    $('rvReset').onclick = function () { state.decisions = {}; state.codes = {}; state.askAs = {}; run(); };
     var bulk = function (inc) {
       list.forEach(function (x) { var d = state.decisions[x.p.key] = state.decisions[x.p.key] || {}; d[x.q.line] = inc; });
       run();
@@ -670,6 +746,18 @@
       o.appendChild(seg('N、E 欄位順序', 'neOrder', [['auto', '自動判斷'], ['ne', '點名,N,E'], ['en', '點名,E,N']],
         '自動判斷：N 一定比 E 大很多（TWD97），第 2 欄比較小就當成「點名,E,N」並對調。'));
       o.appendChild(seg('編碼（CD 碼）在第幾欄', 'codeColumn', ch, '第 1 欄點名、第 2 欄 N、第 3 欄 E。控制器原始檔通常是「點名,N,E,高程,編碼」，編碼在第 5 欄。'));
+      var bw = el('div', { 'class': 'opt' });
+      bw.appendChild(el('label', { 'class': 'h', 'for': 'badTo' }, '編碼不是 00～99 時（例如 be73、q11）自動改成'));
+      var bi = el('input', { type: 'text', id: 'badTo', maxlength: '2', inputmode: 'numeric' });
+      bi.value = state.opts.badCodeTo || '11';
+      bi.onchange = function () {
+        var v = bi.value.trim();
+        if (!/^\d{1,2}$/.test(v)) { toast('請輸入 00～99 的數字'); bi.value = state.opts.badCodeTo || '11'; return; }
+        state.opts.badCodeTo = v.length === 1 ? '0' + v : v; saveOpts(); run();
+      };
+      bw.appendChild(bi);
+      bw.appendChild(el('div', { 'class': 'hint' }, '重測系統只能吃 .00～.99，預設改成 11（參考點）。改過的點會列在「編碼對照表」。'));
+      o.appendChild(bw);
       o.appendChild(seg('角度秒數的小數位', 'angleDecimals', [[0, '整數秒'], [1, '1 位'], [2, '2 位']],
         '整數秒與舊 Excel 版相同。反算誤差太大時可改 1 位（需確認重測系統可讀）。'));
       o.appendChild(seg('距離小數位', 'distDecimals', [[3, '3 位 (mm)'], [4, '4 位']]));

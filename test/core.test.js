@@ -193,3 +193,39 @@ test('GPS CSV：點名,E,N 順序自動對調，也可以強制指定', () => {
   assert.strictEqual(Core.csvToCntMac(en, 'x.csv', { neOrder: 'ne' }).cols.swapNE, false);
   assert.strictEqual(Core.csvToCntMac(sample('範例_GPS.csv'), 'a.csv', { neOrder: 'en' }).cols.swapNE, true);
 });
+
+test('GPS CSV：編碼不是 00～99 自動改成 11，並產生編碼對照表', () => {
+  const csv = ['BE73,2698533.357,219360.962,0.000,', '1,2698533.370,219360.900,91.735,be73',
+    '2,2698542.722,219365.770,111.293,30', '3,2698541.044,219367.690,112.276,30', '13,2698553.822,219336.041,111.223,q11'].join('\n');
+  const r = Core.csvToCntMac(csv, 'a.csv');
+  const mac = lines(r.files.find((f) => f.name === 'a.mac').content);
+  assert.ok(mac.some((l) => l.startsWith('1.11 ')));
+  assert.ok(mac.some((l) => l.startsWith('13.11 ')));
+  assert.strictEqual(r.stats.recoded, 2);
+  const table = r.files.find((f) => f.name === 'a_編碼對照表.csv').content;
+  assert.ok(table.startsWith('﻿原點名,原編碼,重測系統點號'));
+  assert.ok(table.includes('1,be73,1.11,'));
+  assert.ok(table.includes('13,q11,13.11,'));
+  // 整理後的 CSV 也是改過的編碼
+  assert.ok(r.files.find((f) => f.name === 'a_整理.csv').content.includes('1,2698533.37,219360.9,11'));
+  // 可以改成別的號碼，也可以個別指定
+  const r2 = Core.csvToCntMac(csv, 'a.csv', { badCodeTo: '12', codeOverrides: { 5: '7' } });
+  const mac2 = lines(r2.files.find((f) => f.name === 'a.mac').content);
+  assert.ok(mac2.some((l) => l.startsWith('1.12 ')));
+  assert.ok(mac2.some((l) => l.startsWith('13.07 ')));
+});
+
+test('GPS CSV：沒有編碼但有高程的點要使用者決定編碼', () => {
+  const csv = ['BE73,2698533.357,219360.962,0.000,', '2,2698542.722,219365.770,111.293,30',
+    '3,2698541.044,219367.690,112.276,30', '8,2698543.499,219383.903,112.117,'].join('\n');
+  const r = Core.csvToCntMac(csv, 'a.csv');
+  const p8 = r.points.find((p) => p.name === '8');
+  assert.deepStrictEqual(p8.flags, ['ask']);
+  assert.ok(p8.include);
+  assert.strictEqual(r.stats.pending, 1);
+  assert.ok(r.points.find((p) => p.name === 'BE73').flags.includes('check'));   // 高程 0 的核對點仍然剔除
+  const r2 = Core.csvToCntMac(csv, 'a.csv', { noCodeAs: '5' });
+  assert.strictEqual(r2.stats.pending, 0);
+  assert.ok(lines(r2.files.find((f) => f.name === 'a.mac').content).some((l) => l.startsWith('8.05 ')));
+  assert.ok(r2.files.find((f) => f.name === 'a_編碼對照表.csv').content.includes('8,,8.05,'));
+});

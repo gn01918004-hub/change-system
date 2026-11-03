@@ -455,14 +455,15 @@
     }
     var data = rows.filter(function (f) { return isNum(f[1] || '') && isNum(f[2] || ''); });
     var vals = function (i) { return data.map(function (f) { return (f[i] || '').trim(); }).filter(Boolean); };
-    var intLike = function (v) { return /^\d{1,4}$/.test(v); };
     var decLike = function (v) { return /^-?\d+\.\d+$/.test(v); };
+    // 編碼：短的英數字、沒有小數點（30、5、be73、q11 都算；高程 112.276 不算）
+    var codeLike = function (v) { return /^[A-Za-z0-9]{1,6}$/.test(v) && !/^\d{5,}$/.test(v); };
     var c4 = vals(3), c5 = vals(4);
     var mostly = function (a, fn) { return a.length && a.filter(fn).length >= a.length * 0.8; };
-    if (c5.length && mostly(c5, intLike)) {
+    if (c5.length && mostly(c5, codeLike)) {
       cols.code = 4;
       if (mostly(c4, decLike) || !c4.length) cols.h = 3;
-    } else if (mostly(c4, intLike)) {
+    } else if (mostly(c4, codeLike)) {
       cols.code = 3;
     } else if (mostly(c4, decLike)) {
       cols.h = 3;
@@ -476,11 +477,19 @@
     far: '離其他點太遠',
     dup: '點名重複',
     nocode: '沒有編碼',
-    badcode: '編碼不是數字',
+    ask: '沒有編碼（有高程，可能是現場收的點）',
+    badcode: '編碼不是 00～99',
     samexy: '與其他點坐標相同'
   };
   // 這些狀況預設剔除，其他只提醒
   var EXCLUDE_FLAGS = { junk: 1, check: 1, far: 1, dup: 1 };
+
+  /** 編碼正規化成兩位數字（'5' → '05'、'7.0' → '07'）；不是 0～99 回傳 null。 */
+  function normCode(c) {
+    c = String(c == null ? '' : c).trim();
+    if (!/^\d{1,2}(\.0*)?$/.test(c)) return null;
+    return pad(parseInt(c, 10), 2);
+  }
 
   /** 讀 GPS CSV 並逐點檢查，標出有疑慮的點與預設是否轉換。 */
   function analyzeGpsCsv(text, opts, report) {
@@ -537,10 +546,13 @@
       if (!p.name || !isNum(p.n) || !isNum(p.e) || p.N === 0 || p.E === 0) {
         p.flags.push('junk');
       } else if (hasAnyCode && p.code === '') {
-        if (!/^\d+$/.test(p.name) || (hasHeights && (!isFinite(p.H) || p.H === 0))) p.flags.push('check');
-        else p.flags.push('nocode');
+        // 沒有編碼：有高程的可能是現場收的點（要問使用者編幾號），高程是 0 或點名不是數字的是現場核對點
+        var hasH = isFinite(p.H) && p.H !== 0;
+        if (hasHeights ? hasH : /^\d+$/.test(p.name)) p.flags.push('ask');
+        else p.flags.push('check');
       }
-      if (p.code !== '' && !/^\d+(\.0*)?$/.test(p.code)) p.flags.push('badcode');
+      // 重測系統只吃 .00～.99：不是 1～2 位數字的編碼（例如 be73、q11、123）要換掉
+      if (p.code !== '' && !/^\d{1,2}(\.0*)?$/.test(p.code)) p.flags.push('badcode');
     });
 
     var cand = pts.filter(function (p) { return !p.flags.some(function (f) { return EXCLUDE_FLAGS[f]; }); });
@@ -573,11 +585,22 @@
     });
 
     var decisions = opts.decisions || {};
+    var overrides = opts.codeOverrides || {};
+    var badTo = normCode(opts.badCodeTo == null ? '11' : opts.badCodeTo) || '11';
+    var askAs = normCode(opts.noCodeAs);
+    var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
     pts.forEach(function (p) {
       p.auto = !p.flags.some(function (f) { return EXCLUDE_FLAGS[f]; });
-      p.include = Object.prototype.hasOwnProperty.call(decisions, p.line) ? !!decisions[p.line] : p.auto;
+      p.include = has(decisions, p.line) ? !!decisions[p.line] : p.auto;
+      // 實際寫進重測系統的編碼：個別指定 > 不合格編碼換成 badTo > 現場點統一編號 > 原編碼
+      p.codeFrom = '';
+      if (has(overrides, p.line) && normCode(overrides[p.line]) !== null) { p.useCode = normCode(overrides[p.line]); p.codeFrom = 'manual'; }
+      else if (p.flags.indexOf('badcode') >= 0) { p.useCode = badTo; p.codeFrom = 'bad'; }
+      else if (p.flags.indexOf('ask') >= 0) { p.useCode = askAs; p.codeFrom = askAs === null ? 'pending' : 'ask'; }
+      else p.useCode = p.code === '' ? '' : normCode(p.code);
       p.reasons = p.flags.map(function (f) {
         var t = FLAG_TEXT[f];
+        if (f === 'badcode') t = '編碼「' + p.code + '」不是 00～99，改成 ' + (p.codeFrom === 'manual' ? p.useCode : badTo);
         if (f === 'far') t += '（約 ' + p.note.far + ' m）';
         if (f === 'dup') t += '（與第 ' + p.note.dup + ' 行相同）';
         if (f === 'samexy') t += '（' + p.note.samexy + '）';
@@ -614,8 +637,25 @@
       });
       report.info('剔除 ' + excluded.length + ' 點不轉換：' + Object.keys(byReason).map(function (k) { return k + ' ' + byReason[k] + ' 點'; }).join('、') + '（可在「點位檢查」改）');
     }
+    var pending = pts.filter(function (p) { return p.codeFrom === 'pending'; });
+    result.stats.pending = pending.length;
+    result.stats.recoded = pts.filter(function (p) { return p.codeFrom === 'bad' || p.codeFrom === 'ask' || p.codeFrom === 'manual'; }).length;
+    if (pending.length) {
+      report.warn('有 ' + pending.length + ' 點沒有編碼但有高程（' + pending.slice(0, 6).map(function (p) { return p.name; }).join('、') +
+        (pending.length > 6 ? '…' : '') + '），可能是現場收的點，請在「點位檢查」決定要編成幾號（00～99）');
+    }
     all.forEach(function (p) {
-      if (p.include && p.flags.length) report.warn('點 ' + (p.name || '(無名)') + '：' + p.reasons.join('、') + '，仍會轉換，請確認', p.line);
+      if (!p.include || !p.flags.length) return;
+      var soft = p.flags.filter(function (f) { return f !== 'badcode' && f !== 'ask'; });
+      if (p.flags.indexOf('badcode') >= 0) {
+        report.info('點 ' + p.name + '：原編碼「' + p.code + '」不是 00～99，改成 ' + p.useCode + '（見編碼對照表）', p.line);
+      }
+      if (p.codeFrom === 'ask' || (p.flags.indexOf('ask') >= 0 && p.codeFrom === 'manual')) {
+        report.info('點 ' + p.name + '：沒有編碼，編成 ' + p.useCode + '（見編碼對照表）', p.line);
+      }
+      if (soft.length) {
+        report.warn('點 ' + (p.name || '(無名)') + '：' + soft.map(function (f) { return p.reasons[p.flags.indexOf(f)]; }).join('、') + '，仍會轉換，請確認', p.line);
+      }
     });
 
     if (pts.length < 2) {
@@ -656,11 +696,12 @@
       var angSec = dist < 1e-9 ? 0 : azimuthSec(dN, dE) - azBs;
       var angStr = secToDms(angSec, angleDec);
       var distStr = dist.toFixed(distDec);
-      var name = formatPointName(p.name, p.code, codeMode, report, p.line);
+      var name = formatPointName(p.name, p.useCode || '', codeMode, report, p.line);
+      p.outName = name;
       if (seen[name]) report.warn('點號 ' + name + ' 重複（第 ' + seen[name] + ' 行與第 ' + p.line + ' 行）', p.line);
       else seen[name] = p.line;
       mac.push([name, angStr, distStr].join(sep));
-      clean.push([p.name, trimNum(p.n), trimNum(p.e)].concat(an.cols.code >= 0 ? [p.code] : []).join(','));
+      clean.push([p.name, trimNum(p.n), trimNum(p.e)].concat(an.cols.code >= 0 ? [p.useCode == null ? p.code : String(parseInt(p.useCode, 10))] : []).join(','));
 
       // 反算檢核：用寫進檔案的（已四捨五入的）角度、距離推回坐標
       var a = azBsRad + dmsToSec(angStr) / 3600 * Math.PI / 180;
@@ -686,7 +727,18 @@
       desc: '虛擬測站 99999（= ' + st.name + '）與後視點 99998（= ' + bs.name + '）坐標' });
     result.files.push({ name: base + '.mac', content: joinLines(mac), main: true,
       desc: pts.length + ' 點的角度與水平距離' });
-    var needClean = excluded.length || an.cols.h >= 0 || an.cols.code > 3;
+    // 編碼對照表：每一個轉換的點，原本的點名/編碼 → 寫進重測系統的點號（Excel 可直接開，含 BOM）
+    if (result.stats.recoded || pending.length) {
+      var WHY = { bad: '原編碼不是 00～99，自動改', ask: '沒有編碼，統一編號', manual: '手動指定', pending: '尚未決定編碼（暫用 00）' };
+      var rows = [['原點名', '原編碼', '重測系統點號', 'N', 'E', '高程', '說明'].join(',')];
+      pts.forEach(function (p) {
+        var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+        rows.push([p.name, p.code, p.outName, p.n, p.e, p.h, WHY[p.codeFrom] || ''].map(cell).join(','));
+      });
+      result.files.push({ name: base + '_編碼對照表.csv', content: '\uFEFF' + joinLines(rows),
+        desc: '原點名、原編碼對照轉換後的點號（' + result.stats.recoded + ' 點改過編碼），可用 Excel 開啟或列印' });
+    }
+    var needClean = excluded.length || an.cols.h >= 0 || an.cols.code > 3 || result.stats.recoded;
     if (needClean) {
       result.files.push({ name: base + '_整理.csv', content: joinLines(clean),
         desc: '整理後的 CSV（點名,N,E' + (an.cols.code >= 0 ? ',編碼' : '') + '），已移除高程欄與剔除的點，可留存備查' });
