@@ -1,10 +1,17 @@
 {
   "name": "土地重測資料轉換系統",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "date": "2026-11-03",
   "repo": "gn01918004-hub/change-system",
   "file": "dist/土地重測資料轉換系統.html",
   "changelog": [
+    {
+      "version": "1.4.1",
+      "date": "2026-11-03",
+      "items": [
+        "瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"
+      ]
+    },
     {
       "version": "1.4.0",
       "date": "2026-11-03",

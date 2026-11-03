@@ -10,6 +10,10 @@ let html = read('app.html');
 for (const mark of ['/*@@INFO@@*/', '/*@@CORE@@*/', '<script src="app.js"></script>']) {
   if (!html.includes(mark)) throw new Error('app.html 缺少標記 ' + mark);
 }
+// 分頁小圖示：把 src/favicon.svg 直接嵌進網頁，離線也能顯示
+const favicon = 'data:image/svg+xml;base64,' + Buffer.from(read('favicon.svg')).toString('base64');
+if (!html.includes('@@FAVICON@@')) throw new Error('app.html 缺少標記 @@FAVICON@@');
+html = html.replace('@@FAVICON@@', favicon);
 const info = JSON.parse(fs.readFileSync(path.join(root, 'version.json'), 'utf8'));
 html = html.replace('/*@@INFO@@*/', () => 'window.APP_INFO = ' + safe(JSON.stringify(info)) + ';');
 html = html.replace('/*@@CORE@@*/', () => safe(read('core.js')));
