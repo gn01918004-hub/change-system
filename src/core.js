@@ -475,7 +475,7 @@
     var mostly = function (a, fn) { return a.length && a.filter(fn).length >= a.length * 0.8; };
     if (c5.length && mostly(c5, codeLike)) {
       cols.code = 4;
-      if (mostly(c4, decLike) || !c4.length) cols.h = 3;
+      if (mostly(c4, function (v) { return isNum(v); }) || !c4.length) cols.h = 3; // 高程可能寫成 0、0.000 或 97.082
     } else if (mostly(c4, codeLike)) {
       cols.code = 3;
     } else if (mostly(c4, decLike)) {
@@ -558,6 +558,15 @@
     pts.forEach(function (p) {
       if (!p.name || !isNum(p.n) || !isNum(p.e) || p.N === 0 || p.E === 0) {
         p.flags.push('junk');
+      } else if (/^q/i.test(p.code) && /^\d+$/.test(p.name)) {
+        // 數字點號、編碼寫 Q 開頭（例如 12,…,QW）：把編碼的字移到點號上（QW12），當補點
+        p.renamedFrom = p.name; p.origCode = p.code;
+        p.name = p.code.toUpperCase() + p.name; p.code = '';
+        p.supp = true;
+      } else if (/^q/i.test(p.name) && isFinite(p.H) && p.H !== 0) {
+        // Q 開頭又有高程（例如 QGGC32）：現場新測的補點；沒有高程的 Q 點（QW1）是系統內原有的點
+        p.supp = true;
+        p.origCode = p.code; p.code = '';
       } else if (hasAnyCode && p.code === '') {
         // 沒有編碼：有高程的可能是現場收的點（要問使用者編幾號），高程是 0 或點名不是數字的是現場核對點
         var hasH = isFinite(p.H) && p.H !== 0;
@@ -565,7 +574,7 @@
         else p.flags.push('check');
       }
       // 重測系統只吃 .00～.99：不是 1～2 位數字的編碼（例如 be73、q11、123）要換掉
-      if (p.code !== '' && !/^\d{1,2}(\.0*)?$/.test(p.code)) p.flags.push('badcode');
+      if (!p.supp && p.code !== '' && !/^\d{1,2}(\.0*)?$/.test(p.code)) p.flags.push('badcode');
     });
 
     var cand = pts.filter(function (p) { return !p.flags.some(function (f) { return EXCLUDE_FLAGS[f]; }); });
@@ -610,6 +619,7 @@
       if (has(overrides, p.line) && normCode(overrides[p.line]) !== null) { p.useCode = normCode(overrides[p.line]); p.codeFrom = 'manual'; }
       else if (p.flags.indexOf('badcode') >= 0) { p.useCode = badTo; p.codeFrom = 'bad'; }
       else if (p.flags.indexOf('ask') >= 0) { p.useCode = askAs; p.codeFrom = askAs === null ? 'pending' : 'ask'; }
+      else if (p.supp) { p.useCode = ''; p.codeFrom = 'supp'; }
       else p.useCode = p.code === '' ? '' : normCode(p.code);
       p.reasons = p.flags.map(function (f) {
         var t = FLAG_TEXT[f];
@@ -652,7 +662,14 @@
     }
     var pending = pts.filter(function (p) { return p.codeFrom === 'pending'; });
     result.stats.pending = pending.length;
-    result.stats.recoded = pts.filter(function (p) { return p.codeFrom === 'bad' || p.codeFrom === 'ask' || p.codeFrom === 'manual'; }).length;
+    result.stats.recoded = pts.filter(function (p) { return p.codeFrom === 'bad' || p.codeFrom === 'ask' || p.codeFrom === 'manual' || p.renamedFrom; }).length;
+    var supp = pts.filter(function (p) { return p.supp; });
+    result.stats.supp = supp.length;
+    if (supp.length) {
+      report.info('有 ' + supp.length + ' 點是補點（Q 開頭、有高程）：' + supp.slice(0, 8).map(function (p) {
+        return p.renamedFrom ? p.name + '（原點號 ' + p.renamedFrom + '、編碼 ' + p.origCode + '）' : p.name;
+      }).join('、') + (supp.length > 8 ? '…' : '') + '；放入 D20 時會寫進補點檔');
+    }
     if (pending.length) {
       report.warn('有 ' + pending.length + ' 點沒有編碼但有高程（' + pending.slice(0, 6).map(function (p) { return p.name; }).join('、') +
         (pending.length > 6 ? '…' : '') + '），可能是現場收的點，請在「點位檢查」決定要編成幾號（00～99）');
@@ -742,11 +759,12 @@
       desc: pts.length + ' 點的角度與水平距離' });
     // 編碼對照表：每一個轉換的點，原本的點名/編碼 → 寫進重測系統的點號（Excel 可直接開，含 BOM）
     if (result.stats.recoded || pending.length) {
-      var WHY = { bad: '原編碼不是 00～99，自動改', ask: '沒有編碼，統一編號', manual: '手動指定', pending: '尚未決定編碼（暫用 00）' };
+      var WHY = { bad: '原編碼不是 00～99，自動改', ask: '沒有編碼，統一編號', manual: '手動指定', pending: '尚未決定編碼（暫用 00）', supp: '補點' };
       var rows = [['原點名', '原編碼', '重測系統點號', 'N', 'E', '高程', '說明'].join(',')];
       pts.forEach(function (p) {
         var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-        rows.push([p.name, p.code, p.outName, p.n, p.e, p.h, WHY[p.codeFrom] || ''].map(cell).join(','));
+        rows.push([p.renamedFrom || p.name, p.origCode != null ? p.origCode : p.code, p.outName, p.n, p.e, p.h,
+          p.renamedFrom ? '編碼 ' + p.origCode + ' 移到點號，當補點' : (WHY[p.codeFrom] || '')].map(cell).join(','));
       });
       result.files.push({ name: base + '_編碼對照表.csv', content: '\uFEFF' + joinLines(rows),
         desc: '原點名、原編碼對照轉換後的點號（' + result.stats.recoded + ' 點改過編碼），可用 Excel 開啟或列印' });

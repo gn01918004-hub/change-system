@@ -200,19 +200,20 @@ test('GPS CSV：編碼不是 00～99 自動改成 11，並產生編碼對照表'
   const r = Core.csvToCntMac(csv, 'a.csv');
   const mac = lines(r.files.find((f) => f.name === 'a.mac').content);
   assert.ok(mac.some((l) => l.startsWith('1.11 ')));
-  assert.ok(mac.some((l) => l.startsWith('13.11 ')));
+  // q11 是 Q 開頭的編碼 → 依補點規則：編碼移到點號（Q1113），當補點
+  assert.ok(mac.some((l) => l.startsWith('Q1113 ')));
   assert.strictEqual(r.stats.recoded, 2);
   const table = r.files.find((f) => f.name === 'a_編碼對照表.csv').content;
   assert.ok(table.startsWith('﻿原點名,原編碼,重測系統點號'));
   assert.ok(table.includes('1,be73,1.11,'));
-  assert.ok(table.includes('13,q11,13.11,'));
+  assert.ok(table.includes('13,q11,Q1113,'));
   // 整理後的 CSV 也是改過的編碼
   assert.ok(r.files.find((f) => f.name === 'a_整理.csv').content.includes('1,2698533.37,219360.9,11'));
   // 可以改成別的號碼，也可以個別指定
   const r2 = Core.csvToCntMac(csv, 'a.csv', { badCodeTo: '12', codeOverrides: { 5: '7' } });
   const mac2 = lines(r2.files.find((f) => f.name === 'a.mac').content);
   assert.ok(mac2.some((l) => l.startsWith('1.12 ')));
-  assert.ok(mac2.some((l) => l.startsWith('13.07 ')));
+  assert.ok(mac2.some((l) => l.startsWith('Q1113 ')));
 });
 
 test('GPS CSV：沒有編碼但有高程的點要使用者決定編碼', () => {
@@ -368,4 +369,27 @@ test('全站儀 RAW 可以用 D14/D20 的已知坐標算出新點', () => {
   assert.strictEqual(p9.wasKnown, false);
   const q9 = r.plot.obs.find((o) => o.pt === 'QW9');
   assert.ok(Math.abs(q9.N - 980) < 1e-6 && Math.abs(q9.E - 1000) < 1e-6);
+});
+
+test('GPS CSV 補點：Q 開頭有高程、或編碼寫 Q 開頭；沒有高程的 Q 點是系統原有點', () => {
+  const csv = ['3531,2704091.691,219309.397,0,', 'QW1,2704020.768,219351.358,0,', 'GGC32,2704014.769,219334.583,0,',
+    'QGGC32,2704014.796,219334.519,97.082,', '2,2704022.003,219315.27,121.03,30', '3,2704012.859,219317.843,120.963,30',
+    '12,2704027.882,219294.88,118.265,QW'].join('\n');
+  const r = Core.csvToCntMac(csv, 'a.csv');
+  assert.strictEqual(r.cols.h, 3);                       // 高程寫成「0」也認得出是高程欄
+  const by = Object.fromEntries(r.points.map((p) => [p.name, p]));
+  assert.ok(by['3531'].flags.includes('check') && !by['3531'].include);
+  assert.ok(by.QW1.flags.includes('check') && !by.QW1.include);   // 沒有高程 → 系統原有點
+  assert.ok(by.QGGC32.supp && by.QGGC32.include && !by.QGGC32.flags.length);
+  assert.ok(by.QW12 && by.QW12.supp && by.QW12.renamedFrom === '12');
+  assert.strictEqual(r.stats.pending, 0);
+  const mac = lines(r.files.find((f) => f.name === 'a.mac').content);
+  assert.ok(mac.some((l) => l.startsWith('QGGC32 ')) && mac.some((l) => l.startsWith('QW12 ')) && mac.some((l) => l.startsWith('2.30 ')));
+  assert.ok(r.files.find((f) => f.name === 'a_編碼對照表.csv').content.includes('12,QW,QW12,'));
+  // 寫入時：補點進 D20、參考點進 D14
+  const d14 = Core.parseDbf(makeDbf(D14F, ['     1 02704480.54200000219713.24700000 30 0 0                  ']));
+  const d20 = Core.parseDbf(makeDbf(D20F, [' QW1      2704020.768 219351.358Q  \0\0\0T']));
+  const plan = Core.planDbfWrite({ d14, d20, points: r.points.filter((p) => p.include).map((p) => ({ key: p.line, name: p.name, code: p.useCode || null, y: p.N, x: p.E, src: 'GPS' })) });
+  assert.deepStrictEqual(plan.toD20.map((x) => x.out).sort(), ['QGGC32', 'QW12']);
+  assert.deepStrictEqual(plan.toD14.map((x) => x.out), ['2.30', '3.30']);
 });

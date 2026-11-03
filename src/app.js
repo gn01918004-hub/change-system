@@ -1030,7 +1030,7 @@
           var hard = { junk: 1, check: 1, far: 1, dup: 1 }[q.flags[k]];
           var pend = q.flags[k] === 'ask' && q.codeFrom === 'pending';
           return '<span class="flagb ' + (hard ? 'x' : (pend ? 'w' : 'w')) + '">' + esc(t) + (pend ? '：待決定' : '') + '</span>';
-        }).join('') : '<span class="flagb ok">正常</span>';
+        }).join('') : (q.supp ? '<span class="flagb ok">補點' + (q.renamedFrom ? '（原 ' + esc(q.renamedFrom) + '，編碼 ' + esc(q.origCode) + ' 移到點號）' : '') + '</span>' : '<span class="flagb ok">正常</span>');
         h += '<tr class="' + (q.include ? '' : 'off') + '"><td class="c"><input type="checkbox" data-key="' + esc(x.p.key) + '" data-line="' + q.line + '" ' + (q.include ? 'checked' : '') + ' aria-label="轉換 ' + esc(q.name) + '"></td>' +
           '<td class="l mono">' + esc(q.name || '（無）') + '</td><td class="mono">' + esc(q.n) + '</td><td class="mono">' + esc(q.e) + '</td>' +
           (cols.h >= 0 ? '<td class="mono">' + esc(q.h) + '</td>' : '') + '<td class="mono">' + esc(q.code) + '</td><td class="mono">' + codeCell(x.p, q) + '</td><td class="l">' + badges + '</td><td>' + q.line + '</td></tr>';
