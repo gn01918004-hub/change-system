@@ -281,6 +281,9 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 .foldbtn{margin-left:10px;font-size:14px}
 #filesPanel.folded .files,#filesPanel.folded .saveall{display:none}
 #filesPanel.folded{opacity:.85}
+
+.oldrow{display:flex;align-items:center;gap:10px;padding:6px 4px;border-top:1px dashed var(--line);margin-top:4px}
+.file.oldfile{opacity:.8;background:#fafbfc}
 </style>
 </head>
 <body>
@@ -324,7 +327,7 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
           <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
           <span><span class="t">GPS 坐標檔 → 重測系統</span>
             <span class="d">GPS / VRS 控制器輸出的坐標，會自動整理雜點</span>
-            <span class="flow"><b>.CSV</b> → <b>.cnt</b> ＋ <b>.mac</b></span></span>
+            <span class="flow"><b>.CSV</b> → <b>.cnt</b>（有 D14、D20 時直接寫入）</span></span>
         </button>
       </div>
       <div class="group out">

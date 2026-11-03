@@ -7,6 +7,7 @@ const Core = require('../src/core.js');
 
 const sample = (n) => fs.readFileSync(path.join(__dirname, '..', 'samples', n), 'utf8');
 const lines = (s) => s.trimEnd().split('\r\n');
+const F = (r, suffix) => r.files.find((f) => f.name.endsWith(suffix));
 
 test('度分秒解析與輸出（含 60 秒進位）', () => {
   assert.strictEqual(Core.dmsToSec('45.3010'), 45 * 3600 + 30 * 60 + 10);
@@ -74,9 +75,9 @@ test('GPS CSV（控制器原始檔）：自動剔除核對點與雜點、去掉�
   const byName = Object.fromEntries(r.points.map((p) => [p.name, p]));
   assert.deepStrictEqual(byName.BAC026.flags, ['check']);
   assert.deepStrictEqual(byName['193'].flags, ['junk']);
-  const cnt = lines(r.files[0].content);
+  const cnt = lines(F(r, '_虛擬測站.cnt').content);
   assert.deepStrictEqual(cnt, ['99999 2650123.456 250987.654', '99998 2650200.120 251010.030']);
-  const mac = lines(r.files[1].content);
+  const mac = lines(F(r, '.mac').content);
   assert.strictEqual(mac[0], 'LS');
   assert.strictEqual(mac[1], '99999 99998');
   assert.strictEqual(mac[2], '5001.01 0.0000 0.000');
@@ -84,7 +85,7 @@ test('GPS CSV（控制器原始檔）：自動剔除核對點與雜點、去掉�
   assert.match(mac[5], /^5004\.12 /);
   assert.ok(r.stats.maxErrMm < 1, 'maxErr ' + r.stats.maxErrMm);
   // 整理後的 CSV：與 Excel 存出的格式相同（點名,N,E,編碼，去掉多餘的 0）
-  assert.deepStrictEqual(lines(r.files[2].content), [
+  assert.deepStrictEqual(lines(F(r, '_整理.csv').content), [
     '5001,2650123.456,250987.654,1',
     '5002,2650200.12,251010.03,1',
     '5003,2650150.789,250900.111,3',
@@ -94,13 +95,13 @@ test('GPS CSV（控制器原始檔）：自動剔除核對點與雜點、去掉�
 
 test('GPS CSV：整理後的檔再轉一次結果相同；使用者可改變剔除決定', () => {
   const raw = Core.csvToCntMac(sample('範例_GPS.csv'), 'a.csv');
-  const again = Core.csvToCntMac(raw.files[2].content, 'a.csv');
+  const again = Core.csvToCntMac(F(raw, '_整理.csv').content, 'a.csv');
   assert.strictEqual(again.cols.code, 3);
-  assert.strictEqual(again.files[1].content, raw.files[1].content);
+  assert.strictEqual(F(again, '.mac').content, F(raw, '.mac').content);
   // 把核對點 GC06（第 3 行）改成要轉換：會出現在 MAC，並提醒
   const r = Core.csvToCntMac(sample('範例_GPS.csv'), 'a.csv', { decisions: { 3: true } });
   assert.strictEqual(r.stats.points, 5);
-  assert.ok(lines(r.files[1].content).some((l) => l.startsWith('GC06 ')));
+  assert.ok(lines(F(r, '.mac').content).some((l) => l.startsWith('GC06 ')));
   assert.ok(r.report.some((x) => x.level === 'warn' && /GC06/.test(x.msg)));
 });
 
@@ -119,7 +120,7 @@ test('GPS CSV：標題列略過、第 2 點重合時換後視點', () => {
   const csv = '點名,N,E,CD\n1,100.000,100.000,1\n2,100.000,100.000,1\n3,200.000,100.000,1\n4,100.000,200.000,1\n';
   const r = Core.csvToCntMac(csv, 'x.csv');
   assert.strictEqual(r.stats.backsight, '3');
-  const mac = lines(r.files[1].content);
+  const mac = lines(F(r, '.mac').content);
   assert.strictEqual(mac[5], '4.01 90.0000 100.000');
 });
 
@@ -184,7 +185,7 @@ test('GPS CSV：點名,E,N 順序自動對調，也可以強制指定', () => {
   const en = ['1,218704.317,2706766.984,10', '2,218635.348,2706854.423,10', '3,218556.709,2706933.861,11'].join('\n');
   const r = Core.csvToCntMac(en, 'x.csv');
   assert.strictEqual(r.cols.swapNE, true);
-  assert.deepStrictEqual(lines(r.files[0].content), ['99999 2706766.984 218704.317', '99998 2706854.423 218635.348']);
+  assert.deepStrictEqual(lines(F(r, '_虛擬測站.cnt').content), ['99999 2706766.984 218704.317', '99998 2706854.423 218635.348']);
   assert.ok(r.report.some((x) => x.level === 'warn' && /對調/.test(x.msg)));
   // 正常的 點名,N,E 不會被動到
   const ne = Core.csvToCntMac(sample('範例_GPS.csv'), 'a.csv');
@@ -205,7 +206,7 @@ test('GPS CSV：編碼不是 00～99 自動改成 11，並產生編碼對照表'
   assert.strictEqual(r.points.find((p) => p.renamedFrom === '13').name, 'Q11');
   assert.strictEqual(r.stats.recoded, 2);
   const table = r.files.find((f) => f.name === 'a_編碼對照表.csv').content;
-  assert.ok(table.startsWith('\uFEFF原點名,原編碼,MAC 點號,補點名稱（D20）'));
+  assert.ok(table.startsWith('\uFEFF原點名,原編碼,CNT 點號,補點名稱（D20）'));
   assert.ok(table.includes('1,be73,1.11,,'));
   assert.ok(table.includes('13,q11,13.11,Q11,'));
   // 整理後的 CSV 也是改過的編碼
@@ -385,11 +386,11 @@ test('GPS CSV 補點：Q 開頭有高程、或編碼寫 Q 開頭；沒有高程�
   assert.ok(by.QW12 && by.QW12.supp && by.QW12.renamedFrom === '12');
   assert.strictEqual(r.stats.pending, 0);
   const mac = lines(r.files.find((f) => f.name === 'a.mac').content);
-  // MAC 照原規則：Q 開頭的補點不放、QW 編碼的 12 號 → 12.11
-  assert.ok(!mac.some((l) => l.startsWith('Q')) && mac.some((l) => l.startsWith('12.11 ')) && mac.some((l) => l.startsWith('2.30 ')));
-  assert.ok(r.report.some((x) => /QGGC32 是 Q 開頭的補點，CNT／MAC 不能放 Q 點/.test(x.msg)));
+  // CNT／MAC 不能有 Q 點：QW 編碼的 12 號 → 12.11；QGGC32 → 這批最大點號＋1（13）.11
+  assert.ok(!mac.some((l) => l.startsWith('Q')) && mac.some((l) => l.startsWith('12.11 ')) && mac.some((l) => l.startsWith('13.11 ')));
+  assert.deepStrictEqual(lines(F(r, 'a.cnt').content).slice(0, 2), ['13.11,2704014.796,219334.519', '2.30,2704022.003,219315.270']);
   const tbl = r.files.find((f) => f.name === 'a_編碼對照表.csv').content;
-  assert.ok(tbl.includes('12,QW,12.11,QW12,') && tbl.includes('QGGC32,,（不能放進 MAC）,QGGC32,'));
+  assert.ok(tbl.includes('12,QW,12.11,QW12,') && tbl.includes('QGGC32,,13.11,QGGC32,'));
   assert.ok(Core.csvToCntMac('5,2704000.1,219300.1,100.1,QW5\n6,2704001.1,219301.1,100.2,30\n7,2704002.1,219302.1,100.3,30', 'b.csv').points[0].name === 'QW5');
   // 寫入時：補點進 D20、參考點進 D14
   const d14 = Core.parseDbf(makeDbf(D14F, ['     1 02704480.54200000219713.24700000 30 0 0                  ']));
@@ -397,4 +398,12 @@ test('GPS CSV 補點：Q 開頭有高程、或編碼寫 Q 開頭；沒有高程�
   const plan = Core.planDbfWrite({ d14, d20, points: r.points.filter((p) => p.include).map((p) => ({ key: p.line, name: p.name, code: p.useCode || null, y: p.N, x: p.E, src: 'GPS' })) });
   assert.deepStrictEqual(plan.toD20.map((x) => x.out).sort(), ['QGGC32', 'QW12']);
   assert.deepStrictEqual(plan.toD14.map((x) => x.out), ['2.30', '3.30']);
+});
+
+test('GPS CSV → CNT（點號.編碼,Y,X，重測系統直接讀入）', () => {
+  const r = Core.csvToCntMac('1,2706089.024,222472.005,60\n2,2706085.565,222472.982,6\n3,2706066,222501.246,60', 'b.csv');
+  assert.strictEqual(r.files[0].name, 'b.cnt');
+  assert.ok(r.files[0].main && !r.files[0].old);
+  assert.strictEqual(r.files[0].content, '1.60,2706089.024,222472.005\r\n2.06,2706085.565,222472.982\r\n3.60,2706066.000,222501.246\r\n');
+  assert.ok(F(r, '_虛擬測站.cnt').old && F(r, '.mac').old);
 });

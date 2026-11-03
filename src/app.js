@@ -29,9 +29,9 @@
       step2: '檢查點位',
       next: function () {
         return [
-          '開啟土地重測系統，<b>先讀 .cnt 檔</b>（虛擬測站 99999 與後視點 99998 的坐標）。',
-          '<b>再讀 .mac 檔</b>，系統會算出所有點的坐標。',
-          '計算完成後，<b>刪除點號 99999 和 99998</b>（它們只是轉換用的虛擬點）。'
+          '開啟土地重測系統，<b>讀入 .cnt 檔就好</b>（點號.編碼,Y,X），不用 MAC，也不用刪 99999、99998。',
+          'Q 開頭的補點在 CNT 裡已改成參考點的形式（例如 QGGC32 → 42.11），對照方式看 <b>_編碼對照表.csv</b>。',
+          '讀入後在重測系統裡抽查幾個點的坐標。'
         ];
       }
     },
@@ -364,7 +364,7 @@
     var fp = $('filesPanel');
     fp.classList.toggle('folded', dbfMode && !state.showOldFiles);
     if (dbfMode) {
-      $('filesTitle').innerHTML = '舊方式：' + (r.kind === 'csv2cntmac' ? 'CNT＋MAC 檔（照原本規則，不含 Q 補點）' : 'MAC 檔') +
+      $('filesTitle').innerHTML = '不直接寫入時用：' + (r.kind === 'csv2cntmac' ? 'CNT 檔（補點改成參考點的形式）' : 'MAC 檔') +
         ' <span class="muted">平常不用</span><button class="btn small foldbtn" type="button" id="foldOld">' + (state.showOldFiles ? '收起來' : '展開') + '</button>';
       $('foldOld').onclick = function () { state.showOldFiles = !state.showOldFiles; renderResult(); };
     } else {
@@ -381,7 +381,10 @@
       $('goAsk').onclick = function () { var a = document.querySelector('.askbox'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
     } else {
       $('filesPanel').classList.toggle('hidden', !r.files.length);
-      r.files.forEach(function (f) {
+      var mainFiles = r.files.filter(function (f) { return !f.old; });
+      var oldFiles = r.files.filter(function (f) { return f.old; });
+      var shown = mainFiles.concat(state.showOldMac ? oldFiles : []);
+      shown.forEach(function (f) {
         var d = el('div', { 'class': 'file' + (f.recommended ? ' rec' : '') });
         var lines = f.content.split('\r\n').length - 1;
         d.innerHTML = '<div class="grow"><div class="fn">' + esc(f.name) + (f.recommended ? '<span class="badge rec">建議使用</span>' : '') + '</div>' +
@@ -392,18 +395,26 @@
         pre.textContent = f.content.length > 200000 ? f.content.slice(0, 200000) + '\n…（太長，只顯示前段）' : f.content;
         view.onclick = function () { pre.classList.toggle('hidden'); view.textContent = pre.classList.contains('hidden') ? '看內容' : '收起來'; };
         dl.onclick = function () { download(f); };
+        if (f.old) d.className += ' oldfile';
         d.appendChild(view); d.appendChild(dl); d.appendChild(pre);
         fw.appendChild(d);
       });
+      if (oldFiles.length) {
+        var ob = el('div', { 'class': 'oldrow' }, '<span class="muted">舊方式（虛擬測站 99999／99998 的 CNT＋MAC，現在不用了）</span> ');
+        var obtn = el('button', { 'class': 'btn small', type: 'button' }, state.showOldMac ? '收起來' : '展開');
+        obtn.onclick = function () { state.showOldMac = !state.showOldMac; renderResult(); };
+        ob.appendChild(obtn);
+        fw.appendChild(ob);
+      }
       var sa = $('saveAll'); sa.innerHTML = '';
-      if (r.files.length > 1) {
-        var all = el('button', { 'class': 'btn primary' }, '全部下載（' + r.files.length + ' 個）');
-        all.onclick = function () { r.files.forEach(function (f, i) { setTimeout(function () { download(f, true); }, i * 400); }); toast('已開始下載 ' + r.files.length + ' 個檔案'); };
+      if (mainFiles.length > 1) {
+        var all = el('button', { 'class': 'btn primary' }, '全部下載（' + mainFiles.length + ' 個）');
+        all.onclick = function () { mainFiles.forEach(function (f, i) { setTimeout(function () { download(f, true); }, i * 400); }); toast('已開始下載 ' + mainFiles.length + ' 個檔案'); };
         sa.appendChild(all);
       }
-      if (r.files.length && window.showDirectoryPicker) {
+      if (mainFiles.length && window.showDirectoryPicker) {
         var dir = el('button', { 'class': 'btn' }, '📁 全部存到指定資料夾…');
-        dir.onclick = function () { saveToDir(r.files); };
+        dir.onclick = function () { saveToDir(mainFiles); };
         sa.appendChild(dir);
         sa.appendChild(el('span', { 'class': 'muted' }, '可以直接選擇要存放的資料夾（例如重測系統或隨身碟）'));
       }
@@ -1279,7 +1290,7 @@
       '<p>三個步驟：<b>① 放入檔案（或選整個資料夾）→ ② 看縮圖和紅色/黃色提醒 → ③ 按綠色「下載」</b>。檔案只在你的電腦上處理，不會上傳。</p>' +
       '<table><thead><tr><th>功能</th><th>放入</th><th>得到</th></tr></thead><tbody>' +
       '<tr><td>全站儀 → 重測系統</td><td>Nikon .RAW</td><td>.mac（必要時加 _Zero.mac）</td></tr>' +
-      '<tr><td>GPS → 重測系統</td><td>控制器輸出的 .CSV（會自動剔除核對點、雜點）</td><td>.cnt ＋ .mac ＋ 整理後的 .csv</td></tr>' +
+      '<tr><td>GPS → 重測系統</td><td>控制器輸出的 .CSV（會自動剔除核對點、雜點）</td><td>.cnt（點號.編碼,Y,X）；有 D14、D20 時直接寫入</td></tr>' +
       '<tr><td>重測 → 全站儀 / GPS</td><td>.L02 .L14 .L20（同案件自動合併）</td><td>.csv（點號,Y,X）</td></tr></tbody></table>' +
       '<p class="muted">整合自：RawToMACV2.0.jar、NIKON轉MAC 0714F5.xls、CSV TO 重測 CT02.xls、TrimblePointInputV3.jar、重測轉CSV TS01.xls。</p>' +
       '<div style="text-align:right;margin-top:14px"><button class="btn primary" id="closeAbout">知道了</button></div></div>');
