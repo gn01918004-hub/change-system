@@ -256,7 +256,6 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 .devbar .devrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-basis:100%;margin-top:6px}
 .mono{font-family:Consolas,"Courier New",monospace}
 
-.corner{display:flex;justify-content:flex-end;margin-top:22px}
 .linkish{background:none;border:1px dashed var(--line);color:var(--ink2);border-radius:999px;padding:6px 14px;cursor:pointer;font-size:14px}
 .linkish:hover{border-color:var(--brand);color:var(--brand)}
 .coarow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
@@ -338,9 +337,14 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
             <span class="d">控制點、界址點、補點坐標放樣用，兩種儀器用同一個檔</span>
             <span class="flow"><b>.L02</b> <b>.L14</b> <b>.L20</b> → <b>.csv</b></span></span>
         </button>
+        <button class="card" data-kind="coa2csv">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16"/><path d="M10 10v10"/></svg></span>
+          <span><span class="t">複丈輸入檔 → 全站儀 / GPS 控制器</span>
+            <span class="d">資料夾沒有 L02/L14/L20 時用；可依地號挑點</span>
+            <span class="flow"><b>.COA</b> <b>.CTL</b> <b>.BNP</b> <b>.PAR</b> → <b>.csv</b> / <b>.sdr</b></span></span>
+        </button>
       </div>
     </div>
-    <div class="corner"><button class="linkish" id="btnCoa" type="button" title="資料夾裡沒有 L02/L14/L20 時使用">🗂 複丈輸入檔（.COA）轉換</button></div>
   </section>
 
   <!-- ═════════ 工作頁 ═════════ -->
@@ -432,7 +436,7 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 <div class="toast hidden" id="toast"></div>
 
 <script>
-window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","date":"2026-11-03","repo":"gn01918004-hub/change-system","file":"dist/土地重測資料轉換系統.html","changelog":[{"version":"2.4.0","date":"2026-11-03","items":["全站儀 MAC 預設改成 Excel 版格式，和 Excel 轉檔工具存出來的逐字相同（Tab 分隔、去尾 0、數字點號後加空白、Q 點照原名）；進階設定可改回空白分隔","寫入 D14：新的參考點點號只要和 D14 裡任何參考點（X.XX，不含計算的 X.00）重複，就改成參考點最大號＋1；改號也會套用到 MAC／CNT（例如 1～14 → 26～39）","同點號或同補點名稱、坐標相差 6 cm 內：視為重測，預設不寫入並列出差值；打勾可改寫成新的參考點（X.XX，補點預設編碼 11）","全站儀照準 D14／D20 裡已有的點，也會列出差值（用 6 cm 規則判斷）"]},{"version":"2.3.0","date":"2026-11-03","items":["GPS CSV 改成只輸出 CNT（點號.編碼,Y,X），重測系統直接讀入就好；舊的虛擬測站 CNT＋MAC 收起來，需要時按「展開」","CNT 不能有 Q 點：編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點自動編成這批最大點號＋1 的參考點（QGGC32 → 42.11），都列在編碼對照表；直接寫入 D20 時仍用補點原名稱"]},{"version":"2.2.0","date":"2026-11-03","items":["有放 D14、D20 時，「直接寫入重測系統」成為第 3 步主力；舊的 CNT＋MAC 檔收起來（照原本規則、不含 Q 補點），需要時按「展開」","沒有放 D14、D20 時跟以前一樣只做 CNT＋MAC","「接下來這樣做」改成寫入的步驟（先關重測系統 → 寫入 → 檢查，可用 .bak 還原）"]},{"version":"2.1.2","date":"2026-11-03","items":["修正：CNT＋MAC 照原本的規則，不能有 Q 點——編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點（QGGC32）不放進 MAC 並提醒；補點規則只用在「直接寫入 D20」","編碼對照表分成「MAC 點號」和「補點名稱（D20）」兩欄"]},{"version":"2.1.1","date":"2026-11-03","items":["修正補點名稱：數字點號的編碼寫 Q 開頭時，編碼本身就是補點名稱（13,…,q11 → 補點 Q11）；編碼只有字母時才接上點號（12,…,QW → QW12）"]},{"version":"2.1.0","date":"2026-11-03","items":["GPS CSV 補點判斷：點名 Q 開頭且有高程（例如 QGGC32）是補點，寫入時進 D20；Q 開頭但沒有高程（例如 QW1）是系統原有點，照舊剔除","數字點號、編碼寫 Q 開頭時（例如 12,…,QW），把編碼移到點號上（QW12）當補點，並列入編碼對照表","修正：高程欄寫成「0」（不是 0.000）時認不出高程欄，導致現場核對點被當成要問編碼的點"]},{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
+window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.5.0","date":"2026-11-03","repo":"gn01918004-hub/change-system","file":"dist/土地重測資料轉換系統.html","changelog":[{"version":"2.5.0","date":"2026-11-03","items":["Y、X 判斷改用位數：Y 整數部分一定 7 位、X 一定 6 位；L 檔與 GPS CSV 都用這個規則判斷順序，GPS 點位數不對時會標出來提醒","「複丈輸入檔 → 全站儀 / GPS 控制器」移到首頁「匯出」區，成為正式的卡片","選資料夾時自動略過系統預設檔 KC0000.L02，除非路徑裡有名為 KC0000 的資料夾"]},{"version":"2.4.0","date":"2026-11-03","items":["全站儀 MAC 預設改成 Excel 版格式，和 Excel 轉檔工具存出來的逐字相同（Tab 分隔、去尾 0、數字點號後加空白、Q 點照原名）；進階設定可改回空白分隔","寫入 D14：新的參考點點號只要和 D14 裡任何參考點（X.XX，不含計算的 X.00）重複，就改成參考點最大號＋1；改號也會套用到 MAC／CNT（例如 1～14 → 26～39）","同點號或同補點名稱、坐標相差 6 cm 內：視為重測，預設不寫入並列出差值；打勾可改寫成新的參考點（X.XX，補點預設編碼 11）","全站儀照準 D14／D20 裡已有的點，也會列出差值（用 6 cm 規則判斷）"]},{"version":"2.3.0","date":"2026-11-03","items":["GPS CSV 改成只輸出 CNT（點號.編碼,Y,X），重測系統直接讀入就好；舊的虛擬測站 CNT＋MAC 收起來，需要時按「展開」","CNT 不能有 Q 點：編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點自動編成這批最大點號＋1 的參考點（QGGC32 → 42.11），都列在編碼對照表；直接寫入 D20 時仍用補點原名稱"]},{"version":"2.2.0","date":"2026-11-03","items":["有放 D14、D20 時，「直接寫入重測系統」成為第 3 步主力；舊的 CNT＋MAC 檔收起來（照原本規則、不含 Q 補點），需要時按「展開」","沒有放 D14、D20 時跟以前一樣只做 CNT＋MAC","「接下來這樣做」改成寫入的步驟（先關重測系統 → 寫入 → 檢查，可用 .bak 還原）"]},{"version":"2.1.2","date":"2026-11-03","items":["修正：CNT＋MAC 照原本的規則，不能有 Q 點——編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點（QGGC32）不放進 MAC 並提醒；補點規則只用在「直接寫入 D20」","編碼對照表分成「MAC 點號」和「補點名稱（D20）」兩欄"]},{"version":"2.1.1","date":"2026-11-03","items":["修正補點名稱：數字點號的編碼寫 Q 開頭時，編碼本身就是補點名稱（13,…,q11 → 補點 Q11）；編碼只有字母時才接上點號（12,…,QW → QW12）"]},{"version":"2.1.0","date":"2026-11-03","items":["GPS CSV 補點判斷：點名 Q 開頭且有高程（例如 QGGC32）是補點，寫入時進 D20；Q 開頭但沒有高程（例如 QW1）是系統原有點，照舊剔除","數字點號、編碼寫 Q 開頭時（例如 12,…,QW），把編碼移到點號上（QW12）當補點，並列入編碼對照表","修正：高程欄寫成「0」（不是 0.000）時認不出高程欄，導致現場核對點被當成要問編碼的點"]},{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
 /*
  * 土地重測資料轉換系統 — 轉換核心
  *
@@ -966,7 +970,8 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
     nocode: '沒有編碼',
     ask: '沒有編碼（有高程，可能是現場收的點）',
     badcode: '編碼不是 00～99',
-    samexy: '與其他點坐標相同'
+    samexy: '與其他點坐標相同',
+    digits: '坐標位數不對（Y 應為 7 位整數、X 應為 6 位整數）'
   };
   // 這些狀況預設剔除，其他只提醒
   var EXCLUDE_FLAGS = { junk: 1, check: 1, far: 1, dup: 1 };
@@ -1006,7 +1011,10 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
         var a2 = parseFloat(f[1]), a3 = parseFloat(f[2]);
         if (isFinite(a2) && isFinite(a3) && a2 !== 0 && a3 !== 0) { c2.push(Math.abs(a2)); c3.push(Math.abs(a3)); }
       });
-      if (c2.length && median(c3) > 1000000 && median(c2) < median(c3) / 3) swapNE = true;
+      // Y 整數 7 位、X 整數 6 位：第 2 欄大多是 6 位、第 3 欄大多是 7 位 → 檔案是「點名,E,N」
+      var nSwap = 0;
+      c2.forEach(function (v, i) { if (isXVal(v) && isYVal(c3[i])) nSwap++; });
+      if (c2.length && nSwap >= c2.length * 0.5) swapNE = true;
       if (swapNE) report.warn('第 2 欄看起來是 E、第 3 欄是 N（N 應該比 E 大很多），已自動對調；若不對請到「進階設定」改');
     }
     if (swapNE) { cols.n = 2; cols.e = 1; }
@@ -1050,6 +1058,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
       }
       // 重測系統只吃 .00～.99：不是 1～2 位數字的編碼（例如 be73、q11、123）要換掉
       if (!p.supp && p.code !== '' && !/^\d{1,2}(\.0*)?$/.test(p.code)) p.flags.push('badcode');
+      if (p.flags.indexOf('junk') < 0 && isNum(p.n) && isNum(p.e) && !(isYVal(p.n) && isXVal(p.e))) p.flags.push('digits');
     });
 
     var cand = pts.filter(function (p) { return !p.flags.some(function (f) { return EXCLUDE_FLAGS[f]; }); });
@@ -1100,6 +1109,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
         var t = FLAG_TEXT[f];
         if (f === 'badcode') t = '編碼「' + p.code + '」不是 00～99，改成 ' + (p.codeFrom === 'manual' ? p.useCode : badTo);
         if (f === 'far') t += '（約 ' + p.note.far + ' m）';
+        if (f === 'digits') t += '：Y ' + intDigits(p.n) + ' 位、X ' + intDigits(p.e) + ' 位';
         if (f === 'dup') t += '（與第 ' + p.note.dup + ' 行相同）';
         if (f === 'samexy') t += '（' + p.note.samexy + '）';
         return t;
@@ -1329,13 +1339,17 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
    * 回傳 'yx'（a 是 Y）、'xy'（a 是 X）或 null（看不出來，例如假設坐標）。
    */
   function classifyYX(a, b) {
-    var isY = function (v) { return v >= 2000000 && v < 3000000; };
-    var isX = function (v) { return v >= 100000 && v < 500000; };
-    a = Math.abs(parseFloat(a)); b = Math.abs(parseFloat(b));
-    if (isY(a) && isX(b)) return 'yx';
-    if (isX(a) && isY(b)) return 'xy';
+    if (isYVal(a) && isXVal(b)) return 'yx';
+    if (isXVal(a) && isYVal(b)) return 'xy';
     return null;
   }
+  /** 台灣坐標：Y（縱、N）整數部分一定 7 位數，X（橫、E）整數部分一定 6 位數 */
+  function intDigits(v) {
+    var n = Math.abs(parseFloat(v));
+    return isFinite(n) && n >= 1 ? String(Math.floor(n)).length : 0;
+  }
+  function isYVal(v) { return intDigits(v) === 7; }
+  function isXVal(v) { return intDigits(v) === 6; }
 
   function lToCsv(inputs, opts) {
     opts = opts || {};
@@ -1391,7 +1405,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
         report.info('「' + inp.name + '」有 ' + swapped + ' 點的坐標是 X 在前（21… 在前、27… 在後），已依數值自動判斷：27… 是 Y、21… 是 X');
       }
       if (unknown) {
-        report.warn('「' + inp.name + '」有 ' + unknown + ' 點看不出哪個是 Y、哪個是 X（不像台灣 TWD97 坐標），照檔案原本的順序當成 Y、X，請確認');
+        report.warn('「' + inp.name + '」有 ' + unknown + ' 點看不出哪個是 Y、哪個是 X（Y 應為 7 位整數、X 應為 6 位整數），照檔案原本的順序當成 Y、X，請確認');
       }
       if (count === 0) report.error('「' + inp.name + '」裡找不到任何點位坐標');
       else if (skipped) report.info('「' + inp.name + '」有 ' + skipped + ' 行不是坐標（標題或空白），已略過');
@@ -1948,10 +1962,17 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
     var out = { l2csv: [], raw2mac: [], csv2cntmac: [], coa2csv: [], dbf: [] };
     var cmap = {};
     var lmap = {};
+    out.ignored = [];
     list.forEach(function (f) {
       var path = f.path || f.name;
       var ext = extName(f.name);
       var dir = path.indexOf('/') >= 0 ? path.slice(0, path.lastIndexOf('/')) : '';
+      // KC0000.L02 每個資料夾都有（系統預設檔），略過；除非路徑裡有 KC0000 這個資料夾
+      if (ext === 'L02' && baseName(f.name).toUpperCase() === 'KC0000' &&
+          dir.split('/').map(function (x) { return x.toUpperCase(); }).indexOf('KC0000') < 0) {
+        out.ignored.push(path);
+        return;
+      }
       if (L_TYPES[ext]) {
         var k = lGroupKey(path);
         if (!lmap[k]) {
@@ -2022,6 +2043,8 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
     extName: extName,
     L_ORDER: L_ORDER,
     classifyYX: classifyYX,
+    isYVal: isYVal,
+    isXVal: isXVal,
     coaToCsv: coaToCsv,
     writePoints: writePoints,
     parseDbf: parseDbf,
@@ -3378,6 +3401,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
     var list = entries.map(function (x) { return { name: x.file.name, path: x.path, file: x.file }; });
     var g = Core.groupFolderFiles(list);
     folderDbf = g.dbf || [];
+    var ignoredNote = (g.ignored || []).length ? '（已略過系統預設檔 KC0000.L02' + (g.ignored.length > 1 ? ' 共 ' + g.ignored.length + ' 個' : '') + '）' : '';
     // 複丈輸入檔：資料夾裡沒有 L02/L14/L20 時才列出（或已在角落按鈕手動啟用）
     var useCoa = g.coa2csv.length && (!g.l2csv.length || state.coaEnabled || state.kind === 'coa2csv');
     var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'].concat(useCoa ? ['coa2csv'] : []);
@@ -3391,7 +3415,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
     var total = kinds.reduce(function (n, k) { return n + g[k].length; }, 0);
     if (!total) {
       modal('<h3>資料夾裡沒有找到可以轉換的檔案</h3><p class="muted">「' + esc(folderName) + '」裡共 ' + entries.length + ' 個檔案，沒有 ' +
-        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : state.kind === 'coa2csv' ? '.COA' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。</p>' +
+        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : state.kind === 'coa2csv' ? '.COA' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。' + ignoredNote + '</p>' +
         '<div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
       $('ok1').onclick = closeModal;
       return;
@@ -3404,7 +3428,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
       return;
     }
     var TITLES = { l2csv: '重測資料（同案件的 L02、L14、L20 合併成一個檔）', raw2mac: '全站儀觀測檔 .RAW', csv2cntmac: 'GPS 坐標檔 .CSV', coa2csv: '複丈輸入檔（.COA 界址點 ＋ .CTL 控制點）' };
-    var h = '<h3>在「' + esc(folderName) + '」找到這些資料</h3><div class="muted">勾選要轉換的項目（可以多選），再按下面的按鈕。</div>';
+    var h = '<h3>在「' + esc(folderName) + '」找到這些資料</h3><div class="muted">勾選要轉換的項目（可以多選），再按下面的按鈕。' + ignoredNote + '</div>';
     kinds.forEach(function (k) {
       if (!g[k].length) return;
       h += '<div class="fsec" data-k="' + k + '"><h4><span>' + TITLES[k] + '</span><label class="muted" style="font-size:14px;cursor:pointer;font-weight:400"><input type="checkbox" class="selall"> 全選</label></h4>';
@@ -3791,11 +3815,11 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.4.0","da
 
   // ─────────── 首頁卡片 ───────────
   Array.prototype.forEach.call(document.querySelectorAll('.card[data-kind]'), function (c) {
-    c.onclick = function () { openKind(c.getAttribute('data-kind')); };
+    c.onclick = function () { var k = c.getAttribute('data-kind'); if (k === 'coa2csv') state.coaEnabled = true; openKind(k); };
   });
   $('btnBack').onclick = showHome;
   // 角落按鈕：手動啟用複丈輸入檔轉換（資料夾有 L02/L14/L20 時預設不會列出）
-  $('btnCoa').onclick = function () { state.coaEnabled = true; openKind('coa2csv'); };
+
 })();
 </script>
 </body>

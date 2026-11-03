@@ -448,3 +448,25 @@ test('寫入：6 公分內視為重測，預設不寫入；勾選後寫成新的
   const out = Core.buildDbfFiles(plan2, d14, d20);
   assert.ok(out.table.includes('與已有點相差(cm)') && out.table.includes(',2.2,'));
 });
+
+test('Y、X 判斷：Y 整數 7 位、X 整數 6 位', () => {
+  assert.strictEqual(Core.classifyYX('2701039.308', '218159.992'), 'yx');
+  assert.strictEqual(Core.classifyYX('218159.992', '2701039.308'), 'xy');
+  assert.strictEqual(Core.classifyYX('3501039.308', '718159.992'), 'yx');   // 不只 27…/21…，看位數
+  assert.strictEqual(Core.classifyYX('27010393.08', '218159.992'), null);   // 8 位不是 Y
+  assert.ok(Core.isYVal('2701039.3') && !Core.isYVal('270103.9') && Core.isXVal('218159') && !Core.isXVal('2181599'));
+  // GPS CSV：位數不對的點會提醒（仍轉換）
+  const r = Core.csvToCntMac('1,2704014.796,219334.519,100.1,30\n2,2704022.003,21931.527,100.2,30\n3,2704012.859,219317.843,100.3,30', 'a.csv');
+  const p2 = r.points.find((p) => p.name === '2');
+  assert.ok(p2.flags.includes('digits'));   // 位數不對（這點也離其他點很遠，會一併被剔除）
+  assert.match(p2.reasons.join(), /X 5 位/);
+});
+
+test('資料夾：略過 KC0000.L02，除非路徑裡有 KC0000 資料夾', () => {
+  const g = Core.groupFolderFiles([
+    { name: 'KC0000.L02', path: 'job/KC0000.L02' }, { name: 'KC0390.L02', path: 'job/KC0390.L02' },
+    { name: 'KC0000.L02', path: 'job/KC0000/KC0000.L02' }
+  ]);
+  assert.deepStrictEqual(g.ignored, ['job/KC0000.L02']);
+  assert.deepStrictEqual(g.l2csv.map((x) => x.dir + '/' + x.label).sort(), ['job/KC0000/KC0000', 'job/KC0390']);
+});

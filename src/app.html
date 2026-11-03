@@ -256,7 +256,6 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 .devbar .devrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-basis:100%;margin-top:6px}
 .mono{font-family:Consolas,"Courier New",monospace}
 
-.corner{display:flex;justify-content:flex-end;margin-top:22px}
 .linkish{background:none;border:1px dashed var(--line);color:var(--ink2);border-radius:999px;padding:6px 14px;cursor:pointer;font-size:14px}
 .linkish:hover{border-color:var(--brand);color:var(--brand)}
 .coarow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
@@ -338,9 +337,14 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
             <span class="d">控制點、界址點、補點坐標放樣用，兩種儀器用同一個檔</span>
             <span class="flow"><b>.L02</b> <b>.L14</b> <b>.L20</b> → <b>.csv</b></span></span>
         </button>
+        <button class="card" data-kind="coa2csv">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 10h16"/><path d="M10 10v10"/></svg></span>
+          <span><span class="t">複丈輸入檔 → 全站儀 / GPS 控制器</span>
+            <span class="d">資料夾沒有 L02/L14/L20 時用；可依地號挑點</span>
+            <span class="flow"><b>.COA</b> <b>.CTL</b> <b>.BNP</b> <b>.PAR</b> → <b>.csv</b> / <b>.sdr</b></span></span>
+        </button>
       </div>
     </div>
-    <div class="corner"><button class="linkish" id="btnCoa" type="button" title="資料夾裡沒有 L02/L14/L20 時使用">🗂 複丈輸入檔（.COA）轉換</button></div>
   </section>
 
   <!-- ═════════ 工作頁 ═════════ -->

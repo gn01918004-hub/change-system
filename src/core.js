@@ -531,7 +531,8 @@
     nocode: '沒有編碼',
     ask: '沒有編碼（有高程，可能是現場收的點）',
     badcode: '編碼不是 00～99',
-    samexy: '與其他點坐標相同'
+    samexy: '與其他點坐標相同',
+    digits: '坐標位數不對（Y 應為 7 位整數、X 應為 6 位整數）'
   };
   // 這些狀況預設剔除，其他只提醒
   var EXCLUDE_FLAGS = { junk: 1, check: 1, far: 1, dup: 1 };
@@ -571,7 +572,10 @@
         var a2 = parseFloat(f[1]), a3 = parseFloat(f[2]);
         if (isFinite(a2) && isFinite(a3) && a2 !== 0 && a3 !== 0) { c2.push(Math.abs(a2)); c3.push(Math.abs(a3)); }
       });
-      if (c2.length && median(c3) > 1000000 && median(c2) < median(c3) / 3) swapNE = true;
+      // Y 整數 7 位、X 整數 6 位：第 2 欄大多是 6 位、第 3 欄大多是 7 位 → 檔案是「點名,E,N」
+      var nSwap = 0;
+      c2.forEach(function (v, i) { if (isXVal(v) && isYVal(c3[i])) nSwap++; });
+      if (c2.length && nSwap >= c2.length * 0.5) swapNE = true;
       if (swapNE) report.warn('第 2 欄看起來是 E、第 3 欄是 N（N 應該比 E 大很多），已自動對調；若不對請到「進階設定」改');
     }
     if (swapNE) { cols.n = 2; cols.e = 1; }
@@ -615,6 +619,7 @@
       }
       // 重測系統只吃 .00～.99：不是 1～2 位數字的編碼（例如 be73、q11、123）要換掉
       if (!p.supp && p.code !== '' && !/^\d{1,2}(\.0*)?$/.test(p.code)) p.flags.push('badcode');
+      if (p.flags.indexOf('junk') < 0 && isNum(p.n) && isNum(p.e) && !(isYVal(p.n) && isXVal(p.e))) p.flags.push('digits');
     });
 
     var cand = pts.filter(function (p) { return !p.flags.some(function (f) { return EXCLUDE_FLAGS[f]; }); });
@@ -665,6 +670,7 @@
         var t = FLAG_TEXT[f];
         if (f === 'badcode') t = '編碼「' + p.code + '」不是 00～99，改成 ' + (p.codeFrom === 'manual' ? p.useCode : badTo);
         if (f === 'far') t += '（約 ' + p.note.far + ' m）';
+        if (f === 'digits') t += '：Y ' + intDigits(p.n) + ' 位、X ' + intDigits(p.e) + ' 位';
         if (f === 'dup') t += '（與第 ' + p.note.dup + ' 行相同）';
         if (f === 'samexy') t += '（' + p.note.samexy + '）';
         return t;
@@ -894,13 +900,17 @@
    * 回傳 'yx'（a 是 Y）、'xy'（a 是 X）或 null（看不出來，例如假設坐標）。
    */
   function classifyYX(a, b) {
-    var isY = function (v) { return v >= 2000000 && v < 3000000; };
-    var isX = function (v) { return v >= 100000 && v < 500000; };
-    a = Math.abs(parseFloat(a)); b = Math.abs(parseFloat(b));
-    if (isY(a) && isX(b)) return 'yx';
-    if (isX(a) && isY(b)) return 'xy';
+    if (isYVal(a) && isXVal(b)) return 'yx';
+    if (isXVal(a) && isYVal(b)) return 'xy';
     return null;
   }
+  /** 台灣坐標：Y（縱、N）整數部分一定 7 位數，X（橫、E）整數部分一定 6 位數 */
+  function intDigits(v) {
+    var n = Math.abs(parseFloat(v));
+    return isFinite(n) && n >= 1 ? String(Math.floor(n)).length : 0;
+  }
+  function isYVal(v) { return intDigits(v) === 7; }
+  function isXVal(v) { return intDigits(v) === 6; }
 
   function lToCsv(inputs, opts) {
     opts = opts || {};
@@ -956,7 +966,7 @@
         report.info('「' + inp.name + '」有 ' + swapped + ' 點的坐標是 X 在前（21… 在前、27… 在後），已依數值自動判斷：27… 是 Y、21… 是 X');
       }
       if (unknown) {
-        report.warn('「' + inp.name + '」有 ' + unknown + ' 點看不出哪個是 Y、哪個是 X（不像台灣 TWD97 坐標），照檔案原本的順序當成 Y、X，請確認');
+        report.warn('「' + inp.name + '」有 ' + unknown + ' 點看不出哪個是 Y、哪個是 X（Y 應為 7 位整數、X 應為 6 位整數），照檔案原本的順序當成 Y、X，請確認');
       }
       if (count === 0) report.error('「' + inp.name + '」裡找不到任何點位坐標');
       else if (skipped) report.info('「' + inp.name + '」有 ' + skipped + ' 行不是坐標（標題或空白），已略過');
@@ -1513,10 +1523,17 @@
     var out = { l2csv: [], raw2mac: [], csv2cntmac: [], coa2csv: [], dbf: [] };
     var cmap = {};
     var lmap = {};
+    out.ignored = [];
     list.forEach(function (f) {
       var path = f.path || f.name;
       var ext = extName(f.name);
       var dir = path.indexOf('/') >= 0 ? path.slice(0, path.lastIndexOf('/')) : '';
+      // KC0000.L02 每個資料夾都有（系統預設檔），略過；除非路徑裡有 KC0000 這個資料夾
+      if (ext === 'L02' && baseName(f.name).toUpperCase() === 'KC0000' &&
+          dir.split('/').map(function (x) { return x.toUpperCase(); }).indexOf('KC0000') < 0) {
+        out.ignored.push(path);
+        return;
+      }
       if (L_TYPES[ext]) {
         var k = lGroupKey(path);
         if (!lmap[k]) {
@@ -1587,6 +1604,8 @@
     extName: extName,
     L_ORDER: L_ORDER,
     classifyYX: classifyYX,
+    isYVal: isYVal,
+    isXVal: isXVal,
     coaToCsv: coaToCsv,
     writePoints: writePoints,
     parseDbf: parseDbf,

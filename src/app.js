@@ -1340,6 +1340,7 @@
     var list = entries.map(function (x) { return { name: x.file.name, path: x.path, file: x.file }; });
     var g = Core.groupFolderFiles(list);
     folderDbf = g.dbf || [];
+    var ignoredNote = (g.ignored || []).length ? '（已略過系統預設檔 KC0000.L02' + (g.ignored.length > 1 ? ' 共 ' + g.ignored.length + ' 個' : '') + '）' : '';
     // 複丈輸入檔：資料夾裡沒有 L02/L14/L20 時才列出（或已在角落按鈕手動啟用）
     var useCoa = g.coa2csv.length && (!g.l2csv.length || state.coaEnabled || state.kind === 'coa2csv');
     var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'].concat(useCoa ? ['coa2csv'] : []);
@@ -1353,7 +1354,7 @@
     var total = kinds.reduce(function (n, k) { return n + g[k].length; }, 0);
     if (!total) {
       modal('<h3>資料夾裡沒有找到可以轉換的檔案</h3><p class="muted">「' + esc(folderName) + '」裡共 ' + entries.length + ' 個檔案，沒有 ' +
-        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : state.kind === 'coa2csv' ? '.COA' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。</p>' +
+        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : state.kind === 'coa2csv' ? '.COA' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。' + ignoredNote + '</p>' +
         '<div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
       $('ok1').onclick = closeModal;
       return;
@@ -1366,7 +1367,7 @@
       return;
     }
     var TITLES = { l2csv: '重測資料（同案件的 L02、L14、L20 合併成一個檔）', raw2mac: '全站儀觀測檔 .RAW', csv2cntmac: 'GPS 坐標檔 .CSV', coa2csv: '複丈輸入檔（.COA 界址點 ＋ .CTL 控制點）' };
-    var h = '<h3>在「' + esc(folderName) + '」找到這些資料</h3><div class="muted">勾選要轉換的項目（可以多選），再按下面的按鈕。</div>';
+    var h = '<h3>在「' + esc(folderName) + '」找到這些資料</h3><div class="muted">勾選要轉換的項目（可以多選），再按下面的按鈕。' + ignoredNote + '</div>';
     kinds.forEach(function (k) {
       if (!g[k].length) return;
       h += '<div class="fsec" data-k="' + k + '"><h4><span>' + TITLES[k] + '</span><label class="muted" style="font-size:14px;cursor:pointer;font-weight:400"><input type="checkbox" class="selall"> 全選</label></h4>';
@@ -1753,9 +1754,9 @@
 
   // ─────────── 首頁卡片 ───────────
   Array.prototype.forEach.call(document.querySelectorAll('.card[data-kind]'), function (c) {
-    c.onclick = function () { openKind(c.getAttribute('data-kind')); };
+    c.onclick = function () { var k = c.getAttribute('data-kind'); if (k === 'coa2csv') state.coaEnabled = true; openKind(k); };
   });
   $('btnBack').onclick = showHome;
   // 角落按鈕：手動啟用複丈輸入檔轉換（資料夾有 L02/L14/L20 時預設不會列出）
-  $('btnCoa').onclick = function () { state.coaEnabled = true; openKind('coa2csv'); };
+
 })();
