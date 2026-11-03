@@ -200,20 +200,20 @@ test('GPS CSV：編碼不是 00～99 自動改成 11，並產生編碼對照表'
   const r = Core.csvToCntMac(csv, 'a.csv');
   const mac = lines(r.files.find((f) => f.name === 'a.mac').content);
   assert.ok(mac.some((l) => l.startsWith('1.11 ')));
-  // q11 是 Q 開頭的編碼 → 依補點規則：編碼移到點號（Q1113），當補點
-  assert.ok(mac.some((l) => l.startsWith('Q1113 ')));
+  // q11 是 Q 開頭的編碼 → 編碼本身就是補點名稱 Q11
+  assert.ok(mac.some((l) => l.startsWith('Q11 ')));
   assert.strictEqual(r.stats.recoded, 2);
   const table = r.files.find((f) => f.name === 'a_編碼對照表.csv').content;
   assert.ok(table.startsWith('﻿原點名,原編碼,重測系統點號'));
   assert.ok(table.includes('1,be73,1.11,'));
-  assert.ok(table.includes('13,q11,Q1113,'));
+  assert.ok(table.includes('13,q11,Q11,'));
   // 整理後的 CSV 也是改過的編碼
   assert.ok(r.files.find((f) => f.name === 'a_整理.csv').content.includes('1,2698533.37,219360.9,11'));
   // 可以改成別的號碼，也可以個別指定
   const r2 = Core.csvToCntMac(csv, 'a.csv', { badCodeTo: '12', codeOverrides: { 5: '7' } });
   const mac2 = lines(r2.files.find((f) => f.name === 'a.mac').content);
   assert.ok(mac2.some((l) => l.startsWith('1.12 ')));
-  assert.ok(mac2.some((l) => l.startsWith('Q1113 ')));
+  assert.ok(mac2.some((l) => l.startsWith('Q11 ')));
 });
 
 test('GPS CSV：沒有編碼但有高程的點要使用者決定編碼', () => {
@@ -386,6 +386,7 @@ test('GPS CSV 補點：Q 開頭有高程、或編碼寫 Q 開頭；沒有高程�
   const mac = lines(r.files.find((f) => f.name === 'a.mac').content);
   assert.ok(mac.some((l) => l.startsWith('QGGC32 ')) && mac.some((l) => l.startsWith('QW12 ')) && mac.some((l) => l.startsWith('2.30 ')));
   assert.ok(r.files.find((f) => f.name === 'a_編碼對照表.csv').content.includes('12,QW,QW12,'));
+  assert.ok(Core.csvToCntMac('5,2704000.1,219300.1,100.1,QW5\n6,2704001.1,219301.1,100.2,30\n7,2704002.1,219302.1,100.3,30', 'b.csv').points[0].name === 'QW5');
   // 寫入時：補點進 D20、參考點進 D14
   const d14 = Core.parseDbf(makeDbf(D14F, ['     1 02704480.54200000219713.24700000 30 0 0                  ']));
   const d20 = Core.parseDbf(makeDbf(D20F, [' QW1      2704020.768 219351.358Q  \0\0\0T']));

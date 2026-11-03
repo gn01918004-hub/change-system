@@ -559,9 +559,10 @@
       if (!p.name || !isNum(p.n) || !isNum(p.e) || p.N === 0 || p.E === 0) {
         p.flags.push('junk');
       } else if (/^q/i.test(p.code) && /^\d+$/.test(p.name)) {
-        // 數字點號、編碼寫 Q 開頭（例如 12,…,QW）：把編碼的字移到點號上（QW12），當補點
+        // 數字點號、編碼寫 Q 開頭：編碼就是補點名稱（13,…,q11 → Q11；只有字母時 12,…,QW → QW12）
         p.renamedFrom = p.name; p.origCode = p.code;
-        p.name = p.code.toUpperCase() + p.name; p.code = '';
+        // 編碼本身就是補點名稱（q11 → Q11）；編碼只有字母時才接上點號（QW → QW12）
+        p.name = /\d/.test(p.code) ? p.code.toUpperCase() : p.code.toUpperCase() + p.name; p.code = '';
         p.supp = true;
       } else if (/^q/i.test(p.name) && isFinite(p.H) && p.H !== 0) {
         // Q 開頭又有高程（例如 QGGC32）：現場新測的補點；沒有高程的 Q 點（QW1）是系統內原有的點
@@ -764,7 +765,7 @@
       pts.forEach(function (p) {
         var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
         rows.push([p.renamedFrom || p.name, p.origCode != null ? p.origCode : p.code, p.outName, p.n, p.e, p.h,
-          p.renamedFrom ? '編碼 ' + p.origCode + ' 移到點號，當補點' : (WHY[p.codeFrom] || '')].map(cell).join(','));
+          p.renamedFrom ? '補點：名稱取自編碼 ' + p.origCode : (WHY[p.codeFrom] || '')].map(cell).join(','));
       });
       result.files.push({ name: base + '_編碼對照表.csv', content: '\uFEFF' + joinLines(rows),
         desc: '原點名、原編碼對照轉換後的點號（' + result.stats.recoded + ' 點改過編碼），可用 Excel 開啟或列印' });
