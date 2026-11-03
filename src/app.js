@@ -110,7 +110,7 @@
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null;
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null; state.showOldFiles = false;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -358,6 +358,19 @@
       }
     }
 
+    // 有放 D14／D20：直接寫入是主力（第 3 步），舊的 CNT＋MAC 收起來
+    var dbfMode = !!(state.dbf && DBF_KINDS[r.kind]);
+    $('step3Label').textContent = dbfMode ? '寫入重測系統' : '存檔';
+    var fp = $('filesPanel');
+    fp.classList.toggle('folded', dbfMode && !state.showOldFiles);
+    if (dbfMode) {
+      $('filesTitle').innerHTML = '舊方式：' + (r.kind === 'csv2cntmac' ? 'CNT＋MAC 檔（照原本規則，不含 Q 補點）' : 'MAC 檔') +
+        ' <span class="muted">平常不用</span><button class="btn small foldbtn" type="button" id="foldOld">' + (state.showOldFiles ? '收起來' : '展開') + '</button>';
+      $('foldOld').onclick = function () { state.showOldFiles = !state.showOldFiles; renderResult(); };
+    } else {
+      $('filesTitle').textContent = '第 3 步：存檔 — 按綠色按鈕下載';
+    }
+
     // 檔案（GPS 還有點沒決定編碼時先不給下載，避免存到暫用的 .00）
     var fw = $('files'); fw.innerHTML = '';
     if (nPending && r.files.length) {
@@ -399,7 +412,15 @@
     // 下一步
     var nx = $('next'); nx.innerHTML = '';
     $('nextPanel').classList.toggle('hidden', !r.files.length);
-    KINDS[r.kind].next(r).forEach(function (t) { nx.appendChild(el('li', null, '<div>' + t + '</div>')); });
+    var steps = dbfMode && !state.dbfDone ? [
+      '寫入前先<b>關掉重測系統</b>（至少關掉這個案件），避免和系統同時改到 D14、D20。',
+      '在上面「第 3 步」確認點號、編碼（黃色是自動改號），再按綠色的 <b>💾 直接寫入原檔</b>，選重測系統放 D14、D20 的資料夾。系統會先把原檔備份成 .bak。',
+      '打開重測系統檢查新加的參考點、補點；有問題可以用 .bak 還原。'
+    ] : dbfMode ? [
+      '打開重測系統檢查新加的參考點、補點；有問題可以用 .bak 還原。',
+      '要再寫入其他資料，請重新放入最新的 D14、D20。'
+    ] : KINDS[r.kind].next(r);
+    steps.forEach(function (t) { nx.appendChild(el('li', null, '<div>' + t + '</div>')); });
 
     // 問題清單
     var rp = $('report'); rp.innerHTML = '';
@@ -940,7 +961,7 @@
         var msg = jobs.map(function (j) { return j.src.name + ' 新增 ' + j.n + ' 筆（原檔備份成 ' + j.bak + '）'; }).join('；');
         state.dbfDone = esc(msg) + (plan.renumbered ? '；有 ' + plan.renumbered + ' 點自動改號，請看對照表' : '');
         jobs.forEach(function (j) { j.src.bytes = j.data; j.src.db = Core.parseDbf(j.data); });
-        renderDbfPanel(state.result);
+        run(); // 重畫整頁：檔案筆數、完成訊息、下一步說明
         toast('已寫入重測系統檔');
       });
     }).catch(function (e) {

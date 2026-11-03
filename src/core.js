@@ -695,7 +695,7 @@
     var badToMac = normCode(opts.badCodeTo == null ? '11' : opts.badCodeTo) || '11';
     var qOnly = pts.filter(function (p) { return p.supp && !p.renamedFrom; });
     if (qOnly.length) {
-      report.info(qOnly.map(function (p) { return p.name; }).join('、') + ' 是 Q 開頭的補點，CNT／MAC 不能放 Q 點，所以沒有寫進 MAC；要寫進重測系統請和 D14、D20 一起放進來用「直接寫入」');
+      report.info(qOnly.map(function (p) { return p.name; }).join('、') + ' 是 Q 開頭的補點，CNT／MAC 不能放 Q 點，所以舊的 MAC 裡沒有它；補點要用「直接寫入」寫進 D20（需要放入 D14、D20）');
     }
     var macPts = pts.filter(function (p) { return !(p.supp && !p.renamedFrom); });
     macPts.forEach(function (p) {
