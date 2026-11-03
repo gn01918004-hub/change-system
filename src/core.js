@@ -689,28 +689,43 @@
       }
     });
 
-    if (pts.length < 2) {
-      report.error('至少需要 2 個點才能轉換（目前勾選 ' + pts.length + ' 個）');
+    // CNT＋MAC 用原本的規則：重測系統的 MAC 不能有 Q 點
+    //   數字點號＋Q 編碼（13,…,q11）→ 原點號＋.11（13.11）
+    //   Q 開頭的補點（QGGC32）→ 不放進 MAC，只能用「直接寫入 D20」
+    var badToMac = normCode(opts.badCodeTo == null ? '11' : opts.badCodeTo) || '11';
+    var qOnly = pts.filter(function (p) { return p.supp && !p.renamedFrom; });
+    if (qOnly.length) {
+      report.info(qOnly.map(function (p) { return p.name; }).join('、') + ' 是 Q 開頭的補點，CNT／MAC 不能放 Q 點，所以沒有寫進 MAC；要寫進重測系統請和 D14、D20 一起放進來用「直接寫入」');
+    }
+    var macPts = pts.filter(function (p) { return !(p.supp && !p.renamedFrom); });
+    macPts.forEach(function (p) {
+      p.macBase = p.renamedFrom || p.name;
+      p.macCode = p.renamedFrom ? badToMac : (p.useCode || '');
+    });
+    result.stats.macPoints = macPts.length;
+
+    if (macPts.length < 2) {
+      report.error('CNT／MAC 至少需要 2 個點（目前 ' + macPts.length + ' 個）' + (qOnly.length ? '；Q 開頭的補點不能放進 MAC' : ''));
       return result;
     }
 
-    pts.forEach(function (p) {
+    macPts.forEach(function (p) {
       if (p.name === STATION_ID || p.name === BACKSIGHT_ID) {
         report.error('點名 ' + p.name + ' 與虛擬測站/後視點號衝突，請先改名', p.line);
       }
     });
 
-    var st = pts[0];
+    var st = macPts[0];
     // 後視點：第一個與測站不重合的點（舊版固定用第 2 點，重合時會整批錯誤）
     var bs = null;
-    for (var i = 1; i < pts.length; i++) {
-      if (Math.hypot(pts[i].N - st.N, pts[i].E - st.E) > 0.001) { bs = pts[i]; break; }
+    for (var i = 1; i < macPts.length; i++) {
+      if (Math.hypot(macPts[i].N - st.N, macPts[i].E - st.E) > 0.001) { bs = macPts[i]; break; }
     }
     if (!bs) {
       report.error('所有點的坐標都與第 1 點相同，無法建立後視方向');
       return result;
     }
-    if (bs !== pts[1]) {
+    if (bs !== macPts[1]) {
       report.warn('第 2 點與第 1 點坐標重合，改用「' + bs.name + '」當後視點', bs.line);
     }
 
@@ -721,18 +736,18 @@
     var maxErr = 0;
     var seen = {};
 
-    pts.forEach(function (p) {
+    macPts.forEach(function (p) {
       var dN = p.N - st.N, dE = p.E - st.E;
       var dist = Math.hypot(dN, dE);
       var angSec = dist < 1e-9 ? 0 : azimuthSec(dN, dE) - azBs;
       var angStr = secToDms(angSec, angleDec);
       var distStr = dist.toFixed(distDec);
-      var name = formatPointName(p.name, p.useCode || '', codeMode, report, p.line);
+      var name = formatPointName(p.macBase, p.macCode, codeMode, report, p.line);
       p.outName = name;
       if (seen[name]) report.warn('點號 ' + name + ' 重複（第 ' + seen[name] + ' 行與第 ' + p.line + ' 行）', p.line);
       else seen[name] = p.line;
       mac.push([name, angStr, distStr].join(sep));
-      clean.push([p.name, trimNum(p.n), trimNum(p.e)].concat(an.cols.code >= 0 ? [p.useCode == null ? p.code : String(parseInt(p.useCode, 10))] : []).join(','));
+      clean.push([p.macBase, trimNum(p.n), trimNum(p.e)].concat(an.cols.code >= 0 ? [p.macCode === '' || p.macCode == null ? p.code : String(parseInt(p.macCode, 10))] : []).join(','));
 
       // 反算檢核：用寫進檔案的（已四捨五入的）角度、距離推回坐標
       var a = azBsRad + dmsToSec(angStr) / 3600 * Math.PI / 180;
@@ -757,15 +772,15 @@
     result.files.push({ name: base + '.cnt', content: joinLines(cnt), main: true,
       desc: '虛擬測站 99999（= ' + st.name + '）與後視點 99998（= ' + bs.name + '）坐標' });
     result.files.push({ name: base + '.mac', content: joinLines(mac), main: true,
-      desc: pts.length + ' 點的角度與水平距離' });
+      desc: macPts.length + ' 點的角度與水平距離' + (qOnly.length ? '（Q 補點 ' + qOnly.length + ' 點不能放進 MAC）' : '') });
     // 編碼對照表：每一個轉換的點，原本的點名/編碼 → 寫進重測系統的點號（Excel 可直接開，含 BOM）
-    if (result.stats.recoded || pending.length) {
+    if (result.stats.recoded || pending.length || supp.length) {
       var WHY = { bad: '原編碼不是 00～99，自動改', ask: '沒有編碼，統一編號', manual: '手動指定', pending: '尚未決定編碼（暫用 00）', supp: '補點' };
-      var rows = [['原點名', '原編碼', '重測系統點號', 'N', 'E', '高程', '說明'].join(',')];
+      var rows = [['原點名', '原編碼', 'MAC 點號', '補點名稱（D20）', 'N', 'E', '高程', '說明'].join(',')];
       pts.forEach(function (p) {
         var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-        rows.push([p.renamedFrom || p.name, p.origCode != null ? p.origCode : p.code, p.outName, p.n, p.e, p.h,
-          p.renamedFrom ? '補點：名稱取自編碼 ' + p.origCode : (WHY[p.codeFrom] || '')].map(cell).join(','));
+        rows.push([p.renamedFrom || p.name, p.origCode != null ? p.origCode : p.code, p.outName || '（不能放進 MAC）', p.supp ? p.name : '', p.n, p.e, p.h,
+          p.renamedFrom ? '補點：名稱取自編碼 ' + p.origCode + '；MAC 照原規則用 ' + (p.outName || '') : (p.supp ? '補點：只能直接寫入 D20' : (WHY[p.codeFrom] || ''))].map(cell).join(','));
       });
       result.files.push({ name: base + '_編碼對照表.csv', content: '\uFEFF' + joinLines(rows),
         desc: '原點名、原編碼對照轉換後的點號（' + result.stats.recoded + ' 點改過編碼），可用 Excel 開啟或列印' });
