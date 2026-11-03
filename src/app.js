@@ -41,6 +41,13 @@
       hint: '同一案件的 .L02、.L14、.L20 會合併成一個檔；也可以直接選整個資料夾',
       step2: '檢查結果',
       next: function (r) {
+        if (r.format === 'sdr' || r.format === 'topcon') {
+          return [
+            '把存好的 <b>' + (r.format === 'sdr' ? '.sdr' : '.txt') + '</b> 檔傳到' + (r.format === 'sdr' ? ' SOKKIA' : ' TOPCON') + ' 全站儀（隨身碟 / SD 卡 / 傳輸軟體）。',
+            '在儀器上用「匯入坐標」讀進來，格式和舊程式「複丈輸入檔2SOKKIA」轉出來的一樣。',
+            '匯入後隨便抽查幾個點的坐標。'
+          ];
+        }
         return [
           '把存好的 <b>.' + r.ext + '</b> 檔複製到隨身碟 / SD 卡，或用傳輸線傳到全站儀或 GPS 控制器（兩種儀器用同一個檔）。',
           '在儀器上選「匯入坐標」，格式選 <b>點號, ' + (r.order === 'xy' ? 'X(E), Y(N)' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
@@ -62,7 +69,7 @@
   var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false };
 
   function loadOpts() {
-    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaBuffer: 200, swapXY: false, stripCode: false };
+    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaNearestN: 2, outFormat: 'csv', swapXY: false, stripCode: false };
     try {
       var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}');
       for (var k in s) if (k in d) d[k] = s[k];
@@ -195,7 +202,7 @@
       }
       parts = groups.map(function (g) {
         var base = (groups.length === 1 && o.outName) || g.label;
-        var common = { order: o.xyOrder === 'xy' ? 'xy' : 'yx', stripCode: o.stripCode, ext: o.ext };
+        var common = { order: o.xyOrder === 'xy' ? 'xy' : 'yx', stripCode: o.stripCode, ext: o.ext, format: o.outFormat };
         var x = Core.lToCsv(g.files, Object.assign({ outName: base }, common));
         x.source = g.label;
         return x;
@@ -205,9 +212,10 @@
       var c = coaState();
       parts = cg.map(function (g) {
         var x = Core.coaToCsv(g.files, {
-          outName: (cg.length === 1 && o.outName) || g.label,
+          outName: (cg.length === 1 && o.outName) || undefined,
           parcels: cg.length === 1 && c.mode === 'pick' ? c.picked : null,
-          ctl: c.ctl, buffer: o.coaBuffer, ctlFirst: o.coaCtlFirst !== false,
+          ctl: c.ctl, nearestN: o.coaNearestN, ctlAdd: c.ctlAdd, ctlRemove: c.ctlRemove, ctlFirst: o.coaCtlFirst !== false,
+          format: o.outFormat,
           order: o.xyOrder === 'xy' ? 'xy' : 'yx', ext: o.ext
         });
         x.source = g.label;
@@ -225,7 +233,7 @@
         return x;
       });
     }
-    var r = { kind: state.kind, order: o.xyOrder === 'xy' ? 'xy' : 'yx', ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], report: [], parts: parts, stats: {} };
+    var r = { kind: state.kind, format: GROUPED[state.kind] ? (o.outFormat || 'csv') : null, order: o.xyOrder === 'xy' ? 'xy' : 'yx', ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], report: [], parts: parts, stats: {} };
     parts.forEach(function (p) {
       r.files = r.files.concat(p.files);
       p.report.forEach(function (it) {
@@ -295,6 +303,21 @@
     var db = $('deviceBar'); db.innerHTML = '';
     db.classList.toggle('hidden', !GROUPED[r.kind]);
     if (GROUPED[r.kind]) {
+      var fmt = state.opts.outFormat || 'csv';
+      var row0 = el('div', { 'class': 'devrow' });
+      row0.appendChild(el('span', { 'class': 'lbl' }, '輸出格式：'));
+      var fseg = el('div', { 'class': 'seg' });
+      [['csv', '通用 CSV（點號,Y,X）'], ['sdr', 'SOKKIA .sdr'], ['topcon', 'TOPCON .txt']].forEach(function (c) {
+        var b = el('button', { type: 'button', 'class': fmt === c[0] ? 'on' : '' }, c[1]);
+        b.onclick = function () { state.opts.outFormat = c[0]; saveOpts(); run(); };
+        fseg.appendChild(b);
+      });
+      row0.appendChild(fseg);
+      if (fmt !== 'csv') row0.appendChild(el('span', { 'class': 'muted' }, '格式和舊程式「複丈輸入檔2SOKKIA」完全相同（Y、X 順序固定）'));
+      db.appendChild(row0);
+      if (fmt !== 'csv') {
+        // SOKKIA / TOPCON 格式固定，不用選副檔名與坐標順序
+      } else {
       db.appendChild(el('span', { 'class': 'lbl' }, '副檔名：'));
       var eseg = el('div', { 'class': 'seg' });
       [['csv', '.csv'], ['txt', '.txt']].forEach(function (c) {
@@ -320,6 +343,7 @@
         row2.appendChild(el('span', { 'class': 'muted' }, '例：<span class="mono">' + esc(ex.join(',')) + '</span>（Y 是 27… 開頭、X 是 21… 開頭，系統會自動判斷原檔哪個是 Y）'));
       }
       db.appendChild(row2);
+      }
     }
 
     // 檔案（GPS 還有點沒決定編碼時先不給下載，避免存到暫用的 .00）
@@ -547,7 +571,7 @@
   // ═════════════ 複丈輸入檔：選擇範圍 ═════════════
 
   function coaState() {
-    if (!state.coa) state.coa = { mode: 'all', picked: [], ctl: 'all', search: '' };
+    if (!state.coa) state.coa = { mode: 'all', picked: [], ctl: 'all', search: '', ctlAdd: [], ctlRemove: [], ctlSearch: '' };
     return state.coa;
   }
 
@@ -570,6 +594,28 @@
   }
 
   var PARCEL_SHOW = 300;
+
+  /** 控制點名稱：「BKC001 BKC005」「BKC161~BKC170」「BKC161~170」都可以（不分大小寫） */
+  function parseCtlInput(text, names) {
+    var byUp = {};
+    names.forEach(function (n) { byUp[n.toUpperCase()] = n; });
+    var out = [];
+    String(text).split(/[\s,，、;；]+/).forEach(function (tok) {
+      if (!tok) return;
+      var m = /^([A-Za-z]*)(\d+)\s*[~～]\s*([A-Za-z]*)(\d+)$/.exec(tok);
+      if (m) {
+        var pre = m[1].toUpperCase(), a = parseInt(m[2], 10), b = parseInt(m[4], 10), w = m[2].length;
+        if (b < a) { var t = a; a = b; b = t; }
+        for (var i = a; i <= b && i - a < 2000; i++) {
+          var nm = pre + String(i).padStart(w, '0');
+          if (byUp[nm]) out.push(byUp[nm]);
+        }
+        return;
+      }
+      if (byUp[tok.toUpperCase()]) out.push(byUp[tok.toUpperCase()]);
+    });
+    return out;
+  }
   function renderCoaPanel(r) {
     var panel = $('coaPanel');
     if (r.kind !== 'coa2csv' || !r.parts.length) { panel.classList.add('hidden'); return; }
@@ -601,12 +647,26 @@
         '<div class="plist" id="pqList"></div></div>';
     }
 
+    var ctlList = single ? (p.ctlList || []) : [];
     h += '<div class="coarow"><span class="lbl">控制點：</span><div class="seg" id="coaCtl">' +
-      [['all', '全部'], ['near', '地號周圍'], ['none', '不要']].map(function (b) {
+      [['all', '全部'], ['nearest', '每筆地號最近的點'], ['none', '不要']].map(function (b) {
         return '<button type="button" data-v="' + b[0] + '" class="' + (c.ctl === b[0] ? 'on' : '') + '">' + b[1] + '</button>';
       }).join('') + '</div>' +
-      (c.ctl === 'near' ? '<input type="text" id="coaBuf" inputmode="numeric" value="' + esc(o.coaBuffer) + '" style="width:70px;text-align:center"> 公尺內' : '') +
-      '<span class="muted">' + (single ? '共 ' + p.stats.ctl + ' 點' : '') + (c.ctl === 'near' ? '（界址點範圍往外擴的矩形）' : '') + '</span></div>';
+      (c.ctl === 'nearest' ? '每筆取 <input type="text" id="coaN" inputmode="numeric" value="' + esc(o.coaNearestN) + '" style="width:52px;text-align:center"> 點（一組兩點：測站＋後視）' : '') +
+      '<span class="muted">' + (single ? '選了 ' + p.stats.ctl + ' / ' + (p.stats.totalCtl || 0) + ' 點' : '') + '</span></div>';
+    if (single && ctlList.length) {
+      var sel = ctlList.filter(function (x) { return x.selected; });
+      h += '<div class="pickbox"><div class="coarow"><b>手動加減控制點</b>' +
+        '<input type="text" id="cqInput" placeholder="例如：BKC001 BKC161~BKC170" style="flex:1;min-width:200px">' +
+        '<button class="btn small primary" type="button" id="cqAdd">加入</button>' +
+        '<button class="btn small" type="button" id="cqReset"' + (c.ctlAdd.length || c.ctlRemove.length ? '' : ' disabled') + '>取消手動調整</button></div>' +
+        '<div class="picked">' + (sel.length ? '會輸出 <b>' + sel.length + '</b> 點：' + sel.map(function (x) {
+          return '<span class="chip" title="' + esc(x.auto || '手動加入') + '">' + esc(x.name) + (x.added && !x.auto ? ' <span class="muted">手動</span>' : '') +
+            ' <button type="button" data-crm="' + esc(x.name) + '" aria-label="移除 ' + esc(x.name) + '">×</button></span>';
+        }).join('') : '<span class="muted">目前沒有控制點。</span>') + '</div>' +
+        '<div class="coarow"><input type="search" id="cqSearch" placeholder="搜尋控制點" value="' + esc(c.ctlSearch) + '" style="width:180px"><span class="muted">勾選＝輸出，滑鼠移到點名上可看為什麼被選</span></div>' +
+        '<div class="plist" id="cqList"></div></div>';
+    }
 
     h += '<div class="coarow"><span class="lbl">排序：</span><div class="seg" id="coaSort">' +
       '<button type="button" data-v="1" class="' + (o.coaCtlFirst !== false ? 'on' : '') + '">控制點在前</button>' +
@@ -619,17 +679,52 @@
     segBind('coaMode', function (v) {
       if (v === c.mode) return;
       c.mode = v;
-      if (v === 'pick' && c.ctl === 'all') c.ctl = 'near'; // 挑地號時，控制點預設只要周圍的
-      if (v === 'all' && c.ctl === 'near') c.ctl = 'all';
+      if (v === 'pick' && c.ctl === 'all') c.ctl = 'nearest'; // 挑地號時，控制點預設取每筆地號最近的
+      if (v === 'all' && c.ctl === 'nearest') c.ctl = 'all';
       run();
     });
     segBind('coaCtl', function (v) { c.ctl = v; run(); });
     segBind('coaSort', function (v) { o.coaCtlFirst = v === '1'; saveOpts(); run(); });
-    if ($('coaBuf')) $('coaBuf').onchange = function () {
-      var v = parseFloat(this.value);
-      if (!isFinite(v) || v < 0) { toast('請輸入公尺數'); this.value = o.coaBuffer; return; }
-      o.coaBuffer = v; saveOpts(); run();
+    if ($('coaN')) $('coaN').onchange = function () {
+      var v = parseInt(this.value, 10);
+      if (!(v >= 1 && v <= 20)) { toast('請輸入 1～20'); this.value = o.coaNearestN; return; }
+      o.coaNearestN = v; saveOpts(); run();
     };
+    // 手動加減控制點
+    if ($('cqList')) {
+      var setSel = function (name, on) {
+        var item = ctlList.filter(function (x) { return x.name === name; })[0];
+        var isAuto = item && item.auto;
+        c.ctlAdd = c.ctlAdd.filter(function (n) { return n !== name; });
+        c.ctlRemove = c.ctlRemove.filter(function (n) { return n !== name; });
+        if (on && !isAuto) c.ctlAdd.push(name);
+        if (!on && isAuto) c.ctlRemove.push(name);
+      };
+      $('cqAdd').onclick = function () {
+        var names = parseCtlInput($('cqInput').value, ctlList.map(function (x) { return x.name; }));
+        if (!names.length) { toast('找不到這些控制點，例如：BKC001 BKC161~BKC170'); return; }
+        names.forEach(function (n) { setSel(n, true); });
+        run();
+      };
+      $('cqInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('cqAdd').click(); });
+      $('cqReset').onclick = function () { c.ctlAdd = []; c.ctlRemove = []; run(); };
+      Array.prototype.forEach.call(panel.querySelectorAll('[data-crm]'), function (b) {
+        b.onclick = function () { setSel(b.getAttribute('data-crm'), false); run(); };
+      });
+      var drawCtl = function () {
+        var q = c.ctlSearch.trim().toUpperCase();
+        var list = ctlList.filter(function (x) { return !q || x.name.toUpperCase().indexOf(q) >= 0; });
+        $('cqList').innerHTML = list.slice(0, PARCEL_SHOW).map(function (x) {
+          return '<label class="pitem' + (x.selected ? ' on' : '') + '" title="' + esc(x.auto || (x.added ? '手動加入' : '')) + '"><input type="checkbox" data-c="' + esc(x.name) + '"' + (x.selected ? ' checked' : '') + '>' +
+            '<b>' + esc(x.name) + '</b><span class="muted">' + (x.auto && x.selected ? '自動' : x.added ? '手動' : x.removed ? '已移除' : '') + '</span></label>';
+        }).join('');
+        Array.prototype.forEach.call($('cqList').querySelectorAll('input[data-c]'), function (cb) {
+          cb.onchange = function () { setSel(cb.getAttribute('data-c'), cb.checked); run(); };
+        });
+      };
+      $('cqSearch').addEventListener('input', function () { c.ctlSearch = this.value; drawCtl(); });
+      drawCtl();
+    }
     if (c.mode !== 'pick') return;
 
     var add = function (keys) {

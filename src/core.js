@@ -871,11 +871,8 @@
 
     var base = opts.outName || (sorted.length ? baseName(sorted[0].name) : '未命名');
     var files = [];
-    if (points.length) {
-      var ext = opts.ext === 'txt' ? 'txt' : 'csv';
-      files.push({ name: base + '.' + ext, content: joinLines(lines), main: true,
-        desc: '全站儀、GPS 控制器都能匯入：點號,' + (outOrder === 'xy' ? 'X,Y' : 'Y,X') + '（共 ' + points.length + ' 點）' });
-    }
+    if (points.length) files.push(writePoints(points, base, Object.assign({}, opts, { order: outOrder }), '共 ' + points.length + ' 點'));
+    void lines;
     return {
       kind: 'l2csv',
       order: outOrder,
@@ -1030,43 +1027,92 @@
     });
 
     // 控制點
-    var mode = opts.ctl || 'all';
-    var ctlPts = [];
-    if (mode !== 'none') {
-      ctlPts = ctl;
-      if (mode === 'near' && bnd.length) {
-        var buf = isFinite(parseFloat(opts.buffer)) ? parseFloat(opts.buffer) : 200;
-        var minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
-        bnd.forEach(function (p) {
-          var y = parseFloat(p.y), x = parseFloat(p.x);
-          minY = Math.min(minY, y); maxY = Math.max(maxY, y); minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-        });
-        ctlPts = ctl.filter(function (c) {
-          var y = parseFloat(c.y), x = parseFloat(c.x);
-          return y >= minY - buf && y <= maxY + buf && x >= minX - buf && x <= maxX + buf;
-        });
-        result.stats.buffer = buf;
-        if (!ctlPts.length) report.warn('界址點範圍外 ' + buf + ' 公尺內沒有控制點，可以把距離加大或改選「全部」');
-      }
+    // 控制點：all 全部 | nearest 每筆地號取最近 N 點（預設 2，一組兩點：測站＋後視）| none 不要
+    //         再加上手動加入（ctlAdd）、扣掉手動移除（ctlRemove）
+    var mode = opts.ctl === 'near' ? 'nearest' : (opts.ctl || 'all');
+    var nearestN = Math.max(1, parseInt(opts.nearestN, 10) || 2);
+    var auto = {};              // 點名 → 自動選入的原因
+    if (mode === 'all') ctl.forEach(function (c) { auto[c.name] = '全部'; });
+    if (mode === 'nearest' && ctl.length) {
+      var groups = picked.length && bnp ? picked.filter(function (k) { return bnp.map[k]; }).map(function (k) {
+        return { key: k, ids: bnp.map[k].filter(function (id) { return coa.map[id]; }) };
+      }) : [{ key: '全部界址點', ids: bnd.map(function (p) { return p.name; }) }];
+      groups.forEach(function (g) {
+        if (!g.ids.length) return;
+        var cy = 0, cx = 0;
+        g.ids.forEach(function (id) { cy += parseFloat(coa.map[id].y); cx += parseFloat(coa.map[id].x); });
+        cy /= g.ids.length; cx /= g.ids.length;
+        ctl.map(function (c) { return { c: c, d: Math.hypot(parseFloat(c.y) - cy, parseFloat(c.x) - cx) }; })
+          .sort(function (a, b) { return a.d - b.d; })
+          .slice(0, nearestN)
+          .forEach(function (o) {
+            var why = '地號 ' + g.key + ' 最近（' + Math.round(o.d) + ' m）';
+            auto[o.c.name] = auto[o.c.name] ? auto[o.c.name] + '、' + why : why;
+          });
+      });
     }
-    ctlPts = ctlPts.map(function (c) { return { name: c.name, y: c.y, x: c.x, type: '控制點', src: byExt.CTL ? byExt.CTL.name : '' }; });
+    var add = {}, remove = {};
+    (opts.ctlAdd || []).forEach(function (n) { add[n] = 1; });
+    (opts.ctlRemove || []).forEach(function (n) { remove[n] = 1; });
+    var ctlNames = {};
+    ctl.forEach(function (c) { ctlNames[c.name] = 1; });
+    Object.keys(add).forEach(function (n) { if (!ctlNames[n]) report.warn('控制點 ' + n + ' 不在 .CTL 裡，已略過'); });
+    // 輸出依 .CTL 原本的順序（和舊程式一樣）
+    var ctlPts = ctl.filter(function (c) { return (auto[c.name] || add[c.name]) && !remove[c.name]; })
+      .map(function (c) { return { name: c.name, y: c.y, x: c.x, type: '控制點', src: byExt.CTL ? byExt.CTL.name : '' }; });
+    result.ctlList = ctl.map(function (c) {
+      return { name: c.name, auto: auto[c.name] || '', added: !!add[c.name], removed: !!remove[c.name],
+        selected: !!((auto[c.name] || add[c.name]) && !remove[c.name]) };
+    });
+    if (mode === 'nearest' && !ctlPts.length && ctl.length) report.warn('沒有選到任何控制點，請確認地號或手動加入');
 
     var points = opts.ctlFirst === false ? bnd.concat(ctlPts) : ctlPts.concat(bnd);
-    var outOrder = opts.order === 'xy' ? 'xy' : 'yx';
-    var lines = points.map(function (p) { return outOrder === 'xy' ? [p.name, p.x, p.y].join(',') : [p.name, p.y, p.x].join(','); });
-
-    result.order = outOrder;
+    result.order = opts.order === 'xy' ? 'xy' : 'yx';
     result.preview = points;
     result.stats.points = points.length;
     result.stats.ctl = ctlPts.length;
     result.stats.bnd = bnd.length;
     result.stats.totalBnd = coa.ids.length;
+    result.stats.totalCtl = ctl.length;
     result.perFile = [{ name: byExt.CTL ? byExt.CTL.name : '', type: '控制點', count: ctlPts.length }, { name: byExt.COA.name, type: '界址點', count: bnd.length }];
     if (!points.length) { report.error('沒有任何點可以輸出'); return result; }
-    var ext = opts.ext === 'txt' ? 'txt' : 'csv';
-    result.files.push({ name: base + '.' + ext, content: joinLines(lines), main: true,
-      desc: '全站儀、GPS 控制器都能匯入：點號,' + (outOrder === 'xy' ? 'X,Y' : 'Y,X') + '（控制點 ' + ctlPts.length + '、界址點 ' + bnd.length + '）' });
+    // 檔名：同舊程式，有挑地號時加上地號（KC1117 + 1_2_3 → KC11171_2_3）
+    var outBase = base;
+    if (!opts.outName && picked.length) {
+      outBase = base + (picked.length <= 6 ? picked.join('_') : picked.slice(0, 3).join('_') + '等' + picked.length + '筆');
+    }
+    result.files.push(writePoints(points, outBase, opts, '控制點 ' + ctlPts.length + '、界址點 ' + bnd.length));
     return result;
+  }
+
+  // ───────────────────────── 輸出格式 ─────────────────────────
+
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function padR(s, w) { s = String(s); while (s.length < w) s += ' '; return s; }
+
+  /**
+   * 把點位寫成儀器檔：
+   *   'csv'    點號,Y,X（或 X,Y），副檔名 .csv / .txt
+   *   'sdr'    SOKKIA SDR33：BOM + 00NM/10NM 標頭 + 每點 08KI＋5 個 16 字欄（同「複丈輸入檔2SOKKIA」）
+   *   'topcon' TOPCON：點號,Y,X,0.000,1（同「複丈輸入檔2SOKKIA」）
+   */
+  function writePoints(points, base, opts, summary) {
+    var fmt = opts.format || 'csv';
+    if (fmt === 'sdr') {
+      var d = opts.now ? new Date(opts.now) : new Date();
+      var stamp = pad(d.getDate(), 2) + '-' + MONTHS[d.getMonth()] + '-' + pad(d.getFullYear() % 100, 2) + ' ' + pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2);
+      var rows = ['00NMSDR33 V04-04.02     ' + stamp + ' 111111', '10NM' + padR('', 16) + '121111'];
+      points.forEach(function (p) { rows.push('08KI' + padR(p.name, 16) + padR(p.y, 16) + padR(p.x, 16) + padR('0.', 16) + padR('1', 16)); });
+      return { name: base + '.sdr', content: '\uFEFF' + joinLines(rows), main: true, desc: 'SOKKIA 格式（' + summary + '）' };
+    }
+    if (fmt === 'topcon') {
+      return { name: base + '.txt', content: joinLines(points.map(function (p) { return [p.name, p.y, p.x, '0.000', '1'].join(','); })),
+        main: true, desc: 'TOPCON 格式：點號,Y,X,0.000,1（' + summary + '）' };
+    }
+    var xy = opts.order === 'xy';
+    var ext = opts.ext === 'txt' ? 'txt' : 'csv';
+    return { name: base + '.' + ext, content: joinLines(points.map(function (p) { return xy ? [p.name, p.x, p.y].join(',') : [p.name, p.y, p.x].join(','); })),
+      main: true, desc: '全站儀、GPS 控制器都能匯入：點號,' + (xy ? 'X,Y' : 'Y,X') + '（' + summary + '）' };
   }
 
   // ───────────────────────── 資料夾掃描 ─────────────────────────
@@ -1157,6 +1203,7 @@
     L_ORDER: L_ORDER,
     classifyYX: classifyYX,
     coaToCsv: coaToCsv,
+    writePoints: writePoints,
     parcelKeyOf: parcelKeyOf,
     COA_EXTS: COA_EXTS
   };

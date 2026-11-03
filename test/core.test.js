@@ -267,10 +267,14 @@ test('複丈輸入檔：COA + CTL + BNP + PAR → CSV，可依地號挑選、控
   ]);
   assert.deepStrictEqual(all.parcels.map((p) => p.key), ['1', '2', '1000']);
   assert.strictEqual(all.parcels[2].area, '6.63');       // 4 位數母號，面積不會黏在一起
-  // 只要地號 1，控制點只取周圍 200 m，界址點在前，X,Y
-  const r = Core.coaToCsv(inputs, { parcels: ['0001'], ctl: 'near', ctlFirst: false, order: 'xy', ext: 'txt' });
+  // 只要地號 1，控制點取最近 1 點，界址點在前，X,Y；檔名加上地號（同舊程式）
+  const r = Core.coaToCsv(inputs, { parcels: ['0001'], ctl: 'nearest', nearestN: 1, ctlFirst: false, order: 'xy', ext: 'txt' });
   assert.deepStrictEqual(lines(r.files[0].content), ['1,219829.249,2707758.002', '3,219898.484,2707796.091', 'BKC001,219830.220,2707760.653']);
-  assert.ok(r.files[0].name.endsWith('.txt'));
+  assert.strictEqual(r.files[0].name, 'KC99991.txt');
+  assert.match(r.ctlList.find((c) => c.name === 'BKC001').auto, /地號 1 最近/);
+  // 手動：拿掉自動選的、加入別的
+  const m = Core.coaToCsv(inputs, { parcels: ['1'], ctl: 'nearest', nearestN: 1, ctlRemove: ['BKC001'], ctlAdd: ['BKC002'] });
+  assert.deepStrictEqual(m.ctlList.filter((c) => c.selected).map((c) => c.name), ['BKC002']);
   assert.strictEqual(Core.parcelKeyOf('0012-0003'), '12-3');
   assert.strictEqual(Core.parcelKeyOf('12之3'), '12-3');
   // 缺 .COA
@@ -279,4 +283,22 @@ test('複丈輸入檔：COA + CTL + BNP + PAR → CSV，可依地號挑選、控
   const g = Core.groupFolderFiles(inputs.map((f) => ({ name: f.name, path: 'job/' + f.name })));
   assert.strictEqual(g.coa2csv.length, 1);
   assert.strictEqual(Core.detectKind('a.COA', ''), 'coa2csv');
+});
+
+test('SOKKIA .sdr 與 TOPCON .txt 格式（同「複丈輸入檔2SOKKIA」）', () => {
+  const pts = [{ name: 'BKC001', y: '2707539.653', x: '219629.220' }, { name: '4', y: '2707849.009', x: '219902.876' }];
+  const sdr = Core.writePoints(pts, 'KC11171_2_3', { format: 'sdr', now: new Date(2026, 10, 3, 11, 6) }, '');
+  assert.strictEqual(sdr.name, 'KC11171_2_3.sdr');
+  assert.strictEqual(sdr.content,
+    '\uFEFF00NMSDR33 V04-04.02     03-Nov-26 11:06 111111\r\n' +
+    '10NM                121111\r\n' +
+    '08KIBKC001          2707539.653     219629.220      0.              1               \r\n' +
+    '08KI4               2707849.009     219902.876      0.              1               \r\n');
+  const tc = Core.writePoints(pts, 'KC11171_2_3', { format: 'topcon' }, '');
+  assert.strictEqual(tc.name, 'KC11171_2_3.txt');
+  assert.strictEqual(tc.content, 'BKC001,2707539.653,219629.220,0.000,1\r\n4,2707849.009,219902.876,0.000,1\r\n');
+  // 重測資料（L 檔）也能輸出 SOKKIA
+  const l = Core.lToCsv([{ name: 'K.L02', text: 'BC13  2700703.742  218447.786\n' }], { format: 'sdr', now: new Date(2026, 0, 5, 8, 3) });
+  assert.ok(l.files[0].name.endsWith('.sdr'));
+  assert.ok(l.files[0].content.includes('05-Jan-26 08:03'));
 });
