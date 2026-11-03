@@ -229,3 +229,22 @@ test('GPS CSV：沒有編碼但有高程的點要使用者決定編碼', () => {
   assert.ok(lines(r2.files.find((f) => f.name === 'a.mac').content).some((l) => l.startsWith('8.05 ')));
   assert.ok(r2.files.find((f) => f.name === 'a_編碼對照表.csv').content.includes('8,,8.05,'));
 });
+
+test('L 檔：依數值判斷 Y（27…）、X（21…），輸出順序可選 Y,X（預設）或 X,Y', () => {
+  assert.strictEqual(Core.classifyYX('2701039.308', '218159.992'), 'yx');
+  assert.strictEqual(Core.classifyYX('218159.992', '2701039.308'), 'xy');
+  assert.strictEqual(Core.classifyYX('1000.000', '1010.000'), null);
+  // 同一行裡一點 Y 在前、一點 X 在前
+  const t = '4240.0  2701039.308  218159.992   4569.0  218122.205  2701011.383\n';
+  const r = Core.lToCsv([{ name: 'K.L14', text: t }]);
+  assert.strictEqual(r.order, 'yx');
+  assert.deepStrictEqual(lines(r.files[0].content), ['4240,2701039.308,218159.992', '4569,2701011.383,218122.205']);
+  assert.ok(r.report.some((x) => /X 在前/.test(x.msg)));
+  const xy = Core.lToCsv([{ name: 'K.L14', text: t }], { order: 'xy' });
+  assert.deepStrictEqual(lines(xy.files[0].content), ['4240,218159.992,2701039.308', '4569,218122.205,2701011.383']);
+  assert.match(xy.files[0].desc, /點號,X,Y/);
+  // 看不出來的假設坐標：照原順序並提醒
+  const loc = Core.lToCsv([{ name: 'K.L14', text: '1 1000.000 1010.000\n' }]);
+  assert.strictEqual(lines(loc.files[0].content)[0], '1,1000.000,1010.000');
+  assert.ok(loc.report.some((x) => x.level === 'warn' && /看不出/.test(x.msg)));
+});

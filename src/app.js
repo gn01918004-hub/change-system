@@ -43,7 +43,7 @@
       next: function (r) {
         return [
           '把存好的 <b>.' + r.ext + '</b> 檔複製到隨身碟 / SD 卡，或用傳輸線傳到全站儀或 GPS 控制器（兩種儀器用同一個檔）。',
-          '在儀器上選「匯入坐標」，格式選 <b>點號, ' + (r.swapXY ? '第2坐標, 第1坐標' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
+          '在儀器上選「匯入坐標」，格式選 <b>點號, ' + (r.order === 'xy' ? 'X(E), Y(N)' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
           '匯入後隨便抽查幾個點的坐標，確認沒有 X、Y 對調。'
         ];
       }
@@ -54,8 +54,12 @@
   var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {} };
 
   function loadOpts() {
-    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
-    try { var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}'); for (var k in s) if (k in d) d[k] = s[k]; } catch (e) {}
+    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', swapXY: false, stripCode: false };
+    try {
+      var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}');
+      for (var k in s) if (k in d) d[k] = s[k];
+      if (!s.xyOrder && s.swapXY) d.xyOrder = 'xy'; // 舊版「交換坐標欄位」設定沿用
+    } catch (e) {}
     return d;
   }
   function saveOpts() {
@@ -183,7 +187,7 @@
       }
       parts = groups.map(function (g) {
         var base = (groups.length === 1 && o.outName) || g.label;
-        var common = { swapXY: o.swapXY, stripCode: o.stripCode, ext: o.ext };
+        var common = { order: o.xyOrder === 'xy' ? 'xy' : 'yx', stripCode: o.stripCode, ext: o.ext };
         var x = Core.lToCsv(g.files, Object.assign({ outName: base }, common));
         x.source = g.label;
         return x;
@@ -200,7 +204,7 @@
         return x;
       });
     }
-    var r = { kind: state.kind, swapXY: o.swapXY, ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], report: [], parts: parts, stats: {} };
+    var r = { kind: state.kind, order: o.xyOrder === 'xy' ? 'xy' : 'yx', ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], report: [], parts: parts, stats: {} };
     parts.forEach(function (p) {
       r.files = r.files.concat(p.files);
       p.report.forEach(function (it) {
@@ -277,7 +281,23 @@
         eseg.appendChild(b);
       });
       db.appendChild(eseg);
-      db.appendChild(el('span', { 'class': 'muted' }, '內容相同，只差副檔名；會記住你的選擇'));
+      db.appendChild(el('span', { 'class': 'muted' }, '內容相同，只差副檔名'));
+      // 坐標順序（預設 Y,X）；附上第一點當例子，一眼看出 27… / 21… 在哪
+      var row2 = el('div', { 'class': 'devrow' });
+      row2.appendChild(el('span', { 'class': 'lbl' }, '坐標順序：'));
+      var oseg = el('div', { 'class': 'seg' });
+      [['yx', 'Y , X（預設）'], ['xy', 'X , Y']].forEach(function (c) {
+        var b = el('button', { type: 'button', 'class': (state.opts.xyOrder || 'yx') === c[0] ? 'on' : '' }, c[1]);
+        b.onclick = function () { state.opts.xyOrder = c[0]; saveOpts(); run(); };
+        oseg.appendChild(b);
+      });
+      row2.appendChild(oseg);
+      var first = r.parts.length && r.parts[0].preview[0];
+      if (first) {
+        var ex = r.order === 'xy' ? [first.name, first.x, first.y] : [first.name, first.y, first.x];
+        row2.appendChild(el('span', { 'class': 'muted' }, '例：<span class="mono">' + esc(ex.join(',')) + '</span>（Y 是 27… 開頭、X 是 21… 開頭，系統會自動判斷原檔哪個是 Y）'));
+      }
+      db.appendChild(row2);
     }
 
     // 檔案（GPS 還有點沒決定編碼時先不給下載，避免存到暫用的 .00）
@@ -677,8 +697,8 @@
       });
       h += '</tbody></table>';
     } else {
-      var sw = r.swapXY;
-      h = '<table><thead><tr><th class="l">點號</th><th>' + (sw ? '第 2 坐標' : 'Y') + '</th><th>' + (sw ? '第 1 坐標' : 'X') + '</th><th class="l">種類</th><th class="l">來源檔案</th></tr></thead><tbody>';
+      var sw = r.order === 'xy';
+      h = '<table><thead><tr><th class="l">點號</th><th>' + (sw ? 'X' : 'Y') + '</th><th>' + (sw ? 'Y' : 'X') + '</th><th class="l">種類</th><th class="l">來源檔案</th></tr></thead><tbody>';
       r.parts.forEach(function (part) {
         if (r.parts.length > 1) h += '<tr class="station"><td class="l" colspan="5">' + esc(part.source) + '</td></tr>';
         part.preview.forEach(function (p) {
@@ -763,7 +783,6 @@
       o.appendChild(seg('距離小數位', 'distDecimals', [[3, '3 位 (mm)'], [4, '4 位']]));
     }
     if (k === 'l2csv') {
-      o.appendChild(chk('交換坐標欄位順序', 'swapXY', '儀器匯入後如果點位 X、Y 顛倒，勾這個。'));
       o.appendChild(chk('去掉點號後面的編碼', 'stripCode', '例如 1001.05 → 1001（.0、.00 一律會自動去掉）。'));
     }
   }

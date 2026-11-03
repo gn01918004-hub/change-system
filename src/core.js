@@ -787,6 +787,20 @@
     return res;
   }
 
+  /**
+   * 判斷兩個坐標哪個是 Y（縱坐標、N）、哪個是 X（橫坐標、E）。
+   * 台灣 TWD97 / TWD67：Y 約 2,4xx,xxx～2,8xx,xxx（常見 27… 開頭），X 約 1xx,xxx～3xx,xxx（常見 21… 開頭）。
+   * 回傳 'yx'（a 是 Y）、'xy'（a 是 X）或 null（看不出來，例如假設坐標）。
+   */
+  function classifyYX(a, b) {
+    var isY = function (v) { return v >= 2000000 && v < 3000000; };
+    var isX = function (v) { return v >= 100000 && v < 500000; };
+    a = Math.abs(parseFloat(a)); b = Math.abs(parseFloat(b));
+    if (isY(a) && isX(b)) return 'yx';
+    if (isX(a) && isY(b)) return 'xy';
+    return null;
+  }
+
   function lToCsv(inputs, opts) {
     opts = opts || {};
     var report = new Report();
@@ -807,13 +821,21 @@
       if (!L_TYPES[ext]) report.warn('「' + inp.name + '」不是 L02/L14/L20 檔，仍嘗試讀取');
       var count = 0;
       var skipped = 0;
+      var swapped = 0;
+      var unknown = 0;
       splitLines(inp.text).forEach(function (raw, idx) {
         if (!raw.trim()) return;
         var triples = extractTriples(raw);
         if (!triples.length) { skipped++; return; }
         triples.forEach(function (tr) {
           var name = normalizeName(tr[0], opts.stripCode);
-          var p = { name: name, y: tr[1], x: tr[2], src: inp.name, type: label, line: idx + 1 };
+          // 依數值判斷哪個是 Y、哪個是 X（不管檔案裡誰在前）
+          var kind = classifyYX(tr[1], tr[2]);
+          if (kind === 'xy') swapped++;
+          else if (!kind) unknown++;
+          var p = kind === 'xy'
+            ? { name: name, y: tr[2], x: tr[1], src: inp.name, type: label, line: idx + 1, swapped: true }
+            : { name: name, y: tr[1], x: tr[2], src: inp.name, type: label, line: idx + 1 };
           var prev = byName[name];
           if (prev) {
             if (prev.y === p.y && prev.x === p.x) {
@@ -828,15 +850,23 @@
           count++;
         });
       });
-      perFile.push({ name: inp.name, type: label, count: count, skipped: skipped });
+      perFile.push({ name: inp.name, type: label, count: count, skipped: skipped, swapped: swapped });
+      if (swapped) {
+        report.info('「' + inp.name + '」有 ' + swapped + ' 點的坐標是 X 在前（21… 在前、27… 在後），已依數值自動判斷：27… 是 Y、21… 是 X');
+      }
+      if (unknown) {
+        report.warn('「' + inp.name + '」有 ' + unknown + ' 點看不出哪個是 Y、哪個是 X（不像台灣 TWD97 坐標），照檔案原本的順序當成 Y、X，請確認');
+      }
       if (count === 0) report.error('「' + inp.name + '」裡找不到任何點位坐標');
       else if (skipped) report.info('「' + inp.name + '」有 ' + skipped + ' 行不是坐標（標題或空白），已略過');
     });
 
     if (dupSame) report.info('有 ' + dupSame + ' 筆在不同檔案中完全相同的重複點，已自動只保留一筆');
 
+    // 輸出順序：'yx'（預設，點號,Y,X）或 'xy'（點號,X,Y）
+    var outOrder = opts.order === 'xy' || (!opts.order && opts.swapXY) ? 'xy' : 'yx';
     var lines = points.map(function (p) {
-      return opts.swapXY ? [p.name, p.x, p.y].join(',') : [p.name, p.y, p.x].join(',');
+      return outOrder === 'xy' ? [p.name, p.x, p.y].join(',') : [p.name, p.y, p.x].join(',');
     });
 
     var base = opts.outName || (sorted.length ? baseName(sorted[0].name) : '未命名');
@@ -844,10 +874,11 @@
     if (points.length) {
       var ext = opts.ext === 'txt' ? 'txt' : 'csv';
       files.push({ name: base + '.' + ext, content: joinLines(lines), main: true,
-        desc: '全站儀、GPS 控制器都能匯入：點號,' + (opts.swapXY ? '第2坐標,第1坐標' : 'Y,X') + '（共 ' + points.length + ' 點）' });
+        desc: '全站儀、GPS 控制器都能匯入：點號,' + (outOrder === 'xy' ? 'X,Y' : 'Y,X') + '（共 ' + points.length + ' 點）' });
     }
     return {
       kind: 'l2csv',
+      order: outOrder,
       files: files,
       report: report.items,
       preview: points,
@@ -930,6 +961,7 @@
     normalizeName: normalizeName,
     baseName: baseName,
     extName: extName,
-    L_ORDER: L_ORDER
+    L_ORDER: L_ORDER,
+    classifyYX: classifyYX
   };
 });
