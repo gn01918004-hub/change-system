@@ -123,21 +123,23 @@ test('GPS CSV：標題列略過、第 2 點重合時換後視點', () => {
   assert.strictEqual(mac[5], '4.01 90.0000 100.000');
 });
 
-test('L 檔 → 全站儀 CSV（每行多點、標題自動略過、重複點只留一筆）', () => {
-  const inputs = ['範例.L02', '範例.L14', '範例.L20'].map((n) => ({ name: n, text: sample(n) }));
+test('L 檔 → 儀器 CSV（控制點→界址→補點、每行多點、標題自動略過、重複點只留一筆）', () => {
+  const inputs = ['範例.L14', '範例.L20', '範例.L02'].map((n) => ({ name: n, text: sample(n) }));
   inputs.push({ name: 'dup.L14', text: '101 2650100.000 251000.000\n' });
-  const ts = Core.lToCsv(inputs, { device: 'ts' });
-  assert.deepStrictEqual(lines(ts.files[0].content), [
+  const r = Core.lToCsv(inputs);
+  assert.deepStrictEqual(lines(r.files[0].content), [
+    '101,2650100.000,251000.000',
+    '102,2650185.432,251000.000',
     '1001,2650116.723,251016.893',
     '1002,2650084.390,251026.952',
     '1003,2650112.880,250999.990',
-    '101,2650100.000,251000.000',
-    '2001,2650130.111,251030.222',
-    '102,2650185.432,251000.000'
+    '2001,2650130.111,251030.222'
   ]);
-  const gps = Core.lToCsv(inputs, { device: 'gps', swapXY: true });
-  assert.strictEqual(lines(gps.files[0].content)[0], '101,251000.000,2650100.000');
-  assert.ok(gps.files[0].name.endsWith('.csv'));
+  assert.strictEqual(r.files.length, 1);
+  assert.ok(r.files[0].name.endsWith('.csv'));
+  const sw = Core.lToCsv(inputs, { swapXY: true, ext: 'txt' });
+  assert.strictEqual(lines(sw.files[0].content)[0], '101,251000.000,2650100.000');
+  assert.ok(sw.files[0].name.endsWith('.txt'));
 });
 
 test('自動判斷檔案類型', () => {
@@ -174,6 +176,6 @@ test('資料夾掃描：同資料夾同主檔名的 L 檔合為一組', () => {
 
 test('L 檔：每行 3 點、PAGE 標題列、點號 .0 去掉', () => {
   const t = 'PAGE 1/2\r\n  4240.0     2701039.308   218159.992     4569.0     2701011.383   218122.205     4653.0     2701058.068   218175.406   \r\n\r\nPAGE 2/2\r\n  4711.0     2701061.516   218184.435\r\n';
-  const r = Core.lToCsv([{ name: 'K.L14', text: t }], { device: 'gps' });
+  const r = Core.lToCsv([{ name: 'K.L14', text: t }]);
   assert.deepStrictEqual(lines(r.files[0].content), ['4240,2701039.308,218159.992', '4569,2701011.383,218122.205', '4653,2701058.068,218175.406', '4711,2701061.516,218184.435']);
 });

@@ -686,10 +686,9 @@
     L20: '補點'
   };
 
-  var DEVICE_PRESETS = {
-    ts: { label: '全站儀', order: ['L14', 'L20', 'L02'], ext: 'csv' },   // 順序同 TS01.xls
-    gps: { label: 'GPS 控制器', order: ['L02', 'L14', 'L20'], ext: 'csv' } // 同 TrimblePointInputV3.jar
-  };
+  // 全站儀與 GPS 控制器吃的格式相同（點號,Y,X），只輸出一種檔。
+  // 點位順序：控制點 → 界址點/參考點 → 補點（現場先找控制點）。
+  var L_ORDER = ['L02', 'L14', 'L20'];
 
   function normalizeName(name, stripCode) {
     if (stripCode) {
@@ -722,9 +721,8 @@
 
   function lToCsv(inputs, opts) {
     opts = opts || {};
-    var preset = DEVICE_PRESETS[opts.device] || DEVICE_PRESETS.ts;
     var report = new Report();
-    var order = preset.order;
+    var order = L_ORDER;
     var sorted = inputs.slice().sort(function (a, b) {
       var ia = order.indexOf(extName(a.name)), ib = order.indexOf(extName(b.name));
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
@@ -776,13 +774,12 @@
     var base = opts.outName || (sorted.length ? baseName(sorted[0].name) : '未命名');
     var files = [];
     if (points.length) {
-      var ext = opts.ext === 'txt' ? 'txt' : preset.ext;
+      var ext = opts.ext === 'txt' ? 'txt' : 'csv';
       files.push({ name: base + '.' + ext, content: joinLines(lines), main: true,
-        desc: '給' + preset.label + '匯入：點號,' + (opts.swapXY ? '第2坐標,第1坐標' : 'Y,X') + '（共 ' + points.length + ' 點）' });
+        desc: '全站儀、GPS 控制器都能匯入：點號,' + (opts.swapXY ? '第2坐標,第1坐標' : 'Y,X') + '（共 ' + points.length + ' 點）' });
     }
     return {
       kind: 'l2csv',
-      device: opts.device || 'ts',
       files: files,
       report: report.items,
       preview: points,
@@ -865,6 +862,6 @@
     normalizeName: normalizeName,
     baseName: baseName,
     extName: extName,
-    DEVICE_PRESETS: DEVICE_PRESETS
+    L_ORDER: L_ORDER
   };
 });

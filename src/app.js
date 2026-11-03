@@ -36,27 +36,22 @@
       }
     },
     l2csv: {
-      title: '重測資料 → 外業儀器',
+      title: '重測資料 → 全站儀 / GPS 控制器',
       accept: '.l02,.l14,.l20,.txt',
       hint: '同一案件的 .L02、.L14、.L20 會合併成一個檔；也可以直接選整個資料夾',
       step2: '檢查結果',
       next: function (r) {
-        var dev = DEVICE_NAME[r.device];
         return [
-          (r.device === 'both' ? '<b>_全站儀.' + r.ext + '</b> 給全站儀、<b>_GPS.' + r.ext + '</b> 給 GPS 控制器，' : '') +
-          '把存好的檔案複製到隨身碟 / SD 卡，或用傳輸線傳到' + (r.device === 'both' ? '各儀器' : dev) + '。',
-          '在' + (r.device === 'both' ? '各儀器' : dev) + '上選「匯入坐標」，格式選 <b>點號, ' + (r.swapXY ? '第2坐標, 第1坐標' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
+          '把存好的 <b>.' + r.ext + '</b> 檔複製到隨身碟 / SD 卡，或用傳輸線傳到全站儀或 GPS 控制器（兩種儀器用同一個檔）。',
+          '在儀器上選「匯入坐標」，格式選 <b>點號, ' + (r.swapXY ? '第2坐標, 第1坐標' : 'Y(N), X(E)') + '</b>（逗號分隔）。',
           '匯入後隨便抽查幾個點的坐標，確認沒有 X、Y 對調。'
         ];
       }
     }
   };
 
-  var DEVICE_NAME = { ts: '全站儀', gps: 'GPS 控制器', both: '全站儀 ＋ GPS 控制器' };
-  var DEVICE_CHOICES = [['ts', '全站儀'], ['gps', 'GPS 控制器'], ['both', '兩種都要']];
-
   // ─────────── 狀態 ───────────
-  var state = { kind: null, device: 'ts', inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null };
+  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null };
 
   function loadOpts() {
     var d = { ext: 'csv', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
@@ -89,16 +84,14 @@
     $('home').classList.remove('hidden'); $('work').classList.add('hidden');
     window.scrollTo(0, 0);
   }
-  function openKind(kind, device) {
+  function openKind(kind) {
     state.kind = kind;
-    if (device) state.device = device;
     state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
   }
   function kindTitle() {
-    if (state.kind === 'l2csv') return '重測資料 → ' + DEVICE_NAME[state.device];
     return KINDS[state.kind].title;
   }
 
@@ -161,15 +154,7 @@
       parts = groups.map(function (g) {
         var base = (groups.length === 1 && o.outName) || g.label;
         var common = { swapXY: o.swapXY, stripCode: o.stripCode, ext: o.ext };
-        var x;
-        if (state.device === 'both') {
-          // 兩種儀器都要：各出一個檔，檔名加上儀器名稱區分
-          x = Core.lToCsv(g.files, Object.assign({ device: 'ts', outName: base + '_全站儀' }, common));
-          var y = Core.lToCsv(g.files, Object.assign({ device: 'gps', outName: base + '_GPS' }, common));
-          x.files = x.files.concat(y.files);
-        } else {
-          x = Core.lToCsv(g.files, Object.assign({ device: state.device, outName: base }, common));
-        }
+        var x = Core.lToCsv(g.files, Object.assign({ outName: base }, common));
         x.source = g.label;
         return x;
       });
@@ -185,7 +170,7 @@
         return x;
       });
     }
-    var r = { kind: state.kind, device: state.device, swapXY: o.swapXY, ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], report: [], parts: parts, stats: {} };
+    var r = { kind: state.kind, swapXY: o.swapXY, ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], report: [], parts: parts, stats: {} };
     parts.forEach(function (p) {
       r.files = r.files.concat(p.files);
       p.report.forEach(function (it) {
@@ -245,19 +230,11 @@
     renderThumbs(r);
     renderReview(r);
 
-    // 儀器選擇（重測資料匯出時顯示在存檔區最上面）
+    // 副檔名選擇（重測資料匯出時顯示在存檔區最上面）
     var db = $('deviceBar'); db.innerHTML = '';
     db.classList.toggle('hidden', r.kind !== 'l2csv');
     if (r.kind === 'l2csv') {
-      db.appendChild(el('span', { 'class': 'lbl' }, '要給哪種儀器：'));
-      var dseg = el('div', { 'class': 'seg' });
-      DEVICE_CHOICES.forEach(function (c) {
-        var b = el('button', { type: 'button', 'class': state.device === c[0] ? 'on' : '' }, c[1]);
-        b.onclick = function () { state.device = c[0]; $('workTitle').textContent = kindTitle(); run(); };
-        dseg.appendChild(b);
-      });
-      db.appendChild(dseg);
-      db.appendChild(el('span', { 'class': 'lbl', style: 'margin-left:14px' }, '副檔名：'));
+      db.appendChild(el('span', { 'class': 'lbl' }, '副檔名：'));
       var eseg = el('div', { 'class': 'seg' });
       [['csv', '.csv'], ['txt', '.txt']].forEach(function (c) {
         var b = el('button', { type: 'button', 'class': (state.opts.ext || 'csv') === c[0] ? 'on' : '', title: c[0] === 'csv' ? '預設' : '儀器只認 .txt 時使用' }, c[1]);
@@ -707,21 +684,6 @@
   $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeModal(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
 
-  function startL2csv(files, device) {
-    closeModal();
-    if (state.kind !== 'l2csv') openKind('l2csv', device);
-    else if (device) state.device = device;
-    mergeInputs(files);
-    run();
-  }
-
-  function askDevice(files) {
-    modal('<h3>這些重測資料要給哪種儀器？</h3><div class="muted">已讀到：' + files.map(function (f) { return esc(f.name); }).join('、') + '</div>' +
-      '<div class="choice three"><button data-d="ts">全站儀<small>Nikon 等全站儀放樣</small></button><button data-d="gps">GPS 控制器<small>Trimble 等 GPS 控制器</small></button><button data-d="both">兩種都要<small>各輸出一個檔</small></button></div>');
-    Array.prototype.forEach.call($('modalBox').querySelectorAll('[data-d]'), function (b) {
-      b.onclick = function () { startL2csv(files, b.getAttribute('data-d')); };
-    });
-  }
 
   $('btnAbout').onclick = function () {
     modal('<div class="about"><h3>使用說明</h3>' +
@@ -778,11 +740,7 @@
           (det ? '<div class="det">' + det + '</div>' : '') + (item.dir ? '<div class="det">📁 ' + esc(item.dir) + '</div>' : '') + '</span></label>';
       });
       h += '<div class="acts">';
-      if (k === 'l2csv' && state.kind !== 'l2csv') {
-        h += '<button class="btn primary go-btn" data-d="ts" disabled>轉給全站儀 →</button><button class="btn primary go-btn" data-d="gps" disabled>轉給 GPS 控制器 →</button><button class="btn primary go-btn" data-d="both" disabled>兩種都要 →</button>';
-      } else {
-        h += '<button class="btn primary go-btn" disabled>轉換勾選的項目 →</button>';
-      }
+      h += '<button class="btn primary go-btn" disabled>轉換勾選的項目 →</button>';
       h += '</div></div>';
     });
     h += '<div style="text-align:right;margin-top:14px"><button class="btn" id="fCancel">取消</button></div>';
@@ -809,7 +767,7 @@
       Array.prototype.forEach.call(btns, function (btn) {
         btn.onclick = function () {
           var picked = Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return g[k][+b.getAttribute('data-i')]; });
-          loadGroups(picked, k, btn.getAttribute('data-d'));
+          loadGroups(picked, k);
         };
       });
       refresh();
@@ -817,16 +775,10 @@
   }
 
   /** 讀取勾選的項目並開始轉換 */
-  function loadGroups(groups, kind, device) {
+  function loadGroups(groups, kind) {
     var files = [].concat.apply([], groups.map(function (gr) { return gr.files.map(function (f) { return { file: f.file, path: f.path }; }); }));
     readFiles(files).then(function (inputs) {
       closeModal();
-      if (kind === 'l2csv') {
-        if (state.kind === 'l2csv') { mergeInputs(inputs); run(); return; }
-        if (device) { startL2csv(inputs, device); return; }
-        askDevice(inputs);
-        return;
-      }
       if (state.kind !== kind) openKind(kind);
       mergeInputs(inputs);
       run();
@@ -996,7 +948,6 @@
       }
       var k = ks[0];
       if (ks.length > 1 || unknown.length) toast('一次只能做一種轉換，先處理「' + KINDS[k].title + '」的檔案');
-      if (k === 'l2csv') { askDevice(kinds[k]); return; }
       openKind(k);
       mergeInputs(kinds[k]);
       run();
@@ -1114,7 +1065,7 @@
 
   // ─────────── 首頁卡片 ───────────
   Array.prototype.forEach.call(document.querySelectorAll('.card[data-kind]'), function (c) {
-    c.onclick = function () { openKind(c.getAttribute('data-kind'), c.getAttribute('data-device')); };
+    c.onclick = function () { openKind(c.getAttribute('data-kind')); };
   });
   $('btnBack').onclick = showHome;
 })();
