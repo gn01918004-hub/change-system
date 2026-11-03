@@ -32,7 +32,7 @@ test('點號＋編碼格式', () => {
 });
 
 test('Nikon RAW → MAC', () => {
-  const r = Core.rawToMac(sample('範例_全站儀.raw'), '範例_全站儀.raw');
+  const r = Core.rawToMac(sample('範例_全站儀.raw'), '範例_全站儀.raw', { macStyle: 'space' });
   assert.strictEqual(r.stats.stations, 2);
   assert.strictEqual(r.stats.observations, 6);
   assert.strictEqual(r.stats.nonZeroStations, 1);
@@ -58,7 +58,7 @@ test('Nikon RAW → MAC', () => {
 });
 
 test('Nikon RAW：沒有編碼欄也不會把時間當編碼（舊 jar bug）', () => {
-  const r = Core.rawToMac('ST,1,,2,,1.5,0,0\nSS,3,1.5,10.000,10.0000,90.0000,10:20:30\n', 'a.raw');
+  const r = Core.rawToMac('ST,1,,2,,1.5,0,0\nSS,3,1.5,10.000,10.0000,90.0000,10:20:30\n', 'a.raw', { macStyle: 'space' });
   assert.strictEqual(lines(r.files[0].content)[2], '3.00 10.0000 90.0000 10.000');
 });
 
@@ -331,14 +331,14 @@ test('寫入重測系統檔：D14 參考點、D20 補點、點號重複自動改
   const d20 = Core.parseDbf(makeDbf(D20F, [' QW1      2704020.768 219351.358Q  \0\0\0T']));
   assert.strictEqual(d14.nrec, 3);
   const plan = Core.planDbfWrite({ d14, d20, points: [
-    { key: 'a', name: '1', code: '32', y: 2704000.1, x: 219300.2, src: 'GPS' },   // 1.32 已有 → 2.32
+    { key: 'a', name: '1', code: '32', y: 2704000.1, x: 219300.2, src: 'GPS' },   // 已有參考點 1.xx → 參考點最大號(2)+1 → 3.32
     { key: 'b', name: '7', code: '30', y: 2704001.1, x: 219301.2, src: 'GPS' },   // 新增 7.30
     { key: 'c', name: 'QW1', code: '', y: 2704002.1, x: 219302.2, src: '全站儀' }, // QW1 已有 → QW2
     { key: 'd', name: '8', code: null, y: 2704003.1, x: 219303.2, src: 'GPS' },    // 缺編碼
     { key: 'e', name: 'BE73', code: '11', y: 2704004.1, x: 219304.2, src: 'GPS' }  // 不能寫
   ] });
   const by = Object.fromEntries(plan.rows.map((r) => [r.key, r]));
-  assert.strictEqual(by.a.out, '2.32'); assert.strictEqual(by.a.status, 'renumbered');
+  assert.strictEqual(by.a.out, '3.32'); assert.strictEqual(by.a.status, 'renumbered');
   assert.strictEqual(by.b.out, '7.30'); assert.strictEqual(by.b.status, 'new');
   assert.strictEqual(by.c.out, 'QW2'); assert.strictEqual(by.c.target, 'D20');
   assert.strictEqual(by.d.status, 'needCode');
@@ -353,7 +353,7 @@ test('寫入重測系統檔：D14 參考點、D20 補點、點號重複自動改
   assert.strictEqual(n14.nrec, 5);
   assert.strictEqual(n14.u8[1], 126); assert.strictEqual(n14.u8[2], 11); assert.strictEqual(n14.u8[3], 3);
   assert.deepStrictEqual(n14.records.slice(3).map((r) => r.values.COT_NUMBER + r.values.COT_REF + r.values.COT_Y + r.values.COT_X + r.values.COT_MATTER + r.values.COT_SOURCE),
-    ['    2322704000.10000000219300.20000000 02', '    8332704003.10000000219303.20000000 02']);
+    ['    3322704000.10000000219300.20000000 02', '    8332704003.10000000219303.20000000 02']);
   assert.strictEqual(Buffer.from(out.d20.subarray(out.d20.length - 39)).toString('latin1'), ' QW2      2704002.100 219302.200Q  \0\0\0T');
   assert.ok(out.table.startsWith('﻿原點名,原編碼,寫入檔案,寫入點號'));
   // 原檔前面的位元組一個都沒動
@@ -406,4 +406,45 @@ test('GPS CSV → CNT（點號.編碼,Y,X，重測系統直接讀入）', () => 
   assert.ok(r.files[0].main && !r.files[0].old);
   assert.strictEqual(r.files[0].content, '1.60,2706089.024,222472.005\r\n2.06,2706085.565,222472.982\r\n3.60,2706066.000,222501.246\r\n');
   assert.ok(F(r, '_虛擬測站.cnt').old && F(r, '.mac').old);
+});
+
+test('MAC 預設 Excel 格式（同 1140415.MAC）：Tab、去尾 0、數字點號後加空白、Q 點照原名；可改號', () => {
+  const raw = ['ST,B694,,B695,,0.0000,24.1913,0.0000', 'F1,B695,0.0000,74.753,0.0000,90.4645,1',
+    'SS,QW2,0.0000,102.628,208.3100,90.2905,1,', 'SS,1,0.0000,82.403,210.4943,90.2904,1,20',
+    'ST,QW2,,B694,,0.0000,52.5012,0.0000', 'SS,5,0.0000,9.040,287.0220,89.1210,1,20'].join('\n');
+  const r = Core.rawToMac(raw, '1140415.RAW', { rename: { byLine: { 4: '26.20' }, byName: { QW2: 'QW5' } } });
+  assert.strictEqual(r.files[0].content, [
+    'LS\t\t\t\t\t\t', 'B694\tB695\t\t\t\t\t',
+    'QW5\t\t208.31\t\t90.2905\t\t102.628',
+    '26.20 \t\t210.4943\t\t90.2904\t\t82.403',
+    'QW5\tB694\t\t\t\t\t',
+    '5.20 \t\t287.022\t\t89.121\t\t9.04', ''].join('\r\n'));
+});
+
+test('寫入：6 公分內視為重測，預設不寫入；勾選後寫成新的參考點 X.XX', () => {
+  const d14 = Core.parseDbf(makeDbf(D14F, [
+    '     1 02704480.54200000219713.24700000 30 0 0                  ',   // 1.00 界址點：不算參考點
+    '    25302704014.79600000219334.51900000 01 0 0                  '    // 參考點 25.30
+  ]));
+  const d20 = Core.parseDbf(makeDbf(D20F, [' QW2      2704020.768 219351.358Q  \0\0\0T']));
+  const pts = [
+    { key: 'a', name: 'QW2', code: '', y: 2704020.790, x: 219351.358, src: '全站儀' },  // 差 2.2 cm → 重測
+    { key: 'b', name: '25', code: '30', y: 2704014.800, x: 219334.519, src: '全站儀' }, // 差 0.4 cm → 重測
+    { key: 'c', name: '1', code: '20', y: 2704000.000, x: 219300.000, src: '全站儀' },  // 1.00 只是界址點 → 新增 1.20
+    { key: 'd', name: 'QW2', code: '', y: 2704030.000, x: 219351.358, src: '全站儀' }   // 差 9 m → 不同點，改名 QW3
+  ];
+  const plan = Core.planDbfWrite({ d14, d20, points: pts });
+  const by = Object.fromEntries(plan.rows.map((r) => [r.key, r]));
+  assert.strictEqual(by.a.status, 'near'); assert.match(by.a.reason, /相差 2\.2 cm/);
+  assert.strictEqual(by.b.status, 'near');
+  assert.strictEqual(by.c.status, 'new'); assert.strictEqual(by.c.out, '1.20');
+  assert.strictEqual(by.d.status, 'renumbered'); assert.strictEqual(by.d.out, 'QW3');
+  assert.strictEqual(plan.toD14.length + plan.toD20.length, 2);
+  // 勾選寫入：補點 QW2 → 參考點（最大號 25＋1）.11；25.30 → 26.30 已被用 → 27.30
+  const plan2 = Core.planDbfWrite({ d14, d20, points: pts, edits: { a: { write: true }, b: { write: true } } });
+  const by2 = Object.fromEntries(plan2.rows.map((r) => [r.key, r]));
+  assert.strictEqual(by2.a.status, 'remeasure'); assert.strictEqual(by2.a.target, 'D14'); assert.strictEqual(by2.a.out, '26.11');
+  assert.strictEqual(by2.b.out, '27.30');
+  const out = Core.buildDbfFiles(plan2, d14, d20);
+  assert.ok(out.table.includes('與已有點相差(cm)') && out.table.includes(',2.2,'));
 });

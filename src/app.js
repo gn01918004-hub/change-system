@@ -69,7 +69,7 @@
   var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false, dbf: null, dbfEdits: {}, dbfDone: null };
 
   function loadOpts() {
-    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaNearestN: 2, outFormat: 'csv', swapXY: false, stripCode: false };
+    var d = { ext: 'csv', macStyle: 'excel', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaNearestN: 2, outFormat: 'csv', swapXY: false, stripCode: false };
     try {
       var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}');
       for (var k in s) if (k in d) d[k] = s[k];
@@ -234,15 +234,33 @@
     } else {
       parts = state.inputs.map(function (inp) {
         var key = inputKey(inp);
-        var opt = { codeMode: o.codeMode, sep: o.sep, alwaysZero: o.alwaysZero, codeCol: o.codeColumn, neOrder: o.neOrder,
+        var opt = { codeMode: o.codeMode, sep: o.sep, macStyle: o.macStyle, alwaysZero: o.alwaysZero, codeCol: o.codeColumn, neOrder: o.neOrder,
           angleDecimals: o.angleDecimals, distDecimals: o.distDecimals, decisions: state.decisions[key] || {}, codeOverrides: state.codes[key] || {}, noCodeAs: state.askAs[key], badCodeTo: o.badCodeTo,
           outName: state.inputs.length === 1 ? (o.outName || undefined) : undefined };
         if (state.dbf) opt.known = Core.knownFromDbf(state.dbf.D14 && state.dbf.D14.db, state.dbf.D20 && state.dbf.D20.db);
         var x = state.kind === 'raw2mac' ? Core.rawToMac(inp.text, inp.name, opt) : Core.csvToCntMac(inp.text, inp.name, opt);
         x.source = inp.name;
         x.key = key;
+        x._inp = inp; x._opt = opt;
         return x;
       });
+      // 有 D14／D20：依寫入規劃的改號（例如 1～14 → 26～39），讓 MAC／CNT 也用同樣的點號
+      if (state.dbf && !state.dbfDone) {
+        var plan0 = makeDbfPlan({ kind: state.kind, parts: parts });
+        parts = parts.map(function (x) {
+          var rn = { byLine: {}, byName: {} }, any = false;
+          plan0.rows.forEach(function (row) {
+            if (String(row.key).indexOf(x.key + ':') !== 0 || !row.out) return;
+            if (row.target === 'D14' && row.out !== row.origName + '.' + String(row.origCode).padStart(2, '0')) { rn.byLine[row.line] = row.out; any = true; }
+            if (row.target === 'D20' && state.kind === 'raw2mac' && row.out !== row.origName) { rn.byName[row.origName] = row.out; any = true; }
+          });
+          if (!any) return x;
+          var opt2 = Object.assign({}, x._opt, { rename: rn });
+          var y = state.kind === 'raw2mac' ? Core.rawToMac(x._inp.text, x._inp.name, opt2) : Core.csvToCntMac(x._inp.text, x._inp.name, opt2);
+          y.source = x.source; y.key = x.key; y._inp = x._inp; y._opt = opt2; y.renamedCount = Object.keys(rn.byLine).length + Object.keys(rn.byName).length;
+          return y;
+        });
+      }
     }
     var r = { kind: state.kind, format: GROUPED[state.kind] ? (o.outFormat || 'csv') : null, order: o.xyOrder === 'xy' ? 'xy' : 'yx', ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], report: [], parts: parts, stats: {} };
     parts.forEach(function (p) {
@@ -838,7 +856,7 @@
       r.parts.forEach(function (p) {
         var seen = {};
         ((p.plot && p.plot.obs) || []).forEach(function (o) {
-          if (o.wasKnown) return; // 照準已知點（檢核）不寫入
+          if (o.wasKnown && o.knownFrom !== 'dbf') return; // 照準 RAW 裡 UP 已知點（檢核）不寫入；D14／D20 裡的點交給 6 cm 規則判斷
           var code = /^\d{1,2}$/.test(String(o.code).trim()) ? String(o.code).trim() : (String(o.code).trim() ? badTo : null);
           var k = o.pt + '|' + code;
           if (seen[k]) return; // 同一點重複觀測，取第一次
@@ -848,6 +866,11 @@
       });
     }
     return pts;
+  }
+
+  function makeDbfPlan(r) {
+    var D14 = state.dbf && state.dbf.D14, D20 = state.dbf && state.dbf.D20;
+    return Core.planDbfWrite({ d14: D14 && D14.db, d20: D20 && D20.db, points: dbfPoints(r), edits: state.dbfEdits, badCodeTo: state.opts.badCodeTo || '11' });
   }
 
   var DBF_SHOW = 500;
@@ -861,23 +884,27 @@
         '<p class="muted">要再寫一次，請重新放入最新的 D14、D20（避免重複寫入）。</p>';
       return;
     }
-    var plan = Core.planDbfWrite({ d14: D14 && D14.db, d20: D20 && D20.db, points: dbfPoints(r), edits: state.dbfEdits });
+    var plan = makeDbfPlan(r);
     state.dbfPlan = plan;
-    var S = { new: ['新增', 'ok'], renumbered: ['自動改號', 'w'], edited: ['手動指定', 'ok'], needCode: ['缺編碼', 'x'], conflict: ['衝突', 'x'], skip: ['無法寫入', 'x'], excluded: ['不寫入', ''], noFile: ['缺檔案', 'x'] };
+    var S = { new: ['新增', 'ok'], renumbered: ['自動改號', 'w'], edited: ['手動指定', 'ok'], needCode: ['缺編碼', 'x'], conflict: ['衝突', 'x'], skip: ['無法寫入', 'x'], excluded: ['不寫入', ''], noFile: ['缺檔案', 'x'],
+      near: ['重測・未寫入', 'w'], remeasure: ['重測→新參考點', 'w'] };
     var h = '<p class="sum">' +
       (D14 ? '<b>' + esc(D14.name) + '</b>（參考點，原有 ' + D14.db.nrec + ' 筆）將新增 <b>' + plan.toD14.length + '</b> 筆' : '沒有放入 D14（參考點不會寫入）') + '；' +
       (D20 ? '<b>' + esc(D20.name) + '</b>（補點，原有 ' + D20.db.nrec + ' 筆）將新增 <b>' + plan.toD20.length + '</b> 筆' : '沒有放入 D20（Q 開頭的補點不會寫入）') + '。' +
-      (plan.renumbered ? '其中 <b>' + plan.renumbered + '</b> 點點號重複，已自動改號（見下表黃色）。' : '') + '</p>' +
+      (plan.renumbered ? '其中 <b>' + plan.renumbered + '</b> 點點號重複，已自動改號（見下表黃色）。' : '') +
+      (plan.near ? '另有 <b>' + plan.near + '</b> 點和已有的點相差 6 cm 內，視為重測、預設不寫入（要寫入就打勾，會寫成新的參考點）。' : '') +
+      (r.parts.some(function (p) { return p.renamedCount; }) ? '改號後的點號也已套用到下面的 ' + (r.kind === 'raw2mac' ? 'MAC' : 'CNT') + ' 檔。' : '') + '</p>' +
       '<p class="muted" style="margin:-4px 0 10px">規則：點名 Q 開頭 → D20 補點；數字點號 → D14 參考點（點號＋編碼，COT_SOURCE 寫 2＝計算求得）。點號可以在表格裡直接改。</p>';
     if (plan.blocking.length) h += '<div class="blocked" style="margin-bottom:10px">⚠ 有 <b>' + plan.blocking.length + '</b> 點要先處理（缺編碼或點號衝突），處理完才能寫入。</div>';
     var rows = plan.rows.slice().sort(function (a, b) {
-      var rk = function (x) { return { needCode: 0, conflict: 0, renumbered: 1, skip: 2, noFile: 2 }[x.status] != null ? { needCode: 0, conflict: 0, renumbered: 1, skip: 2, noFile: 2 }[x.status] : 3; };
+      var RK = { needCode: 0, conflict: 0, near: 1, remeasure: 1, renumbered: 2, skip: 3, noFile: 3 };
+      var rk = function (x) { return RK[x.status] != null ? RK[x.status] : 4; };
       return rk(a) - rk(b);
     });
     h += '<div class="tablewrap"><table><thead><tr><th class="c">寫入</th><th class="l">原點名</th><th>原編碼</th><th class="l">寫到</th><th class="l">寫入點號</th><th>Y</th><th>X</th><th class="l">來源</th><th class="l">狀態</th></tr></thead><tbody>';
     rows.slice(0, DBF_SHOW).forEach(function (row) {
       var st = S[row.status] || [row.status, ''];
-      var editable = row.target && row.status !== 'skip' && row.status !== 'noFile' && row.status !== 'excluded';
+      var editable = row.target && row.status !== 'skip' && row.status !== 'noFile' && row.status !== 'excluded' && row.status !== 'near';
       var numCell = '';
       if (editable && row.target === 'D14') {
         numCell = '<input class="dnum" data-k="' + esc(row.key) + '" value="' + esc(row.num == null ? '' : row.num) + '" inputmode="numeric" maxlength="5" title="點號">' +
@@ -885,7 +912,11 @@
       } else if (editable && row.target === 'D20') {
         numCell = '<input class="dname" data-k="' + esc(row.key) + '" value="' + esc(row.name || '') + '" maxlength="8" title="補點名稱（最多 8 字）">';
       } else numCell = esc(row.out || '');
-      h += '<tr class="' + (row.status === 'excluded' ? 'off' : '') + '"><td class="c">' + (row.target ? '<input type="checkbox" class="dchk" data-k="' + esc(row.key) + '"' + (row.status === 'excluded' ? '' : ' checked') + '>' : '') + '</td>' +
+      var isNear = row.status === 'near' || row.status === 'remeasure';
+      var chk = row.target ? (isNear
+        ? '<input type="checkbox" class="dwrite" data-k="' + esc(row.key) + '"' + (row.status === 'remeasure' ? ' checked' : '') + ' title="6 cm 內的重測點：打勾＝寫成新的參考點">'
+        : '<input type="checkbox" class="dchk" data-k="' + esc(row.key) + '"' + (row.status === 'excluded' ? '' : ' checked') + '>') : '';
+      h += '<tr class="' + (row.status === 'excluded' || row.status === 'near' ? 'off' : '') + '"><td class="c">' + chk + '</td>' +
         '<td class="l mono">' + esc(row.origName) + '</td><td class="mono">' + esc(row.origCode) + '</td><td class="l">' + (row.target ? '.' + row.target + (row.target === 'D14' ? ' 參考點' : ' 補點') : '—') + '</td>' +
         '<td class="l mono">' + numCell + '</td><td class="mono">' + Number(row.y).toFixed(3) + '</td><td class="mono">' + Number(row.x).toFixed(3) + '</td>' +
         '<td class="l">' + esc(row.src) + '</td><td class="l"><span class="flagb ' + st[1] + '">' + st[0] + '</span> ' + esc(row.reason || '') + '</td></tr>';
@@ -902,16 +933,19 @@
 
     var edit = function (k) { return (state.dbfEdits[k] = state.dbfEdits[k] || {}); };
     Array.prototype.forEach.call($('dbf').querySelectorAll('.dchk'), function (c) {
-      c.onchange = function () { edit(c.getAttribute('data-k')).skip = !c.checked; renderDbfPanel(state.result); };
+      c.onchange = function () { edit(c.getAttribute('data-k')).skip = !c.checked; run(); };
+    });
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dwrite'), function (c) {
+      c.onchange = function () { edit(c.getAttribute('data-k')).write = c.checked; run(); };
     });
     Array.prototype.forEach.call($('dbf').querySelectorAll('.dnum'), function (c) {
-      c.onchange = function () { var v = c.value.trim(); if (v && !/^\d{1,5}$/.test(v)) { toast('點號要是數字'); return; } edit(c.getAttribute('data-k')).num = v; renderDbfPanel(state.result); };
+      c.onchange = function () { var v = c.value.trim(); if (v && !/^\d{1,5}$/.test(v)) { toast('點號要是數字'); return; } edit(c.getAttribute('data-k')).num = v; run(); };
     });
     Array.prototype.forEach.call($('dbf').querySelectorAll('.dref'), function (c) {
-      c.onchange = function () { var v = c.value.trim(); if (v && !/^\d{1,2}$/.test(v)) { toast('編碼要是 00～99'); return; } edit(c.getAttribute('data-k')).ref = v; renderDbfPanel(state.result); };
+      c.onchange = function () { var v = c.value.trim(); if (v && !/^\d{1,2}$/.test(v)) { toast('編碼要是 00～99'); return; } edit(c.getAttribute('data-k')).ref = v; run(); };
     });
     Array.prototype.forEach.call($('dbf').querySelectorAll('.dname'), function (c) {
-      c.onchange = function () { edit(c.getAttribute('data-k')).name = c.value.trim(); renderDbfPanel(state.result); };
+      c.onchange = function () { edit(c.getAttribute('data-k')).name = c.value.trim(); run(); };
     });
     var build = function () { return Core.buildDbfFiles(plan, D14 && D14.db, D20 && D20.db); };
     $('dbfTable').onclick = function () {
@@ -1215,7 +1249,9 @@
     if (k === 'raw2mac' || k === 'csv2cntmac') {
       o.appendChild(seg('點號編碼格式', 'codeMode', [['pad2', '補兩位 1001.05'], ['raw', '照原樣 1001.5']],
         '重測系統的「點號.編碼」。舊 Excel 版是補兩位，舊 jar 版是照原樣。'));
-      o.appendChild(seg('欄位分隔', 'sep', [['space', '空白'], ['tab', 'Tab']], '重測系統兩種都能讀，通常不用改。'));
+      if (k === 'raw2mac') o.appendChild(seg('MAC 格式', 'macStyle', [['excel', 'Excel 版（預設）'], ['space', '空白分隔（舊 jar 版）']],
+        'Excel 版和 Excel 轉檔工具存出來的一樣：Tab 分隔、去尾 0、數字點號後加一個空白。'));
+      else o.appendChild(seg('欄位分隔', 'sep', [['space', '空白'], ['tab', 'Tab']], '重測系統兩種都能讀，通常不用改。'));
     }
     if (k === 'raw2mac') {
       o.appendChild(chk('一律輸出後視歸零檔（_Zero.mac）', 'alwaysZero', '預設只有在後視讀數不為 0 時才會產生。'));
