@@ -255,6 +255,24 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 
 .devbar .devrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-basis:100%;margin-top:6px}
 .mono{font-family:Consolas,"Courier New",monospace}
+
+.corner{display:flex;justify-content:flex-end;margin-top:22px}
+.linkish{background:none;border:1px dashed var(--line);color:var(--ink2);border-radius:999px;padding:6px 14px;cursor:pointer;font-size:14px}
+.linkish:hover{border-color:var(--brand);color:var(--brand)}
+.coarow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
+.coarow .lbl{font-weight:700;min-width:64px}
+.coarow .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.coarow .seg button{border:none;background:#fff;padding:8px 14px;cursor:pointer;color:var(--ink2);font-weight:700}
+.coarow .seg button.on{background:var(--brand);color:#fff}
+.coarow .seg button[disabled]{opacity:.4;cursor:not-allowed}
+.coarow input[type=text],.coarow input[type=search]{padding:7px 10px;border:1px solid var(--line);border-radius:8px}
+.pickbox{border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:6px 0 10px;background:#fbfcfd}
+.picked{margin:6px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px;max-height:260px;overflow:auto;border-top:1px solid var(--line);padding-top:6px}
+.pitem{display:flex;gap:6px;align-items:center;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:14.5px}
+.pitem:hover{background:#eef3fb}
+.pitem.on{background:var(--brand-soft)}
+.pitem .muted{font-size:12.5px}
 </style>
 </head>
 <body>
@@ -311,6 +329,7 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
         </button>
       </div>
     </div>
+    <div class="corner"><button class="linkish" id="btnCoa" type="button" title="資料夾裡沒有 L02/L14/L20 時使用">🗂 複丈輸入檔（.COA）轉換</button></div>
   </section>
 
   <!-- ═════════ 工作頁 ═════════ -->
@@ -345,6 +364,11 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
       <div class="panel" id="thumbPanel">
         <h3>點位縮圖 <span class="muted">（點一下放大）</span></h3>
         <div class="thumbs" id="thumbs"></div>
+      </div>
+
+      <div class="panel hidden" id="coaPanel">
+        <h3>第 2 步：選擇要匯出的範圍 <span class="muted">（不改就是全部）</span></h3>
+        <div id="coa"></div>
       </div>
 
       <div class="panel review hidden" id="reviewPanel">

@@ -255,6 +255,24 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 
 .devbar .devrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-basis:100%;margin-top:6px}
 .mono{font-family:Consolas,"Courier New",monospace}
+
+.corner{display:flex;justify-content:flex-end;margin-top:22px}
+.linkish{background:none;border:1px dashed var(--line);color:var(--ink2);border-radius:999px;padding:6px 14px;cursor:pointer;font-size:14px}
+.linkish:hover{border-color:var(--brand);color:var(--brand)}
+.coarow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
+.coarow .lbl{font-weight:700;min-width:64px}
+.coarow .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.coarow .seg button{border:none;background:#fff;padding:8px 14px;cursor:pointer;color:var(--ink2);font-weight:700}
+.coarow .seg button.on{background:var(--brand);color:#fff}
+.coarow .seg button[disabled]{opacity:.4;cursor:not-allowed}
+.coarow input[type=text],.coarow input[type=search]{padding:7px 10px;border:1px solid var(--line);border-radius:8px}
+.pickbox{border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:6px 0 10px;background:#fbfcfd}
+.picked{margin:6px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px;max-height:260px;overflow:auto;border-top:1px solid var(--line);padding-top:6px}
+.pitem{display:flex;gap:6px;align-items:center;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:14.5px}
+.pitem:hover{background:#eef3fb}
+.pitem.on{background:var(--brand-soft)}
+.pitem .muted{font-size:12.5px}
 </style>
 </head>
 <body>
@@ -311,6 +329,7 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
         </button>
       </div>
     </div>
+    <div class="corner"><button class="linkish" id="btnCoa" type="button" title="資料夾裡沒有 L02/L14/L20 時使用">🗂 複丈輸入檔（.COA）轉換</button></div>
   </section>
 
   <!-- ═════════ 工作頁 ═════════ -->
@@ -345,6 +364,11 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
       <div class="panel" id="thumbPanel">
         <h3>點位縮圖 <span class="muted">（點一下放大）</span></h3>
         <div class="thumbs" id="thumbs"></div>
+      </div>
+
+      <div class="panel hidden" id="coaPanel">
+        <h3>第 2 步：選擇要匯出的範圍 <span class="muted">（不改就是全部）</span></h3>
+        <div id="coa"></div>
       </div>
 
       <div class="panel review hidden" id="reviewPanel">
@@ -392,7 +416,7 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 <div class="toast hidden" id="toast"></div>
 
 <script>
-window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","date":"2026-11-03","repo":"gn01918004-hub/change-system","file":"dist/土地重測資料轉換系統.html","changelog":[{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
+window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.8.0","date":"2026-11-03","repo":"gn01918004-hub/change-system","file":"dist/土地重測資料轉換系統.html","changelog":[{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
 /*
  * 土地重測資料轉換系統 — 轉換核心
  *
@@ -1282,6 +1306,188 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
     };
   }
 
+  // ═════════════ 4. 複丈輸入檔（.COA/.BNP/.PAR/.CTL）→ 全站儀 / GPS 控制器 CSV ═════════════
+  //
+  // 取代「複丈輸入檔2SOKKIA v3.1」。資料夾裡沒有 L02/L14/L20 時使用。
+  //   .COA  界址點坐標：點號(5) 空白 Y(16) X(15) 註記(1)
+  //   .CTL  控制點：    點名(8) Y(11) X(10) 註記(1)
+  //   .PAR  地號：      母號(4) 子號(4) 段(4) 面積(10) … 地目(1) … 中心 Y(9) X(8)
+  //   .BNP  地號界址點：母號(4) 子號(4) 行序(3) 點數(4) 點號(6)×最多 11
+  //   .D20  控制點屬性（dBASE），轉換用不到
+
+  var COA_EXTS = ['COA', 'BNP', 'PAR', 'CTL', 'D20'];
+
+  function parseCoa(text, report) {
+    var map = {}, ids = [];
+    splitLines(text).forEach(function (l, i) {
+      if (i === 0 || !l.trim()) return;           // 第一行是標頭
+      var m = /^\s*(\d+)\s+(\d+\.\d+?)(\d{6}\.\d+?)(\d)?\s*$/.exec(l);
+      // 固定欄寬比較可靠：Y 16 字、X 15 字
+      var id = l.slice(0, 5).trim(), y = l.slice(6, 22).trim(), x = l.slice(22, 37).trim();
+      if (!/^\d+$/.test(id) || !isNum(y) || !isNum(x)) {
+        if (m) { id = m[1]; y = m[2]; x = m[3]; }
+        else { report.warn('.COA 第 ' + (i + 1) + ' 行看不懂，已略過：' + l.trim(), i + 1); return; }
+      }
+      if (!map[id]) ids.push(id);
+      map[id] = { y: parseFloat(y).toFixed(3), x: parseFloat(x).toFixed(3) };
+    });
+    return { map: map, ids: ids };
+  }
+
+  function parseCtl(text, report) {
+    var list = [];
+    splitLines(text).forEach(function (l, i) {
+      if (i === 0 || !l.trim()) return;
+      var name = l.slice(0, 8).trim(), y = l.slice(8, 19).trim(), x = l.slice(19, 29).trim();
+      if (!name || !isNum(y) || !isNum(x)) {
+        var t = l.trim().split(/\s+/);
+        if (t.length >= 3 && isNum(t[1]) && isNum(t[2])) { name = t[0]; y = t[1]; x = t[2]; }
+        else { report.warn('.CTL 第 ' + (i + 1) + ' 行看不懂，已略過：' + l.trim(), i + 1); return; }
+      }
+      list.push({ name: name, y: parseFloat(y).toFixed(3), x: parseFloat(x).toFixed(3) });
+    });
+    return list;
+  }
+
+  /** 地號鍵：母號-子號，子號 0 時只寫母號（1、12-3） */
+  function parcelLabel(mother, child) {
+    mother = String(parseInt(mother, 10)); child = String(parseInt(child || '0', 10));
+    return child === '0' ? mother : mother + '-' + child;
+  }
+  /** 使用者輸入的地號轉成鍵：「12」「12-3」「0012-0003」「12之3」都可以 */
+  function parcelKeyOf(s) {
+    var m = /^\s*0*(\d+)\s*(?:[-之]\s*0*(\d+))?\s*$/.exec(String(s));
+    return m ? parcelLabel(m[1], m[2] || '0') : null;
+  }
+
+  function parsePar(text) {
+    var list = [];
+    splitLines(text).forEach(function (l, i) {
+      if (i === 0 || l.length < 30) return;
+      var mother = l.slice(0, 4).trim(), child = l.slice(4, 8).trim();
+      if (!/^\d+$/.test(mother)) return;
+      list.push({ key: parcelLabel(mother, child || '0'), area: l.slice(12, 22).trim(), landUse: l.slice(40, 41).trim() });
+    });
+    return list;
+  }
+
+  function parseBnp(text) {
+    var map = {}, order = [];
+    splitLines(text).forEach(function (l, i) {
+      if (i === 0 || !l.trim()) return;
+      var t = l.trim().split(/\s+/);
+      if (t.length < 4) return;
+      var key = parcelLabel(t[0], t[1]);
+      if (!map[key]) { map[key] = []; order.push(key); }
+      for (var k = 4; k < t.length; k++) if (/^\d+$/.test(t[k])) map[key].push(String(parseInt(t[k], 10)));
+    });
+    return { map: map, order: order };
+  }
+
+  /**
+   * inputs：同一案件的檔案 [{ name, text }]（依副檔名辨認）。
+   * opts.parcels：要匯出的地號（陣列；不給 = 全部界址點）
+   * opts.ctl：'all'（預設）| 'near'（地號周圍）| 'none'；opts.buffer：公尺（預設 200）
+   * opts.ctlFirst：控制點在前（預設 true）；opts.order：'yx' | 'xy'；opts.ext：'csv' | 'txt'
+   */
+  function coaToCsv(inputs, opts) {
+    opts = opts || {};
+    var report = new Report();
+    var byExt = {};
+    inputs.forEach(function (f) { byExt[extName(f.name)] = f; });
+    var base = opts.outName || (inputs.length ? baseName(inputs[0].name) : '未命名');
+    var result = { kind: 'coa2csv', files: [], report: report.items, preview: [], parcels: [], perFile: [],
+      stats: { points: 0, ctl: 0, bnd: 0, parcels: 0, selected: 0 } };
+
+    if (!byExt.COA) {
+      report.error('找不到 .COA 檔（界址點坐標）。同一個資料夾裡要有同名的 .COA，最好也有 .CTL、.BNP、.PAR');
+      return result;
+    }
+    var coa = parseCoa(byExt.COA.text, report);
+    var ctl = byExt.CTL ? parseCtl(byExt.CTL.text, report) : [];
+    if (!byExt.CTL) report.info('沒有 .CTL 檔，只會輸出界址點（沒有控制點）');
+    var bnp = byExt.BNP ? parseBnp(byExt.BNP.text) : null;
+    var par = byExt.PAR ? parsePar(byExt.PAR.text) : [];
+
+    // 地號清單（給畫面選）：以 .BNP 為主，補上 .PAR 的面積、地目
+    var parInfo = {};
+    par.forEach(function (p) { parInfo[p.key] = p; });
+    if (bnp) {
+      result.parcels = bnp.order.map(function (k) {
+        return { key: k, points: bnp.map[k].length, area: parInfo[k] ? parInfo[k].area : '', landUse: parInfo[k] ? parInfo[k].landUse : '' };
+      });
+      par.forEach(function (p) { if (!bnp.map[p.key]) result.parcels.push({ key: p.key, points: 0, area: p.area, landUse: p.landUse, noMap: true }); });
+    }
+    result.stats.parcels = result.parcels.length;
+
+    // 界址點
+    var bndIds;
+    var picked = (opts.parcels || []).map(parcelKeyOf).filter(Boolean);
+    if (picked.length) {
+      if (!bnp) {
+        report.error('沒有 .BNP 檔，無法依地號挑界址點，請改選「全部」');
+        bndIds = [];
+      } else {
+        var seen = {};
+        bndIds = [];
+        picked.forEach(function (k) {
+          if (!bnp.map[k]) {
+            report.warn('地號 ' + k + ' 在 .BNP 裡找不到界址點' + (parInfo[k] ? '（地號有簿無圖）' : '（沒有這個地號）'));
+            return;
+          }
+          bnp.map[k].forEach(function (id) { if (!seen[id]) { seen[id] = 1; bndIds.push(id); } });
+        });
+        result.stats.selected = picked.length;
+      }
+    } else {
+      bndIds = coa.ids.slice();
+    }
+    var missing = bndIds.filter(function (id) { return !coa.map[id]; });
+    if (missing.length) report.warn('有 ' + missing.length + ' 個界址點在 .COA 裡找不到坐標（地籍圖偵錯）：' + missing.slice(0, 10).join('、') + (missing.length > 10 ? '…' : ''));
+    var bnd = bndIds.filter(function (id) { return coa.map[id]; }).map(function (id) {
+      return { name: id, y: coa.map[id].y, x: coa.map[id].x, type: '界址點', src: byExt.COA.name };
+    });
+
+    // 控制點
+    var mode = opts.ctl || 'all';
+    var ctlPts = [];
+    if (mode !== 'none') {
+      ctlPts = ctl;
+      if (mode === 'near' && bnd.length) {
+        var buf = isFinite(parseFloat(opts.buffer)) ? parseFloat(opts.buffer) : 200;
+        var minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+        bnd.forEach(function (p) {
+          var y = parseFloat(p.y), x = parseFloat(p.x);
+          minY = Math.min(minY, y); maxY = Math.max(maxY, y); minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        });
+        ctlPts = ctl.filter(function (c) {
+          var y = parseFloat(c.y), x = parseFloat(c.x);
+          return y >= minY - buf && y <= maxY + buf && x >= minX - buf && x <= maxX + buf;
+        });
+        result.stats.buffer = buf;
+        if (!ctlPts.length) report.warn('界址點範圍外 ' + buf + ' 公尺內沒有控制點，可以把距離加大或改選「全部」');
+      }
+    }
+    ctlPts = ctlPts.map(function (c) { return { name: c.name, y: c.y, x: c.x, type: '控制點', src: byExt.CTL ? byExt.CTL.name : '' }; });
+
+    var points = opts.ctlFirst === false ? bnd.concat(ctlPts) : ctlPts.concat(bnd);
+    var outOrder = opts.order === 'xy' ? 'xy' : 'yx';
+    var lines = points.map(function (p) { return outOrder === 'xy' ? [p.name, p.x, p.y].join(',') : [p.name, p.y, p.x].join(','); });
+
+    result.order = outOrder;
+    result.preview = points;
+    result.stats.points = points.length;
+    result.stats.ctl = ctlPts.length;
+    result.stats.bnd = bnd.length;
+    result.stats.totalBnd = coa.ids.length;
+    result.perFile = [{ name: byExt.CTL ? byExt.CTL.name : '', type: '控制點', count: ctlPts.length }, { name: byExt.COA.name, type: '界址點', count: bnd.length }];
+    if (!points.length) { report.error('沒有任何點可以輸出'); return result; }
+    var ext = opts.ext === 'txt' ? 'txt' : 'csv';
+    result.files.push({ name: base + '.' + ext, content: joinLines(lines), main: true,
+      desc: '全站儀、GPS 控制器都能匯入：點號,' + (outOrder === 'xy' ? 'X,Y' : 'Y,X') + '（控制點 ' + ctlPts.length + '、界址點 ' + bnd.length + '）' });
+    return result;
+  }
+
   // ───────────────────────── 資料夾掃描 ─────────────────────────
 
   /** 同一個案件的 L02/L14/L20 視為一組：同資料夾、同主檔名（例如 KC0390.L02 + KC0390.L14）。 */
@@ -1297,7 +1503,8 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
    * 每一項 { key, label, dir, files:[原物件...] }。
    */
   function groupFolderFiles(list) {
-    var out = { l2csv: [], raw2mac: [], csv2cntmac: [] };
+    var out = { l2csv: [], raw2mac: [], csv2cntmac: [], coa2csv: [] };
+    var cmap = {};
     var lmap = {};
     list.forEach(function (f) {
       var path = f.path || f.name;
@@ -1311,6 +1518,14 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
         }
         lmap[k].files.push(f);
         lmap[k].exts.push(ext);
+      } else if (COA_EXTS.indexOf(ext) >= 0) {
+        var ck = lGroupKey(path);
+        if (!cmap[ck]) {
+          cmap[ck] = { key: ck, label: baseName(f.name), dir: dir, files: [], exts: [] };
+          out.coa2csv.push(cmap[ck]);
+        }
+        cmap[ck].files.push(f);
+        cmap[ck].exts.push(ext);
       } else if (ext === 'RAW') {
         out.raw2mac.push({ key: path, label: f.name, dir: dir, files: [f] });
       } else if (ext === 'CSV' || ext === 'ASC') {
@@ -1323,6 +1538,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
       g.exts.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
     });
     out.l2csv.sort(byLabel); out.raw2mac.sort(byLabel); out.csv2cntmac.sort(byLabel);
+    out.coa2csv = out.coa2csv.filter(function (g) { return g.exts.indexOf('COA') >= 0; }).sort(byLabel);
     return out;
   }
 
@@ -1333,6 +1549,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
     var ext = extName(filename);
     if (ext === 'RAW') return 'raw2mac';
     if (L_TYPES[ext]) return 'l2csv';
+    if (COA_EXTS.indexOf(ext) >= 0) return 'coa2csv';
     var head = splitLines(text || '').slice(0, 40).join('\n');
     if (/^(ST|SS|F1),/m.test(head)) return 'raw2mac';
     if (ext === 'CSV' || ext === 'TXT' || ext === 'ASC') return 'csv2cntmac';
@@ -1357,7 +1574,10 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
     baseName: baseName,
     extName: extName,
     L_ORDER: L_ORDER,
-    classifyYX: classifyYX
+    classifyYX: classifyYX,
+    coaToCsv: coaToCsv,
+    parcelKeyOf: parcelKeyOf,
+    COA_EXTS: COA_EXTS
   };
 });
 
@@ -1412,14 +1632,22 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
           '匯入後隨便抽查幾個點的坐標，確認沒有 X、Y 對調。'
         ];
       }
+    },
+    coa2csv: {
+      title: '複丈輸入檔 → 全站儀 / GPS 控制器',
+      accept: '.coa,.bnp,.par,.ctl,.d20',
+      hint: '同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR 一起放進來，最簡單是直接選整個資料夾',
+      step2: '選擇範圍',
+      next: function (r) { return KINDS.l2csv.next(r); }
     }
   };
+  var GROUPED = { l2csv: 1, coa2csv: 1 }; // 依案件（同名檔）分組的轉換
 
   // ─────────── 狀態 ───────────
-  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {} };
+  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false };
 
   function loadOpts() {
-    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', swapXY: false, stripCode: false };
+    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaBuffer: 200, swapXY: false, stripCode: false };
     try {
       var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}');
       for (var k in s) if (k in d) d[k] = s[k];
@@ -1455,7 +1683,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {};
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -1496,7 +1724,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
       b.onclick = onRemove;
       c.appendChild(b); chips.appendChild(c);
     };
-    if (state.kind === 'l2csv') {
+    if (GROUPED[state.kind]) {
       lGroups(state.inputs).forEach(function (g) {
         var exts = g.files.map(function (f) { return Core.extName(f.name); }).join('、');
         addChip(g.label + '（' + exts + '）', g.files.map(inputKey).join('\n'), function () {
@@ -1557,6 +1785,19 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
         x.source = g.label;
         return x;
       });
+    } else if (state.kind === 'coa2csv') {
+      var cg = lGroups(state.inputs);
+      var c = coaState();
+      parts = cg.map(function (g) {
+        var x = Core.coaToCsv(g.files, {
+          outName: (cg.length === 1 && o.outName) || g.label,
+          parcels: cg.length === 1 && c.mode === 'pick' ? c.picked : null,
+          ctl: c.ctl, buffer: o.coaBuffer, ctlFirst: o.coaCtlFirst !== false,
+          order: o.xyOrder === 'xy' ? 'xy' : 'yx', ext: o.ext
+        });
+        x.source = g.label;
+        return x;
+      });
     } else {
       parts = state.inputs.map(function (inp) {
         var key = inputKey(inp);
@@ -1578,7 +1819,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
       for (var k in p.stats) if (typeof p.stats[k] === 'number') r.stats[k] = (r.stats[k] || 0) + p.stats[k];
     });
     if (state.kind === 'csv2cntmac') r.stats.maxErrMm = Math.max.apply(null, parts.map(function (p) { return p.stats.maxErrMm || 0; }));
-    if (state.kind === 'l2csv') r.perFile = [].concat.apply([], parts.map(function (p) { return p.perFile; }));
+    if (GROUPED[state.kind]) r.perFile = [].concat.apply([], parts.map(function (p) { return p.perFile; }));
     state.result = r;
     renderResult();
   }
@@ -1633,11 +1874,12 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
 
     renderThumbs(r);
     renderReview(r);
+    renderCoaPanel(r);
 
     // 副檔名選擇（重測資料匯出時顯示在存檔區最上面）
     var db = $('deviceBar'); db.innerHTML = '';
-    db.classList.toggle('hidden', r.kind !== 'l2csv');
-    if (r.kind === 'l2csv') {
+    db.classList.toggle('hidden', !GROUPED[r.kind]);
+    if (GROUPED[r.kind]) {
       db.appendChild(el('span', { 'class': 'lbl' }, '副檔名：'));
       var eseg = el('div', { 'class': 'seg' });
       [['csv', '.csv'], ['txt', '.txt']].forEach(function (c) {
@@ -1741,7 +1983,8 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
   var LEGENDS = {
     csv2cntmac: [['ok', '要轉換'], ['flag', '要轉換但有疑慮'], ['off', '剔除（不轉換）'], ['station', '虛擬測站 / 後視']],
     raw2mac: [['station', '測站'], ['known', '檔案內已知點'], ['obs', '觀測點（推算位置）']],
-    l2csv: [['ctl', '控制點 L02'], ['bnd', '界址點/參考點 L14'], ['add', '補點 L20']]
+    l2csv: [['ctl', '控制點 L02'], ['bnd', '界址點/參考點 L14'], ['add', '補點 L20']],
+    coa2csv: [['ctl', '控制點 .CTL'], ['bnd', '界址點 .COA']]
   };
 
   /** 把一個 part 轉成要畫的點：{ N, E, name, cls, line } */
@@ -1764,7 +2007,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
       var fb = pts2.filter(function (q) { return q.cls === 'obs' || focus[q.name]; });
       return { pts: pts2, bbox: showAll || !fb.length ? pts2 : fb, rays: pl.rays };
     }
-    var map = { '控制點': 'ctl', '界址點/參考點': 'bnd', '補點': 'add' };
+    var map = { '控制點': 'ctl', '界址點/參考點': 'bnd', '界址點': 'bnd', '補點': 'add' };
     var pts3 = p.preview.map(function (q) {
       return { N: parseFloat(q.y), E: parseFloat(q.x), name: q.name, cls: map[q.type] || 'other', tip: q.name + '（' + q.type + '）' };
     }).filter(function (q) { return isFinite(q.N) && isFinite(q.E); });
@@ -1884,6 +2127,129 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
         });
       });
     }
+  }
+
+  // ═════════════ 複丈輸入檔：選擇範圍 ═════════════
+
+  function coaState() {
+    if (!state.coa) state.coa = { mode: 'all', picked: [], ctl: 'all', search: '' };
+    return state.coa;
+  }
+
+  /** 「12」「12-3」「10~15」「1,2,5」都可以 */
+  function parseParcelInput(text, known) {
+    var out = [];
+    String(text).split(/[\s,，、;；]+/).forEach(function (tok) {
+      if (!tok) return;
+      var m = /^0*(\d+)\s*[~～]\s*0*(\d+)$/.exec(tok);
+      if (m) {
+        var a = +m[1], b = +m[2];
+        if (b < a) { var t = a; a = b; b = t; }
+        for (var i = a; i <= b && i - a < 5000; i++) if (!known || known[String(i)]) out.push(String(i));
+        return;
+      }
+      var k = Core.parcelKeyOf(tok);
+      if (k) out.push(k);
+    });
+    return out;
+  }
+
+  var PARCEL_SHOW = 300;
+  function renderCoaPanel(r) {
+    var panel = $('coaPanel');
+    if (r.kind !== 'coa2csv' || !r.parts.length) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    var c = coaState();
+    var o = state.opts;
+    var single = r.parts.length === 1;
+    var p = r.parts[0];
+    var parcels = single ? p.parcels : [];
+    var canPick = single && parcels.length > 0;
+    if (!canPick && c.mode === 'pick') c.mode = 'all';
+    var known = {};
+    parcels.forEach(function (x) { known[x.key] = x; });
+
+    var h = '<div class="coarow"><span class="lbl">界址點：</span><div class="seg" id="coaMode">' +
+      '<button type="button" data-v="all" class="' + (c.mode === 'all' ? 'on' : '') + '">全部' + (single && p.stats.totalBnd ? '（' + p.stats.totalBnd + ' 點）' : '') + '</button>' +
+      '<button type="button" data-v="pick" class="' + (c.mode === 'pick' ? 'on' : '') + '"' + (canPick ? '' : ' disabled title="需要 .BNP 檔，且一次只放一個案件"') + '>指定地號</button></div>' +
+      (canPick ? '' : '<span class="muted">' + (single ? '沒有 .BNP 檔，無法依地號挑選' : '一次放多個案件時只能全部匯出') + '</span>') + '</div>';
+
+    if (c.mode === 'pick') {
+      h += '<div class="pickbox">' +
+        '<div class="coarow"><input type="text" id="pqInput" placeholder="直接輸入地號，例如：12 15-1 20~25" style="flex:1;min-width:220px">' +
+        '<button class="btn small primary" type="button" id="pqAdd">加入</button>' +
+        '<button class="btn small" type="button" id="pqClear"' + (c.picked.length ? '' : ' disabled') + '>全部清除</button></div>' +
+        '<div class="picked">' + (c.picked.length ? '已選 <b>' + c.picked.length + '</b> 筆地號：' + c.picked.map(function (k) {
+          return '<span class="chip">' + esc(k) + (known[k] ? '' : ' <span style="color:var(--err)">（找不到）</span>') + ' <button type="button" data-rm="' + esc(k) + '" aria-label="移除 ' + esc(k) + '">×</button></span>';
+        }).join('') : '<span class="muted">還沒有選地號，請在上面輸入或在下面清單勾選。</span>') + '</div>' +
+        '<div class="coarow"><input type="search" id="pqSearch" placeholder="搜尋地號" value="' + esc(c.search) + '" style="width:180px"><span class="muted" id="pqCount"></span></div>' +
+        '<div class="plist" id="pqList"></div></div>';
+    }
+
+    h += '<div class="coarow"><span class="lbl">控制點：</span><div class="seg" id="coaCtl">' +
+      [['all', '全部'], ['near', '地號周圍'], ['none', '不要']].map(function (b) {
+        return '<button type="button" data-v="' + b[0] + '" class="' + (c.ctl === b[0] ? 'on' : '') + '">' + b[1] + '</button>';
+      }).join('') + '</div>' +
+      (c.ctl === 'near' ? '<input type="text" id="coaBuf" inputmode="numeric" value="' + esc(o.coaBuffer) + '" style="width:70px;text-align:center"> 公尺內' : '') +
+      '<span class="muted">' + (single ? '共 ' + p.stats.ctl + ' 點' : '') + (c.ctl === 'near' ? '（界址點範圍往外擴的矩形）' : '') + '</span></div>';
+
+    h += '<div class="coarow"><span class="lbl">排序：</span><div class="seg" id="coaSort">' +
+      '<button type="button" data-v="1" class="' + (o.coaCtlFirst !== false ? 'on' : '') + '">控制點在前</button>' +
+      '<button type="button" data-v="0" class="' + (o.coaCtlFirst === false ? 'on' : '') + '">界址點在前</button></div></div>';
+    $('coa').innerHTML = h;
+
+    var segBind = function (id, fn) {
+      Array.prototype.forEach.call($(id).querySelectorAll('button'), function (b) { b.onclick = function () { fn(b.getAttribute('data-v')); }; });
+    };
+    segBind('coaMode', function (v) {
+      if (v === c.mode) return;
+      c.mode = v;
+      if (v === 'pick' && c.ctl === 'all') c.ctl = 'near'; // 挑地號時，控制點預設只要周圍的
+      if (v === 'all' && c.ctl === 'near') c.ctl = 'all';
+      run();
+    });
+    segBind('coaCtl', function (v) { c.ctl = v; run(); });
+    segBind('coaSort', function (v) { o.coaCtlFirst = v === '1'; saveOpts(); run(); });
+    if ($('coaBuf')) $('coaBuf').onchange = function () {
+      var v = parseFloat(this.value);
+      if (!isFinite(v) || v < 0) { toast('請輸入公尺數'); this.value = o.coaBuffer; return; }
+      o.coaBuffer = v; saveOpts(); run();
+    };
+    if (c.mode !== 'pick') return;
+
+    var add = function (keys) {
+      keys.forEach(function (k) { if (c.picked.indexOf(k) < 0) c.picked.push(k); });
+      run();
+    };
+    $('pqAdd').onclick = function () {
+      var keys = parseParcelInput($('pqInput').value, known);
+      if (!keys.length) { toast('看不懂這些地號，例如：12 15-1 20~25'); return; }
+      add(keys);
+    };
+    $('pqInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('pqAdd').click(); });
+    $('pqClear').onclick = function () { c.picked = []; run(); };
+    Array.prototype.forEach.call(panel.querySelectorAll('[data-rm]'), function (b) {
+      b.onclick = function () { c.picked = c.picked.filter(function (k) { return k !== b.getAttribute('data-rm'); }); run(); };
+    });
+    var drawList = function () {
+      var q = c.search.trim();
+      var list = parcels.filter(function (x) { return !q || x.key.indexOf(q) === 0 || x.key === Core.parcelKeyOf(q); });
+      $('pqCount').textContent = (q ? '符合 ' : '共 ') + list.length + ' 筆' + (list.length > PARCEL_SHOW ? '，只列出前 ' + PARCEL_SHOW + ' 筆，請用搜尋' : '');
+      $('pqList').innerHTML = list.slice(0, PARCEL_SHOW).map(function (x) {
+        var on = c.picked.indexOf(x.key) >= 0;
+        return '<label class="pitem' + (on ? ' on' : '') + '"><input type="checkbox" data-k="' + esc(x.key) + '"' + (on ? ' checked' : '') + (x.points ? '' : ' disabled') + '>' +
+          '<b>' + esc(x.key) + '</b><span class="muted">' + (x.points ? x.points + ' 點' : '有簿無圖') + (x.area ? '・' + esc(x.area) + ' ㎡' : '') + '</span></label>';
+      }).join('');
+      Array.prototype.forEach.call($('pqList').querySelectorAll('input[data-k]'), function (cb) {
+        cb.onchange = function () {
+          var k = cb.getAttribute('data-k');
+          if (cb.checked) { if (c.picked.indexOf(k) < 0) c.picked.push(k); } else c.picked = c.picked.filter(function (x) { return x !== k; });
+          run();
+        };
+      });
+    };
+    $('pqSearch').addEventListener('input', function () { c.search = this.value; drawList(); });
+    drawList();
   }
 
   // ═════════════ GPS 點位檢查 ═════════════
@@ -2106,7 +2472,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
   function renderOpts() {
     var o = $('opts'); o.innerHTML = '';
     var k = state.kind;
-    var single = k === 'l2csv' ? lGroups(state.inputs).length === 1 : state.inputs.length === 1;
+    var single = GROUPED[k] ? lGroups(state.inputs).length === 1 : state.inputs.length === 1;
     if (single) {
       var w = el('div', { 'class': 'opt' });
       w.appendChild(el('label', { 'class': 'h', 'for': 'outName' }, '輸出檔名（不含副檔名）'));
@@ -2207,7 +2573,10 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
   function handleFolder(entries, folderName) {
     var list = entries.map(function (x) { return { name: x.file.name, path: x.path, file: x.file }; });
     var g = Core.groupFolderFiles(list);
-    var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'];
+    // 複丈輸入檔：資料夾裡沒有 L02/L14/L20 時才列出（或已在角落按鈕手動啟用）
+    var useCoa = g.coa2csv.length && (!g.l2csv.length || state.coaEnabled || state.kind === 'coa2csv');
+    var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'].concat(useCoa ? ['coa2csv'] : []);
+    if (!useCoa) g.coa2csv = [];
     var kinds = state.kind ? [state.kind] : ALL;
     // 目前頁面要的檔案在資料夾裡沒有，但有其他種類：列出來讓使用者改做那一種
     if (state.kind && !g[state.kind].length && ALL.some(function (k) { return g[k].length; })) {
@@ -2217,7 +2586,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
     var total = kinds.reduce(function (n, k) { return n + g[k].length; }, 0);
     if (!total) {
       modal('<h3>資料夾裡沒有找到可以轉換的檔案</h3><p class="muted">「' + esc(folderName) + '」裡共 ' + entries.length + ' 個檔案，沒有 ' +
-        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。</p>' +
+        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : state.kind === 'coa2csv' ? '.COA' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。</p>' +
         '<div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
       $('ok1').onclick = closeModal;
       return;
@@ -2229,7 +2598,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
       loadGroups([g[k1][0]], k1, null);
       return;
     }
-    var TITLES = { l2csv: '重測資料（同案件的 L02、L14、L20 合併成一個檔）', raw2mac: '全站儀觀測檔 .RAW', csv2cntmac: 'GPS 坐標檔 .CSV' };
+    var TITLES = { l2csv: '重測資料（同案件的 L02、L14、L20 合併成一個檔）', raw2mac: '全站儀觀測檔 .RAW', csv2cntmac: 'GPS 坐標檔 .CSV', coa2csv: '複丈輸入檔（.COA 界址點 ＋ .CTL 控制點）' };
     var h = '<h3>在「' + esc(folderName) + '」找到這些資料</h3><div class="muted">勾選要轉換的項目（可以多選），再按下面的按鈕。</div>';
     kinds.forEach(function (k) {
       if (!g[k].length) return;
@@ -2240,6 +2609,10 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
           det = ['L02', 'L14', 'L20'].map(function (e) {
             return '<span class="extb' + (item.exts.indexOf(e) < 0 ? ' miss' : '') + '">' + e + '</span>';
           }).join('') + ' ' + ['控制點', '界址/參考點', '補點'].filter(function (t, j) { return item.exts.indexOf(['L02', 'L14', 'L20'][j]) >= 0; }).join('、');
+        } else if (k === 'coa2csv') {
+          det = ['COA', 'CTL', 'BNP', 'PAR'].map(function (e) {
+            return '<span class="extb' + (item.exts.indexOf(e) < 0 ? ' miss' : '') + '">' + e + '</span>';
+          }).join('') + ' 界址點' + (item.exts.indexOf('CTL') >= 0 ? '、控制點' : '') + (item.exts.indexOf('BNP') >= 0 ? '、可依地號挑選' : '');
         } else det = '';
         h += '<label class="item"><input type="checkbox" data-i="' + i + '"' + (g[k].length === 1 ? ' checked' : '') + '><span><b>' + esc(item.label) + '</b>' +
           (det ? '<div class="det">' + det + '</div>' : '') + (item.dir ? '<div class="det">📁 ' + esc(item.dir) + '</div>' : '') + '</span></label>';
@@ -2590,6 +2963,8 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.7.0","da
     c.onclick = function () { openKind(c.getAttribute('data-kind')); };
   });
   $('btnBack').onclick = showHome;
+  // 角落按鈕：手動啟用複丈輸入檔轉換（資料夾有 L02/L14/L20 時預設不會列出）
+  $('btnCoa').onclick = function () { state.coaEnabled = true; openKind('coa2csv'); };
 })();
 </script>
 </body>

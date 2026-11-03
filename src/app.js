@@ -47,14 +47,22 @@
           '匯入後隨便抽查幾個點的坐標，確認沒有 X、Y 對調。'
         ];
       }
+    },
+    coa2csv: {
+      title: '複丈輸入檔 → 全站儀 / GPS 控制器',
+      accept: '.coa,.bnp,.par,.ctl,.d20',
+      hint: '同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR 一起放進來，最簡單是直接選整個資料夾',
+      step2: '選擇範圍',
+      next: function (r) { return KINDS.l2csv.next(r); }
     }
   };
+  var GROUPED = { l2csv: 1, coa2csv: 1 }; // 依案件（同名檔）分組的轉換
 
   // ─────────── 狀態 ───────────
-  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {} };
+  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false };
 
   function loadOpts() {
-    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', swapXY: false, stripCode: false };
+    var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaBuffer: 200, swapXY: false, stripCode: false };
     try {
       var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}');
       for (var k in s) if (k in d) d[k] = s[k];
@@ -90,7 +98,7 @@
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {};
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -131,7 +139,7 @@
       b.onclick = onRemove;
       c.appendChild(b); chips.appendChild(c);
     };
-    if (state.kind === 'l2csv') {
+    if (GROUPED[state.kind]) {
       lGroups(state.inputs).forEach(function (g) {
         var exts = g.files.map(function (f) { return Core.extName(f.name); }).join('、');
         addChip(g.label + '（' + exts + '）', g.files.map(inputKey).join('\n'), function () {
@@ -192,6 +200,19 @@
         x.source = g.label;
         return x;
       });
+    } else if (state.kind === 'coa2csv') {
+      var cg = lGroups(state.inputs);
+      var c = coaState();
+      parts = cg.map(function (g) {
+        var x = Core.coaToCsv(g.files, {
+          outName: (cg.length === 1 && o.outName) || g.label,
+          parcels: cg.length === 1 && c.mode === 'pick' ? c.picked : null,
+          ctl: c.ctl, buffer: o.coaBuffer, ctlFirst: o.coaCtlFirst !== false,
+          order: o.xyOrder === 'xy' ? 'xy' : 'yx', ext: o.ext
+        });
+        x.source = g.label;
+        return x;
+      });
     } else {
       parts = state.inputs.map(function (inp) {
         var key = inputKey(inp);
@@ -213,7 +234,7 @@
       for (var k in p.stats) if (typeof p.stats[k] === 'number') r.stats[k] = (r.stats[k] || 0) + p.stats[k];
     });
     if (state.kind === 'csv2cntmac') r.stats.maxErrMm = Math.max.apply(null, parts.map(function (p) { return p.stats.maxErrMm || 0; }));
-    if (state.kind === 'l2csv') r.perFile = [].concat.apply([], parts.map(function (p) { return p.perFile; }));
+    if (GROUPED[state.kind]) r.perFile = [].concat.apply([], parts.map(function (p) { return p.perFile; }));
     state.result = r;
     renderResult();
   }
@@ -268,11 +289,12 @@
 
     renderThumbs(r);
     renderReview(r);
+    renderCoaPanel(r);
 
     // 副檔名選擇（重測資料匯出時顯示在存檔區最上面）
     var db = $('deviceBar'); db.innerHTML = '';
-    db.classList.toggle('hidden', r.kind !== 'l2csv');
-    if (r.kind === 'l2csv') {
+    db.classList.toggle('hidden', !GROUPED[r.kind]);
+    if (GROUPED[r.kind]) {
       db.appendChild(el('span', { 'class': 'lbl' }, '副檔名：'));
       var eseg = el('div', { 'class': 'seg' });
       [['csv', '.csv'], ['txt', '.txt']].forEach(function (c) {
@@ -376,7 +398,8 @@
   var LEGENDS = {
     csv2cntmac: [['ok', '要轉換'], ['flag', '要轉換但有疑慮'], ['off', '剔除（不轉換）'], ['station', '虛擬測站 / 後視']],
     raw2mac: [['station', '測站'], ['known', '檔案內已知點'], ['obs', '觀測點（推算位置）']],
-    l2csv: [['ctl', '控制點 L02'], ['bnd', '界址點/參考點 L14'], ['add', '補點 L20']]
+    l2csv: [['ctl', '控制點 L02'], ['bnd', '界址點/參考點 L14'], ['add', '補點 L20']],
+    coa2csv: [['ctl', '控制點 .CTL'], ['bnd', '界址點 .COA']]
   };
 
   /** 把一個 part 轉成要畫的點：{ N, E, name, cls, line } */
@@ -399,7 +422,7 @@
       var fb = pts2.filter(function (q) { return q.cls === 'obs' || focus[q.name]; });
       return { pts: pts2, bbox: showAll || !fb.length ? pts2 : fb, rays: pl.rays };
     }
-    var map = { '控制點': 'ctl', '界址點/參考點': 'bnd', '補點': 'add' };
+    var map = { '控制點': 'ctl', '界址點/參考點': 'bnd', '界址點': 'bnd', '補點': 'add' };
     var pts3 = p.preview.map(function (q) {
       return { N: parseFloat(q.y), E: parseFloat(q.x), name: q.name, cls: map[q.type] || 'other', tip: q.name + '（' + q.type + '）' };
     }).filter(function (q) { return isFinite(q.N) && isFinite(q.E); });
@@ -519,6 +542,129 @@
         });
       });
     }
+  }
+
+  // ═════════════ 複丈輸入檔：選擇範圍 ═════════════
+
+  function coaState() {
+    if (!state.coa) state.coa = { mode: 'all', picked: [], ctl: 'all', search: '' };
+    return state.coa;
+  }
+
+  /** 「12」「12-3」「10~15」「1,2,5」都可以 */
+  function parseParcelInput(text, known) {
+    var out = [];
+    String(text).split(/[\s,，、;；]+/).forEach(function (tok) {
+      if (!tok) return;
+      var m = /^0*(\d+)\s*[~～]\s*0*(\d+)$/.exec(tok);
+      if (m) {
+        var a = +m[1], b = +m[2];
+        if (b < a) { var t = a; a = b; b = t; }
+        for (var i = a; i <= b && i - a < 5000; i++) if (!known || known[String(i)]) out.push(String(i));
+        return;
+      }
+      var k = Core.parcelKeyOf(tok);
+      if (k) out.push(k);
+    });
+    return out;
+  }
+
+  var PARCEL_SHOW = 300;
+  function renderCoaPanel(r) {
+    var panel = $('coaPanel');
+    if (r.kind !== 'coa2csv' || !r.parts.length) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    var c = coaState();
+    var o = state.opts;
+    var single = r.parts.length === 1;
+    var p = r.parts[0];
+    var parcels = single ? p.parcels : [];
+    var canPick = single && parcels.length > 0;
+    if (!canPick && c.mode === 'pick') c.mode = 'all';
+    var known = {};
+    parcels.forEach(function (x) { known[x.key] = x; });
+
+    var h = '<div class="coarow"><span class="lbl">界址點：</span><div class="seg" id="coaMode">' +
+      '<button type="button" data-v="all" class="' + (c.mode === 'all' ? 'on' : '') + '">全部' + (single && p.stats.totalBnd ? '（' + p.stats.totalBnd + ' 點）' : '') + '</button>' +
+      '<button type="button" data-v="pick" class="' + (c.mode === 'pick' ? 'on' : '') + '"' + (canPick ? '' : ' disabled title="需要 .BNP 檔，且一次只放一個案件"') + '>指定地號</button></div>' +
+      (canPick ? '' : '<span class="muted">' + (single ? '沒有 .BNP 檔，無法依地號挑選' : '一次放多個案件時只能全部匯出') + '</span>') + '</div>';
+
+    if (c.mode === 'pick') {
+      h += '<div class="pickbox">' +
+        '<div class="coarow"><input type="text" id="pqInput" placeholder="直接輸入地號，例如：12 15-1 20~25" style="flex:1;min-width:220px">' +
+        '<button class="btn small primary" type="button" id="pqAdd">加入</button>' +
+        '<button class="btn small" type="button" id="pqClear"' + (c.picked.length ? '' : ' disabled') + '>全部清除</button></div>' +
+        '<div class="picked">' + (c.picked.length ? '已選 <b>' + c.picked.length + '</b> 筆地號：' + c.picked.map(function (k) {
+          return '<span class="chip">' + esc(k) + (known[k] ? '' : ' <span style="color:var(--err)">（找不到）</span>') + ' <button type="button" data-rm="' + esc(k) + '" aria-label="移除 ' + esc(k) + '">×</button></span>';
+        }).join('') : '<span class="muted">還沒有選地號，請在上面輸入或在下面清單勾選。</span>') + '</div>' +
+        '<div class="coarow"><input type="search" id="pqSearch" placeholder="搜尋地號" value="' + esc(c.search) + '" style="width:180px"><span class="muted" id="pqCount"></span></div>' +
+        '<div class="plist" id="pqList"></div></div>';
+    }
+
+    h += '<div class="coarow"><span class="lbl">控制點：</span><div class="seg" id="coaCtl">' +
+      [['all', '全部'], ['near', '地號周圍'], ['none', '不要']].map(function (b) {
+        return '<button type="button" data-v="' + b[0] + '" class="' + (c.ctl === b[0] ? 'on' : '') + '">' + b[1] + '</button>';
+      }).join('') + '</div>' +
+      (c.ctl === 'near' ? '<input type="text" id="coaBuf" inputmode="numeric" value="' + esc(o.coaBuffer) + '" style="width:70px;text-align:center"> 公尺內' : '') +
+      '<span class="muted">' + (single ? '共 ' + p.stats.ctl + ' 點' : '') + (c.ctl === 'near' ? '（界址點範圍往外擴的矩形）' : '') + '</span></div>';
+
+    h += '<div class="coarow"><span class="lbl">排序：</span><div class="seg" id="coaSort">' +
+      '<button type="button" data-v="1" class="' + (o.coaCtlFirst !== false ? 'on' : '') + '">控制點在前</button>' +
+      '<button type="button" data-v="0" class="' + (o.coaCtlFirst === false ? 'on' : '') + '">界址點在前</button></div></div>';
+    $('coa').innerHTML = h;
+
+    var segBind = function (id, fn) {
+      Array.prototype.forEach.call($(id).querySelectorAll('button'), function (b) { b.onclick = function () { fn(b.getAttribute('data-v')); }; });
+    };
+    segBind('coaMode', function (v) {
+      if (v === c.mode) return;
+      c.mode = v;
+      if (v === 'pick' && c.ctl === 'all') c.ctl = 'near'; // 挑地號時，控制點預設只要周圍的
+      if (v === 'all' && c.ctl === 'near') c.ctl = 'all';
+      run();
+    });
+    segBind('coaCtl', function (v) { c.ctl = v; run(); });
+    segBind('coaSort', function (v) { o.coaCtlFirst = v === '1'; saveOpts(); run(); });
+    if ($('coaBuf')) $('coaBuf').onchange = function () {
+      var v = parseFloat(this.value);
+      if (!isFinite(v) || v < 0) { toast('請輸入公尺數'); this.value = o.coaBuffer; return; }
+      o.coaBuffer = v; saveOpts(); run();
+    };
+    if (c.mode !== 'pick') return;
+
+    var add = function (keys) {
+      keys.forEach(function (k) { if (c.picked.indexOf(k) < 0) c.picked.push(k); });
+      run();
+    };
+    $('pqAdd').onclick = function () {
+      var keys = parseParcelInput($('pqInput').value, known);
+      if (!keys.length) { toast('看不懂這些地號，例如：12 15-1 20~25'); return; }
+      add(keys);
+    };
+    $('pqInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('pqAdd').click(); });
+    $('pqClear').onclick = function () { c.picked = []; run(); };
+    Array.prototype.forEach.call(panel.querySelectorAll('[data-rm]'), function (b) {
+      b.onclick = function () { c.picked = c.picked.filter(function (k) { return k !== b.getAttribute('data-rm'); }); run(); };
+    });
+    var drawList = function () {
+      var q = c.search.trim();
+      var list = parcels.filter(function (x) { return !q || x.key.indexOf(q) === 0 || x.key === Core.parcelKeyOf(q); });
+      $('pqCount').textContent = (q ? '符合 ' : '共 ') + list.length + ' 筆' + (list.length > PARCEL_SHOW ? '，只列出前 ' + PARCEL_SHOW + ' 筆，請用搜尋' : '');
+      $('pqList').innerHTML = list.slice(0, PARCEL_SHOW).map(function (x) {
+        var on = c.picked.indexOf(x.key) >= 0;
+        return '<label class="pitem' + (on ? ' on' : '') + '"><input type="checkbox" data-k="' + esc(x.key) + '"' + (on ? ' checked' : '') + (x.points ? '' : ' disabled') + '>' +
+          '<b>' + esc(x.key) + '</b><span class="muted">' + (x.points ? x.points + ' 點' : '有簿無圖') + (x.area ? '・' + esc(x.area) + ' ㎡' : '') + '</span></label>';
+      }).join('');
+      Array.prototype.forEach.call($('pqList').querySelectorAll('input[data-k]'), function (cb) {
+        cb.onchange = function () {
+          var k = cb.getAttribute('data-k');
+          if (cb.checked) { if (c.picked.indexOf(k) < 0) c.picked.push(k); } else c.picked = c.picked.filter(function (x) { return x !== k; });
+          run();
+        };
+      });
+    };
+    $('pqSearch').addEventListener('input', function () { c.search = this.value; drawList(); });
+    drawList();
   }
 
   // ═════════════ GPS 點位檢查 ═════════════
@@ -741,7 +887,7 @@
   function renderOpts() {
     var o = $('opts'); o.innerHTML = '';
     var k = state.kind;
-    var single = k === 'l2csv' ? lGroups(state.inputs).length === 1 : state.inputs.length === 1;
+    var single = GROUPED[k] ? lGroups(state.inputs).length === 1 : state.inputs.length === 1;
     if (single) {
       var w = el('div', { 'class': 'opt' });
       w.appendChild(el('label', { 'class': 'h', 'for': 'outName' }, '輸出檔名（不含副檔名）'));
@@ -842,7 +988,10 @@
   function handleFolder(entries, folderName) {
     var list = entries.map(function (x) { return { name: x.file.name, path: x.path, file: x.file }; });
     var g = Core.groupFolderFiles(list);
-    var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'];
+    // 複丈輸入檔：資料夾裡沒有 L02/L14/L20 時才列出（或已在角落按鈕手動啟用）
+    var useCoa = g.coa2csv.length && (!g.l2csv.length || state.coaEnabled || state.kind === 'coa2csv');
+    var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'].concat(useCoa ? ['coa2csv'] : []);
+    if (!useCoa) g.coa2csv = [];
     var kinds = state.kind ? [state.kind] : ALL;
     // 目前頁面要的檔案在資料夾裡沒有，但有其他種類：列出來讓使用者改做那一種
     if (state.kind && !g[state.kind].length && ALL.some(function (k) { return g[k].length; })) {
@@ -852,7 +1001,7 @@
     var total = kinds.reduce(function (n, k) { return n + g[k].length; }, 0);
     if (!total) {
       modal('<h3>資料夾裡沒有找到可以轉換的檔案</h3><p class="muted">「' + esc(folderName) + '」裡共 ' + entries.length + ' 個檔案，沒有 ' +
-        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。</p>' +
+        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : state.kind === 'coa2csv' ? '.COA' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。</p>' +
         '<div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
       $('ok1').onclick = closeModal;
       return;
@@ -864,7 +1013,7 @@
       loadGroups([g[k1][0]], k1, null);
       return;
     }
-    var TITLES = { l2csv: '重測資料（同案件的 L02、L14、L20 合併成一個檔）', raw2mac: '全站儀觀測檔 .RAW', csv2cntmac: 'GPS 坐標檔 .CSV' };
+    var TITLES = { l2csv: '重測資料（同案件的 L02、L14、L20 合併成一個檔）', raw2mac: '全站儀觀測檔 .RAW', csv2cntmac: 'GPS 坐標檔 .CSV', coa2csv: '複丈輸入檔（.COA 界址點 ＋ .CTL 控制點）' };
     var h = '<h3>在「' + esc(folderName) + '」找到這些資料</h3><div class="muted">勾選要轉換的項目（可以多選），再按下面的按鈕。</div>';
     kinds.forEach(function (k) {
       if (!g[k].length) return;
@@ -875,6 +1024,10 @@
           det = ['L02', 'L14', 'L20'].map(function (e) {
             return '<span class="extb' + (item.exts.indexOf(e) < 0 ? ' miss' : '') + '">' + e + '</span>';
           }).join('') + ' ' + ['控制點', '界址/參考點', '補點'].filter(function (t, j) { return item.exts.indexOf(['L02', 'L14', 'L20'][j]) >= 0; }).join('、');
+        } else if (k === 'coa2csv') {
+          det = ['COA', 'CTL', 'BNP', 'PAR'].map(function (e) {
+            return '<span class="extb' + (item.exts.indexOf(e) < 0 ? ' miss' : '') + '">' + e + '</span>';
+          }).join('') + ' 界址點' + (item.exts.indexOf('CTL') >= 0 ? '、控制點' : '') + (item.exts.indexOf('BNP') >= 0 ? '、可依地號挑選' : '');
         } else det = '';
         h += '<label class="item"><input type="checkbox" data-i="' + i + '"' + (g[k].length === 1 ? ' checked' : '') + '><span><b>' + esc(item.label) + '</b>' +
           (det ? '<div class="det">' + det + '</div>' : '') + (item.dir ? '<div class="det">📁 ' + esc(item.dir) + '</div>' : '') + '</span></label>';
@@ -1225,4 +1378,6 @@
     c.onclick = function () { openKind(c.getAttribute('data-kind')); };
   });
   $('btnBack').onclick = showHome;
+  // 角落按鈕：手動啟用複丈輸入檔轉換（資料夾有 L02/L14/L20 時預設不會列出）
+  $('btnCoa').onclick = function () { state.coaEnabled = true; openKind('coa2csv'); };
 })();

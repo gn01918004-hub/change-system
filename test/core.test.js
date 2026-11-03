@@ -248,3 +248,35 @@ test('L 檔：依數值判斷 Y（27…）、X（21…），輸出順序可選 Y
   assert.strictEqual(lines(loc.files[0].content)[0], '1,1000.000,1010.000');
   assert.ok(loc.report.some((x) => x.level === 'warn' && /看不出/.test(x.msg)));
 });
+
+test('複丈輸入檔：COA + CTL + BNP + PAR → CSV，可依地號挑選、控制點取周圍', () => {
+  const coa = 'KC9999 3 500 3\r\n    1 2707758.00200000219829.249000000\r\n    2 2707565.58200000220573.485000000\r\n    3 2707796.09100000219898.484000004\r\n';
+  const ctl = 'KCK030000000\r\nBKC001  2707760.653219830.2200 \r\nBKC002  2700000.822210000.6008 \r\n';
+  const par = 'KC9999 113111310231131\r\n' +
+    '   1   01117    390.21   1   0    390.21J 02707859.2219916.3  0\r\n' +
+    '   2   01117   2278.00   2   0   2278.00J 02707822.1219920.5  0\r\n' +
+    '1000   01117      6.631000   0      6.63U 02707000.4220190.4  0\r\n';
+  const bnp = 'KC9999 3\r\n   1   0  1   2     1     3                                                      \r\n' +
+    '   2   0  1   1     2                                                            \r\n' +
+    '1000   0  1   1     2                                                            \r\n';
+  const inputs = [{ name: 'KC9999.COA', text: coa }, { name: 'KC9999.CTL', text: ctl }, { name: 'KC9999.PAR', text: par }, { name: 'KC9999.BNP', text: bnp }];
+  const all = Core.coaToCsv(inputs);
+  assert.deepStrictEqual(lines(all.files[0].content), [
+    'BKC001,2707760.653,219830.220', 'BKC002,2700000.822,210000.600',
+    '1,2707758.002,219829.249', '2,2707565.582,220573.485', '3,2707796.091,219898.484'
+  ]);
+  assert.deepStrictEqual(all.parcels.map((p) => p.key), ['1', '2', '1000']);
+  assert.strictEqual(all.parcels[2].area, '6.63');       // 4 位數母號，面積不會黏在一起
+  // 只要地號 1，控制點只取周圍 200 m，界址點在前，X,Y
+  const r = Core.coaToCsv(inputs, { parcels: ['0001'], ctl: 'near', ctlFirst: false, order: 'xy', ext: 'txt' });
+  assert.deepStrictEqual(lines(r.files[0].content), ['1,219829.249,2707758.002', '3,219898.484,2707796.091', 'BKC001,219830.220,2707760.653']);
+  assert.ok(r.files[0].name.endsWith('.txt'));
+  assert.strictEqual(Core.parcelKeyOf('0012-0003'), '12-3');
+  assert.strictEqual(Core.parcelKeyOf('12之3'), '12-3');
+  // 缺 .COA
+  assert.ok(Core.coaToCsv([{ name: 'X.CTL', text: ctl }]).report.some((x) => x.level === 'error'));
+  // 資料夾掃描與自動判斷
+  const g = Core.groupFolderFiles(inputs.map((f) => ({ name: f.name, path: 'job/' + f.name })));
+  assert.strictEqual(g.coa2csv.length, 1);
+  assert.strictEqual(Core.detectKind('a.COA', ''), 'coa2csv');
+});

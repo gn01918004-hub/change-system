@@ -887,6 +887,188 @@
     };
   }
 
+  // ═════════════ 4. 複丈輸入檔（.COA/.BNP/.PAR/.CTL）→ 全站儀 / GPS 控制器 CSV ═════════════
+  //
+  // 取代「複丈輸入檔2SOKKIA v3.1」。資料夾裡沒有 L02/L14/L20 時使用。
+  //   .COA  界址點坐標：點號(5) 空白 Y(16) X(15) 註記(1)
+  //   .CTL  控制點：    點名(8) Y(11) X(10) 註記(1)
+  //   .PAR  地號：      母號(4) 子號(4) 段(4) 面積(10) … 地目(1) … 中心 Y(9) X(8)
+  //   .BNP  地號界址點：母號(4) 子號(4) 行序(3) 點數(4) 點號(6)×最多 11
+  //   .D20  控制點屬性（dBASE），轉換用不到
+
+  var COA_EXTS = ['COA', 'BNP', 'PAR', 'CTL', 'D20'];
+
+  function parseCoa(text, report) {
+    var map = {}, ids = [];
+    splitLines(text).forEach(function (l, i) {
+      if (i === 0 || !l.trim()) return;           // 第一行是標頭
+      var m = /^\s*(\d+)\s+(\d+\.\d+?)(\d{6}\.\d+?)(\d)?\s*$/.exec(l);
+      // 固定欄寬比較可靠：Y 16 字、X 15 字
+      var id = l.slice(0, 5).trim(), y = l.slice(6, 22).trim(), x = l.slice(22, 37).trim();
+      if (!/^\d+$/.test(id) || !isNum(y) || !isNum(x)) {
+        if (m) { id = m[1]; y = m[2]; x = m[3]; }
+        else { report.warn('.COA 第 ' + (i + 1) + ' 行看不懂，已略過：' + l.trim(), i + 1); return; }
+      }
+      if (!map[id]) ids.push(id);
+      map[id] = { y: parseFloat(y).toFixed(3), x: parseFloat(x).toFixed(3) };
+    });
+    return { map: map, ids: ids };
+  }
+
+  function parseCtl(text, report) {
+    var list = [];
+    splitLines(text).forEach(function (l, i) {
+      if (i === 0 || !l.trim()) return;
+      var name = l.slice(0, 8).trim(), y = l.slice(8, 19).trim(), x = l.slice(19, 29).trim();
+      if (!name || !isNum(y) || !isNum(x)) {
+        var t = l.trim().split(/\s+/);
+        if (t.length >= 3 && isNum(t[1]) && isNum(t[2])) { name = t[0]; y = t[1]; x = t[2]; }
+        else { report.warn('.CTL 第 ' + (i + 1) + ' 行看不懂，已略過：' + l.trim(), i + 1); return; }
+      }
+      list.push({ name: name, y: parseFloat(y).toFixed(3), x: parseFloat(x).toFixed(3) });
+    });
+    return list;
+  }
+
+  /** 地號鍵：母號-子號，子號 0 時只寫母號（1、12-3） */
+  function parcelLabel(mother, child) {
+    mother = String(parseInt(mother, 10)); child = String(parseInt(child || '0', 10));
+    return child === '0' ? mother : mother + '-' + child;
+  }
+  /** 使用者輸入的地號轉成鍵：「12」「12-3」「0012-0003」「12之3」都可以 */
+  function parcelKeyOf(s) {
+    var m = /^\s*0*(\d+)\s*(?:[-之]\s*0*(\d+))?\s*$/.exec(String(s));
+    return m ? parcelLabel(m[1], m[2] || '0') : null;
+  }
+
+  function parsePar(text) {
+    var list = [];
+    splitLines(text).forEach(function (l, i) {
+      if (i === 0 || l.length < 30) return;
+      var mother = l.slice(0, 4).trim(), child = l.slice(4, 8).trim();
+      if (!/^\d+$/.test(mother)) return;
+      list.push({ key: parcelLabel(mother, child || '0'), area: l.slice(12, 22).trim(), landUse: l.slice(40, 41).trim() });
+    });
+    return list;
+  }
+
+  function parseBnp(text) {
+    var map = {}, order = [];
+    splitLines(text).forEach(function (l, i) {
+      if (i === 0 || !l.trim()) return;
+      var t = l.trim().split(/\s+/);
+      if (t.length < 4) return;
+      var key = parcelLabel(t[0], t[1]);
+      if (!map[key]) { map[key] = []; order.push(key); }
+      for (var k = 4; k < t.length; k++) if (/^\d+$/.test(t[k])) map[key].push(String(parseInt(t[k], 10)));
+    });
+    return { map: map, order: order };
+  }
+
+  /**
+   * inputs：同一案件的檔案 [{ name, text }]（依副檔名辨認）。
+   * opts.parcels：要匯出的地號（陣列；不給 = 全部界址點）
+   * opts.ctl：'all'（預設）| 'near'（地號周圍）| 'none'；opts.buffer：公尺（預設 200）
+   * opts.ctlFirst：控制點在前（預設 true）；opts.order：'yx' | 'xy'；opts.ext：'csv' | 'txt'
+   */
+  function coaToCsv(inputs, opts) {
+    opts = opts || {};
+    var report = new Report();
+    var byExt = {};
+    inputs.forEach(function (f) { byExt[extName(f.name)] = f; });
+    var base = opts.outName || (inputs.length ? baseName(inputs[0].name) : '未命名');
+    var result = { kind: 'coa2csv', files: [], report: report.items, preview: [], parcels: [], perFile: [],
+      stats: { points: 0, ctl: 0, bnd: 0, parcels: 0, selected: 0 } };
+
+    if (!byExt.COA) {
+      report.error('找不到 .COA 檔（界址點坐標）。同一個資料夾裡要有同名的 .COA，最好也有 .CTL、.BNP、.PAR');
+      return result;
+    }
+    var coa = parseCoa(byExt.COA.text, report);
+    var ctl = byExt.CTL ? parseCtl(byExt.CTL.text, report) : [];
+    if (!byExt.CTL) report.info('沒有 .CTL 檔，只會輸出界址點（沒有控制點）');
+    var bnp = byExt.BNP ? parseBnp(byExt.BNP.text) : null;
+    var par = byExt.PAR ? parsePar(byExt.PAR.text) : [];
+
+    // 地號清單（給畫面選）：以 .BNP 為主，補上 .PAR 的面積、地目
+    var parInfo = {};
+    par.forEach(function (p) { parInfo[p.key] = p; });
+    if (bnp) {
+      result.parcels = bnp.order.map(function (k) {
+        return { key: k, points: bnp.map[k].length, area: parInfo[k] ? parInfo[k].area : '', landUse: parInfo[k] ? parInfo[k].landUse : '' };
+      });
+      par.forEach(function (p) { if (!bnp.map[p.key]) result.parcels.push({ key: p.key, points: 0, area: p.area, landUse: p.landUse, noMap: true }); });
+    }
+    result.stats.parcels = result.parcels.length;
+
+    // 界址點
+    var bndIds;
+    var picked = (opts.parcels || []).map(parcelKeyOf).filter(Boolean);
+    if (picked.length) {
+      if (!bnp) {
+        report.error('沒有 .BNP 檔，無法依地號挑界址點，請改選「全部」');
+        bndIds = [];
+      } else {
+        var seen = {};
+        bndIds = [];
+        picked.forEach(function (k) {
+          if (!bnp.map[k]) {
+            report.warn('地號 ' + k + ' 在 .BNP 裡找不到界址點' + (parInfo[k] ? '（地號有簿無圖）' : '（沒有這個地號）'));
+            return;
+          }
+          bnp.map[k].forEach(function (id) { if (!seen[id]) { seen[id] = 1; bndIds.push(id); } });
+        });
+        result.stats.selected = picked.length;
+      }
+    } else {
+      bndIds = coa.ids.slice();
+    }
+    var missing = bndIds.filter(function (id) { return !coa.map[id]; });
+    if (missing.length) report.warn('有 ' + missing.length + ' 個界址點在 .COA 裡找不到坐標（地籍圖偵錯）：' + missing.slice(0, 10).join('、') + (missing.length > 10 ? '…' : ''));
+    var bnd = bndIds.filter(function (id) { return coa.map[id]; }).map(function (id) {
+      return { name: id, y: coa.map[id].y, x: coa.map[id].x, type: '界址點', src: byExt.COA.name };
+    });
+
+    // 控制點
+    var mode = opts.ctl || 'all';
+    var ctlPts = [];
+    if (mode !== 'none') {
+      ctlPts = ctl;
+      if (mode === 'near' && bnd.length) {
+        var buf = isFinite(parseFloat(opts.buffer)) ? parseFloat(opts.buffer) : 200;
+        var minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+        bnd.forEach(function (p) {
+          var y = parseFloat(p.y), x = parseFloat(p.x);
+          minY = Math.min(minY, y); maxY = Math.max(maxY, y); minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        });
+        ctlPts = ctl.filter(function (c) {
+          var y = parseFloat(c.y), x = parseFloat(c.x);
+          return y >= minY - buf && y <= maxY + buf && x >= minX - buf && x <= maxX + buf;
+        });
+        result.stats.buffer = buf;
+        if (!ctlPts.length) report.warn('界址點範圍外 ' + buf + ' 公尺內沒有控制點，可以把距離加大或改選「全部」');
+      }
+    }
+    ctlPts = ctlPts.map(function (c) { return { name: c.name, y: c.y, x: c.x, type: '控制點', src: byExt.CTL ? byExt.CTL.name : '' }; });
+
+    var points = opts.ctlFirst === false ? bnd.concat(ctlPts) : ctlPts.concat(bnd);
+    var outOrder = opts.order === 'xy' ? 'xy' : 'yx';
+    var lines = points.map(function (p) { return outOrder === 'xy' ? [p.name, p.x, p.y].join(',') : [p.name, p.y, p.x].join(','); });
+
+    result.order = outOrder;
+    result.preview = points;
+    result.stats.points = points.length;
+    result.stats.ctl = ctlPts.length;
+    result.stats.bnd = bnd.length;
+    result.stats.totalBnd = coa.ids.length;
+    result.perFile = [{ name: byExt.CTL ? byExt.CTL.name : '', type: '控制點', count: ctlPts.length }, { name: byExt.COA.name, type: '界址點', count: bnd.length }];
+    if (!points.length) { report.error('沒有任何點可以輸出'); return result; }
+    var ext = opts.ext === 'txt' ? 'txt' : 'csv';
+    result.files.push({ name: base + '.' + ext, content: joinLines(lines), main: true,
+      desc: '全站儀、GPS 控制器都能匯入：點號,' + (outOrder === 'xy' ? 'X,Y' : 'Y,X') + '（控制點 ' + ctlPts.length + '、界址點 ' + bnd.length + '）' });
+    return result;
+  }
+
   // ───────────────────────── 資料夾掃描 ─────────────────────────
 
   /** 同一個案件的 L02/L14/L20 視為一組：同資料夾、同主檔名（例如 KC0390.L02 + KC0390.L14）。 */
@@ -902,7 +1084,8 @@
    * 每一項 { key, label, dir, files:[原物件...] }。
    */
   function groupFolderFiles(list) {
-    var out = { l2csv: [], raw2mac: [], csv2cntmac: [] };
+    var out = { l2csv: [], raw2mac: [], csv2cntmac: [], coa2csv: [] };
+    var cmap = {};
     var lmap = {};
     list.forEach(function (f) {
       var path = f.path || f.name;
@@ -916,6 +1099,14 @@
         }
         lmap[k].files.push(f);
         lmap[k].exts.push(ext);
+      } else if (COA_EXTS.indexOf(ext) >= 0) {
+        var ck = lGroupKey(path);
+        if (!cmap[ck]) {
+          cmap[ck] = { key: ck, label: baseName(f.name), dir: dir, files: [], exts: [] };
+          out.coa2csv.push(cmap[ck]);
+        }
+        cmap[ck].files.push(f);
+        cmap[ck].exts.push(ext);
       } else if (ext === 'RAW') {
         out.raw2mac.push({ key: path, label: f.name, dir: dir, files: [f] });
       } else if (ext === 'CSV' || ext === 'ASC') {
@@ -928,6 +1119,7 @@
       g.exts.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
     });
     out.l2csv.sort(byLabel); out.raw2mac.sort(byLabel); out.csv2cntmac.sort(byLabel);
+    out.coa2csv = out.coa2csv.filter(function (g) { return g.exts.indexOf('COA') >= 0; }).sort(byLabel);
     return out;
   }
 
@@ -938,6 +1130,7 @@
     var ext = extName(filename);
     if (ext === 'RAW') return 'raw2mac';
     if (L_TYPES[ext]) return 'l2csv';
+    if (COA_EXTS.indexOf(ext) >= 0) return 'coa2csv';
     var head = splitLines(text || '').slice(0, 40).join('\n');
     if (/^(ST|SS|F1),/m.test(head)) return 'raw2mac';
     if (ext === 'CSV' || ext === 'TXT' || ext === 'ASC') return 'csv2cntmac';
@@ -962,6 +1155,9 @@
     baseName: baseName,
     extName: extName,
     L_ORDER: L_ORDER,
-    classifyYX: classifyYX
+    classifyYX: classifyYX,
+    coaToCsv: coaToCsv,
+    parcelKeyOf: parcelKeyOf,
+    COA_EXTS: COA_EXTS
   };
 });
