@@ -51,10 +51,10 @@
   };
 
   // ─────────── 狀態 ───────────
-  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null };
+  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {} };
 
   function loadOpts() {
-    var d = { ext: 'csv', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
+    var d = { ext: 'csv', neOrder: 'auto', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, swapXY: false, stripCode: false };
     try { var s = JSON.parse(localStorage.getItem('chsys-opts') || '{}'); for (var k in s) if (k in d) d[k] = s[k]; } catch (e) {}
     return d;
   }
@@ -86,7 +86,7 @@
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null;
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {};
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -141,7 +141,31 @@
     }
     $('pickBig').textContent = state.inputs.length ? '要換檔案或再加檔案？拖進來或點這裡' : '把檔案拖進來，或點這裡選擇';
     $('pickTitle').textContent = state.inputs.length ? '第 1 步：已放入 ' + state.inputs.length + ' 個檔案' : '第 1 步：放入檔案';
+    renderTypeBar();
     if (!state.inputs.length) { $('resultArea').classList.add('hidden'); setSteps(1); }
+  }
+
+  var L_LABEL = { L02: '控制點', L14: '界址點/參考點', L20: '補點' };
+
+  /** 重測資料：選擇要匯出哪幾種資料（預設全選） */
+  function renderTypeBar() {
+    var bar = $('typeBar');
+    bar.innerHTML = '';
+    if (state.kind !== 'l2csv') { bar.classList.add('hidden'); return; }
+    var present = ['L02', 'L14', 'L20'].filter(function (e) {
+      return state.inputs.some(function (f) { return Core.extName(f.name) === e; });
+    });
+    bar.classList.toggle('hidden', !present.length);
+    if (!present.length) return;
+    bar.appendChild(el('span', { 'class': 'lbl' }, '要匯出的資料：'));
+    present.forEach(function (e) {
+      var l = el('label', { 'class': 'tchk' + (state.lOff[e] ? '' : ' on') });
+      var c = el('input', { type: 'checkbox' }); c.checked = !state.lOff[e];
+      c.onchange = function () { state.lOff[e] = !c.checked; run(); };
+      l.appendChild(c);
+      l.appendChild(el('span', null, esc(L_LABEL[e]) + ' <span class="extb">' + e + '</span>'));
+      bar.appendChild(l);
+    });
   }
 
   // ─────────── 執行轉換 ───────────
@@ -150,7 +174,13 @@
     if (!state.inputs.length) return;
     var o = state.opts, parts;
     if (state.kind === 'l2csv') {
-      var groups = lGroups(state.inputs);
+      var groups = lGroups(state.inputs.filter(function (f) { return !state.lOff[Core.extName(f.name)]; }));
+      if (!groups.length) {
+        state.result = { kind: 'l2csv', ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], parts: [], perFile: [], stats: { points: 0 },
+          report: [{ level: 'error', msg: '沒有勾選任何要匯出的資料（控制點 / 界址點 / 補點），請在上方勾選至少一種' }] };
+        renderResult();
+        return;
+      }
       parts = groups.map(function (g) {
         var base = (groups.length === 1 && o.outName) || g.label;
         var common = { swapXY: o.swapXY, stripCode: o.stripCode, ext: o.ext };
@@ -161,7 +191,7 @@
     } else {
       parts = state.inputs.map(function (inp) {
         var key = inputKey(inp);
-        var opt = { codeMode: o.codeMode, sep: o.sep, alwaysZero: o.alwaysZero, codeCol: o.codeColumn,
+        var opt = { codeMode: o.codeMode, sep: o.sep, alwaysZero: o.alwaysZero, codeCol: o.codeColumn, neOrder: o.neOrder,
           angleDecimals: o.angleDecimals, distDecimals: o.distDecimals, decisions: state.decisions[key] || {},
           outName: state.inputs.length === 1 ? (o.outName || undefined) : undefined };
         var x = state.kind === 'raw2mac' ? Core.rawToMac(inp.text, inp.name, opt) : Core.csvToCntMac(inp.text, inp.name, opt);
@@ -484,7 +514,7 @@
     var cols = r.parts[0].cols || {};
     var h = '<p class="sum">檔案裡共 <b>' + all.length + '</b> 點：會轉換 <b style="color:var(--ok)">' + nInc + '</b> 點、剔除 <b style="color:var(--err)">' + nOff + '</b> 點' +
       (nFlag ? '；其中 <b>' + nFlag + '</b> 點系統覺得有疑慮（已先幫你決定，可以改）' : '；沒有發現可疑的點') + '。</p>' +
-      '<p class="muted" style="margin:-4px 0 10px">欄位判斷：第 1 欄點名、第 2 欄 N、第 3 欄 E' +
+      '<p class="muted" style="margin:-4px 0 10px">欄位判斷：第 1 欄點名、第 ' + (cols.n + 1) + ' 欄 N、第 ' + (cols.e + 1) + ' 欄 E' + (cols.swapNE ? '（N、E 已對調）' : '') +
       (cols.h >= 0 ? '、第 ' + (cols.h + 1) + ' 欄高程（不轉換）' : '') + (cols.code >= 0 ? '、第 ' + (cols.code + 1) + ' 欄編碼' : '、沒有編碼欄') + '。不對的話到「進階設定」改。</p>';
     h += '<div class="bar"><div class="seg" id="rvFilter">' +
       [['flag', '有疑慮的 (' + nFlag + ')'], ['out', '剔除的 (' + nOff + ')'], ['in', '會轉換的 (' + nInc + ')'], ['all', '全部 (' + all.length + ')']].map(function (b) {
@@ -596,7 +626,7 @@
     var s = el('div', { 'class': 'seg' });
     choices.forEach(function (c) {
       var b = el('button', { type: 'button', 'class': state.opts[key] === c[0] ? 'on' : '' }, esc(c[1]));
-      b.onclick = function () { state.opts[key] = c[0]; saveOpts(); if (key === 'codeColumn') state.decisions = {}; run(); };
+      b.onclick = function () { state.opts[key] = c[0]; saveOpts(); if (key === 'codeColumn' || key === 'neOrder') state.decisions = {}; run(); };
       s.appendChild(b);
     });
     w.appendChild(s);
@@ -637,6 +667,8 @@
       var maxCols = Math.max.apply(null, (state.result && state.result.parts || []).map(function (p) { return p.maxCols || 4; }).concat([4]));
       var ch = [['auto', '自動判斷'], [0, '沒有編碼']];
       for (var c = 4; c <= Math.min(maxCols, 7); c++) ch.push([c, '第 ' + c + ' 欄']);
+      o.appendChild(seg('N、E 欄位順序', 'neOrder', [['auto', '自動判斷'], ['ne', '點名,N,E'], ['en', '點名,E,N']],
+        '自動判斷：N 一定比 E 大很多（TWD97），第 2 欄比較小就當成「點名,E,N」並對調。'));
       o.appendChild(seg('編碼（CD 碼）在第幾欄', 'codeColumn', ch, '第 1 欄點名、第 2 欄 N、第 3 欄 E。控制器原始檔通常是「點名,N,E,高程,編碼」，編碼在第 5 欄。'));
       o.appendChild(seg('角度秒數的小數位', 'angleDecimals', [[0, '整數秒'], [1, '1 位'], [2, '2 位']],
         '整數秒與舊 Excel 版相同。反算誤差太大時可改 1 位（需確認重測系統可讀）。'));
@@ -718,8 +750,9 @@
       $('ok1').onclick = closeModal;
       return;
     }
-    // 只有一項：直接開始
-    if (total === 1) {
+    // 只有一項：直接開始（重測資料有兩種以上時還是要讓使用者選要匯入哪些）
+    var single = total === 1 ? g[kinds.filter(function (k) { return g[k].length; })[0]] : null;
+    if (total === 1 && !(single === g.l2csv && g.l2csv[0].exts.length > 1)) {
       var k1 = kinds.filter(function (k) { return g[k].length; })[0];
       loadGroups([g[k1][0]], k1, null);
       return;
@@ -739,6 +772,14 @@
         h += '<label class="item"><input type="checkbox" data-i="' + i + '"' + (g[k].length === 1 ? ' checked' : '') + '><span><b>' + esc(item.label) + '</b>' +
           (det ? '<div class="det">' + det + '</div>' : '') + (item.dir ? '<div class="det">📁 ' + esc(item.dir) + '</div>' : '') + '</span></label>';
       });
+      if (k === 'l2csv') {
+        var present = ['L02', 'L14', 'L20'].filter(function (e) { return g.l2csv.some(function (it) { return it.exts.indexOf(e) >= 0; }); });
+        h += '<div class="types"><span class="lbl">要匯入的資料：</span>' + present.map(function (e) {
+          var n = g.l2csv.filter(function (it) { return it.exts.indexOf(e) >= 0; }).length;
+          return '<label class="tchk on"><input type="checkbox" class="ltype" value="' + e + '" checked><span>' + L_LABEL[e] +
+            ' <span class="extb">' + e + '</span>' + (g.l2csv.length > 1 ? '<span class="muted">（' + n + ' 個案件有）</span>' : '') + '</span></label>';
+        }).join('') + '</div>';
+      }
       h += '<div class="acts">';
       h += '<button class="btn primary go-btn" disabled>轉換勾選的項目 →</button>';
       h += '</div></div>';
@@ -750,8 +791,12 @@
       var k = sec.getAttribute('data-k');
       var boxes = sec.querySelectorAll('input[data-i]');
       var btns = sec.querySelectorAll('.go-btn');
+      var types = sec.querySelectorAll('input.ltype');
       var refresh = function () {
         var n = Array.prototype.filter.call(boxes, function (b) { return b.checked; }).length;
+        var nt = Array.prototype.filter.call(types, function (b) { return b.checked; }).length;
+        Array.prototype.forEach.call(types, function (b) { b.parentNode.classList.toggle('on', b.checked); });
+        if (types.length && !nt) n = 0; // 一種資料都沒選，不能轉
         Array.prototype.forEach.call(btns, function (b) {
           b.disabled = !n;
           b.textContent = b.textContent.replace(/（\d+ 項）/, '').replace(' →', '') + (n ? '（' + n + ' 項）' : '') + ' →';
@@ -759,6 +804,7 @@
         sec.querySelector('.selall').checked = n === boxes.length;
       };
       Array.prototype.forEach.call(boxes, function (b) { b.onchange = refresh; });
+      Array.prototype.forEach.call(types, function (b) { b.onchange = refresh; });
       sec.querySelector('.selall').onchange = function () {
         var v = this.checked;
         Array.prototype.forEach.call(boxes, function (b) { b.checked = v; });
@@ -767,7 +813,8 @@
       Array.prototype.forEach.call(btns, function (btn) {
         btn.onclick = function () {
           var picked = Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return g[k][+b.getAttribute('data-i')]; });
-          loadGroups(picked, k);
+          var keep = Array.prototype.filter.call(types, function (b) { return b.checked; }).map(function (b) { return b.value; });
+          loadGroups(picked, k, types.length ? keep : null);
         };
       });
       refresh();
@@ -775,8 +822,11 @@
   }
 
   /** 讀取勾選的項目並開始轉換 */
-  function loadGroups(groups, kind) {
-    var files = [].concat.apply([], groups.map(function (gr) { return gr.files.map(function (f) { return { file: f.file, path: f.path }; }); }));
+  function loadGroups(groups, kind, keepTypes) {
+    var files = [].concat.apply([], groups.map(function (gr) {
+      return gr.files.filter(function (f) { return !keepTypes || keepTypes.indexOf(Core.extName(f.name)) >= 0; })
+        .map(function (f) { return { file: f.file, path: f.path }; });
+    }));
     readFiles(files).then(function (inputs) {
       closeModal();
       if (state.kind !== kind) openKind(kind);

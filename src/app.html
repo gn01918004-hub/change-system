@@ -235,6 +235,13 @@ header.top .linkbtn+.linkbtn{margin-left:8px}
 .changelog ul{margin:0;padding-left:22px}
 .changelog li{margin:2px 0}
 .changelog .cur{background:var(--brand);color:#fff;border-radius:999px;font-size:12px;padding:1px 8px;margin-left:6px;vertical-align:2px}
+
+.typebar,.fsec .types{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+.fsec .types{margin:4px 0 6px;padding:8px 10px;background:#f6f8fb;border-radius:10px}
+.typebar .lbl,.fsec .types .lbl{font-weight:700}
+.tchk{display:inline-flex;align-items:center;gap:6px;border:2px solid var(--line);border-radius:10px;padding:5px 10px;cursor:pointer;background:#fff;color:var(--ink2)}
+.tchk.on{border-color:var(--brand);color:var(--ink);background:var(--brand-soft)}
+.tchk input{width:18px;height:18px;margin:0}
 </style>
 </head>
 <body>
@@ -316,6 +323,7 @@ header.top .linkbtn+.linkbtn{margin-left:8px}
         <button class="btn dir" id="workDirBtn" type="button">📁 選資料夾</button>
       </div>
       <div class="chips" id="chips"></div>
+      <div class="typebar hidden" id="typeBar"></div>
     </div>
 
     <div id="resultArea" class="hidden">

@@ -68,7 +68,7 @@ test('Nikon RAW：角度單位不是度分秒要報錯', () => {
 
 test('GPS CSV（控制器原始檔）：自動剔除核對點與雜點、去掉高程欄', () => {
   const r = Core.csvToCntMac(sample('範例_GPS.csv'), '範例_GPS.csv');
-  assert.deepStrictEqual(r.cols, { name: 0, n: 1, e: 2, h: 3, code: 4, auto: true });
+  assert.deepStrictEqual(r.cols, { name: 0, n: 1, e: 2, h: 3, code: 4, auto: true, swapNE: false });
   assert.strictEqual(r.stats.points, 4);
   assert.strictEqual(r.stats.excluded, 4);
   const byName = Object.fromEntries(r.points.map((p) => [p.name, p]));
@@ -178,4 +178,18 @@ test('L 檔：每行 3 點、PAGE 標題列、點號 .0 去掉', () => {
   const t = 'PAGE 1/2\r\n  4240.0     2701039.308   218159.992     4569.0     2701011.383   218122.205     4653.0     2701058.068   218175.406   \r\n\r\nPAGE 2/2\r\n  4711.0     2701061.516   218184.435\r\n';
   const r = Core.lToCsv([{ name: 'K.L14', text: t }]);
   assert.deepStrictEqual(lines(r.files[0].content), ['4240,2701039.308,218159.992', '4569,2701011.383,218122.205', '4653,2701058.068,218175.406', '4711,2701061.516,218184.435']);
+});
+
+test('GPS CSV：點名,E,N 順序自動對調，也可以強制指定', () => {
+  const en = ['1,218704.317,2706766.984,10', '2,218635.348,2706854.423,10', '3,218556.709,2706933.861,11'].join('\n');
+  const r = Core.csvToCntMac(en, 'x.csv');
+  assert.strictEqual(r.cols.swapNE, true);
+  assert.deepStrictEqual(lines(r.files[0].content), ['99999 2706766.984 218704.317', '99998 2706854.423 218635.348']);
+  assert.ok(r.report.some((x) => x.level === 'warn' && /對調/.test(x.msg)));
+  // 正常的 點名,N,E 不會被動到
+  const ne = Core.csvToCntMac(sample('範例_GPS.csv'), 'a.csv');
+  assert.strictEqual(ne.cols.swapNE, false);
+  // 強制指定
+  assert.strictEqual(Core.csvToCntMac(en, 'x.csv', { neOrder: 'ne' }).cols.swapNE, false);
+  assert.strictEqual(Core.csvToCntMac(sample('範例_GPS.csv'), 'a.csv', { neOrder: 'en' }).cols.swapNE, true);
 });

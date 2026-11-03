@@ -500,6 +500,22 @@
     var cols = detectGpsColumns(rows, opts);
     var maxCols = rows.reduce(function (m, f) { return Math.max(m, f.length); }, 0);
 
+    // N、E 順序：台灣 TWD97 的 N（約 2,400,000～2,800,000）一定比 E（約 150,000～350,000）大，
+    // 第 2 欄明顯比第 3 欄小時，判斷為「點名,E,N」並自動對調。opts.neOrder 可強制 'ne' 或 'en'。
+    var neOrder = opts.neOrder || 'auto';
+    var swapNE = neOrder === 'en';
+    if (neOrder === 'auto') {
+      var c2 = [], c3 = [];
+      rows.forEach(function (f) {
+        var a2 = parseFloat(f[1]), a3 = parseFloat(f[2]);
+        if (isFinite(a2) && isFinite(a3) && a2 !== 0 && a3 !== 0) { c2.push(Math.abs(a2)); c3.push(Math.abs(a3)); }
+      });
+      if (c2.length && median(c3) > 1000000 && median(c2) < median(c3) / 3) swapNE = true;
+      if (swapNE) report.warn('第 2 欄看起來是 E、第 3 欄是 N（N 應該比 E 大很多），已自動對調；若不對請到「進階設定」改');
+    }
+    if (swapNE) { cols.n = 2; cols.e = 1; }
+    cols.swapNE = swapNE;
+
     var pts = rows.map(function (f) {
       var p = {
         line: f.line, raw: f.raw,
