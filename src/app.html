@@ -273,6 +273,10 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 .pitem:hover{background:#eef3fb}
 .pitem.on{background:var(--brand-soft)}
 .pitem .muted{font-size:12.5px}
+
+#dbf input.dnum{width:66px;text-align:right;font-family:Consolas,monospace;font-weight:700;border:1px solid var(--line);border-radius:6px;padding:2px 4px}
+#dbf input.dref{width:40px;text-align:center;font-family:Consolas,monospace;font-weight:700;border:1px solid var(--line);border-radius:6px;padding:2px 4px}
+#dbf input.dname{width:96px;font-family:Consolas,monospace;font-weight:700;border:1px solid var(--line);border-radius:6px;padding:2px 4px}
 </style>
 </head>
 <body>
@@ -374,6 +378,11 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
       <div class="panel review hidden" id="reviewPanel">
         <h3>第 2 步：點位檢查 — 勾選要轉換的點</h3>
         <div id="review"></div>
+      </div>
+
+      <div class="panel hidden" id="dbfPanel">
+        <h3>直接寫入重測系統檔（D14 參考點／D20 補點）</h3>
+        <div id="dbf"></div>
       </div>
 
       <div class="panel" id="filesPanel">

@@ -302,3 +302,70 @@ test('SOKKIA .sdr 與 TOPCON .txt 格式（同「複丈輸入檔2SOKKIA」）', 
   assert.ok(l.files[0].name.endsWith('.sdr'));
   assert.ok(l.files[0].content.includes('05-Jan-26 08:03'));
 });
+
+// 做一個最小的 dBASE III 檔（欄位同重測系統的 D14 / D20）
+function makeDbf(fields, rows) {
+  const hlen = 32 + fields.length * 32 + 1, rlen = 1 + fields.reduce((a, f) => a + f[2], 0);
+  const buf = Buffer.alloc(hlen + rlen * rows.length, 0);
+  buf[0] = 3; buf[1] = 124; buf[2] = 10; buf[3] = 30;
+  buf.writeUInt32LE(rows.length, 4); buf.writeUInt16LE(hlen, 8); buf.writeUInt16LE(rlen, 10);
+  fields.forEach((f, i) => { buf.write(f[0], 32 + i * 32, 'latin1'); buf.write(f[1], 32 + i * 32 + 11, 'latin1'); buf[32 + i * 32 + 16] = f[2]; buf[32 + i * 32 + 17] = f[3]; });
+  buf[hlen - 1] = 0x0d;
+  rows.forEach((r, i) => buf.write(r, hlen + i * rlen, 'latin1'));
+  return new Uint8Array(buf);
+}
+const D14F = [['COT_NUMBER', 'N', 5, 0], ['COT_REF', 'N', 2, 0], ['COT_Y', 'N', 16, 8], ['COT_X', 'N', 15, 8], ['COT_MATTER', 'N', 2, 0],
+  ['COT_SOURCE', 'N', 1, 0], ['COT_SURVEY', 'N', 2, 0], ['COT_MSE', 'N', 2, 0], ['COT_REMARK', 'C', 12, 0], ['TAU_ID', 'N', 3, 0]];
+const D20F = [['CTL_NAME', 'C', 8, 0], ['CTL_Y', 'N', 12, 3], ['CTL_X', 'N', 11, 3], ['CTL_LEVEL', 'C', 3, 0], ['CTL_MATTER', 'C', 1, 0],
+  ['CTL_SITUAT', 'C', 1, 0], ['CTL_LAND', 'C', 1, 0], ['CTL_MODE', 'L', 1, 0]];
+
+test('寫入重測系統檔：D14 參考點、D20 補點、點號重複自動改號', () => {
+  const d14 = Core.parseDbf(makeDbf(D14F, [
+    '     1 02704480.54200000219713.24700000 30 0 0                  ',
+    '     1322704014.79600000219334.51900000 01 0 0                  ',
+    '     2302704022.00300000219315.27000000 01 0 0                  '
+  ]));
+  const d20 = Core.parseDbf(makeDbf(D20F, [' QW1      2704020.768 219351.358Q  \0\0\0T']));
+  assert.strictEqual(d14.nrec, 3);
+  const plan = Core.planDbfWrite({ d14, d20, points: [
+    { key: 'a', name: '1', code: '32', y: 2704000.1, x: 219300.2, src: 'GPS' },   // 1.32 已有 → 2.32
+    { key: 'b', name: '7', code: '30', y: 2704001.1, x: 219301.2, src: 'GPS' },   // 新增 7.30
+    { key: 'c', name: 'QW1', code: '', y: 2704002.1, x: 219302.2, src: '全站儀' }, // QW1 已有 → QW2
+    { key: 'd', name: '8', code: null, y: 2704003.1, x: 219303.2, src: 'GPS' },    // 缺編碼
+    { key: 'e', name: 'BE73', code: '11', y: 2704004.1, x: 219304.2, src: 'GPS' }  // 不能寫
+  ] });
+  const by = Object.fromEntries(plan.rows.map((r) => [r.key, r]));
+  assert.strictEqual(by.a.out, '2.32'); assert.strictEqual(by.a.status, 'renumbered');
+  assert.strictEqual(by.b.out, '7.30'); assert.strictEqual(by.b.status, 'new');
+  assert.strictEqual(by.c.out, 'QW2'); assert.strictEqual(by.c.target, 'D20');
+  assert.strictEqual(by.d.status, 'needCode');
+  assert.strictEqual(by.e.status, 'skip');
+  assert.strictEqual(plan.blocking.length, 1);
+  // 補上編碼、拿掉不要的
+  const plan2 = Core.planDbfWrite({ d14, d20, points: plan.rows.map((r) => ({ key: r.key, name: r.origName, code: r.origCode === '' ? (r.key === 'c' ? '' : null) : r.origCode, y: r.y, x: r.x, src: r.src })),
+    edits: { d: { ref: '33' }, b: { skip: true } } });
+  assert.strictEqual(plan2.blocking.length, 0);
+  const out = Core.buildDbfFiles(plan2, d14, d20, new Date(2026, 10, 3));
+  const n14 = Core.parseDbf(out.d14), n20 = Core.parseDbf(out.d20);
+  assert.strictEqual(n14.nrec, 5);
+  assert.strictEqual(n14.u8[1], 126); assert.strictEqual(n14.u8[2], 11); assert.strictEqual(n14.u8[3], 3);
+  assert.deepStrictEqual(n14.records.slice(3).map((r) => r.values.COT_NUMBER + r.values.COT_REF + r.values.COT_Y + r.values.COT_X + r.values.COT_MATTER + r.values.COT_SOURCE),
+    ['    2322704000.10000000219300.20000000 02', '    8332704003.10000000219303.20000000 02']);
+  assert.strictEqual(Buffer.from(out.d20.subarray(out.d20.length - 39)).toString('latin1'), ' QW2      2704002.100 219302.200Q  \0\0\0T');
+  assert.ok(out.table.startsWith('﻿原點名,原編碼,寫入檔案,寫入點號'));
+  // 原檔前面的位元組一個都沒動
+  assert.deepStrictEqual(Array.from(out.d14.subarray(32, d14.hlen + 3 * d14.rlen)), Array.from(d14.u8.subarray(32)));
+});
+
+test('全站儀 RAW 可以用 D14/D20 的已知坐標算出新點', () => {
+  const raw = ['ST,QW1,,QW2,,0.0000,0.0000,0.0000', 'F1,QW2,0.0000,100.000,0.0000,90.0000,1', 'SS,9,0.0000,10.000,90.0000,90.0000,1,30', 'SS,QW9,0.0000,20.000,180.0000,90.0000,1,'].join('\n');
+  // D14 已有 9 號界址點（編碼 0）；RAW 觀測的 9 號編碼 30 是新點，不能當成已知點略過
+  const d14 = Core.parseDbf(makeDbf(D14F, ['     9 02704480.54200000219713.24700000 30 0 0                  ']));
+  const known = Core.knownFromDbf(d14, Core.parseDbf(makeDbf(D20F, [' QW1         1000.000   1000.000Q  \0\0\0T', ' QW2         1100.000   1000.000Q  \0\0\0T'])));
+  const r = Core.rawToMac(raw, 'a.raw', { known });
+  const p9 = r.plot.obs.find((o) => o.pt === '9');
+  assert.ok(Math.abs(p9.N - 1000) < 1e-6 && Math.abs(p9.E - 1010) < 1e-6);
+  assert.strictEqual(p9.wasKnown, false);
+  const q9 = r.plot.obs.find((o) => o.pt === 'QW9');
+  assert.ok(Math.abs(q9.N - 980) < 1e-6 && Math.abs(q9.E - 1000) < 1e-6);
+});

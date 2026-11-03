@@ -66,7 +66,7 @@
   var GROUPED = { l2csv: 1, coa2csv: 1 }; // 依案件（同名檔）分組的轉換
 
   // ─────────── 狀態 ───────────
-  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false };
+  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false, dbf: null, dbfEdits: {}, dbfDone: null };
 
   function loadOpts() {
     var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaNearestN: 2, outFormat: 'csv', swapXY: false, stripCode: false };
@@ -91,7 +91,12 @@
     return Promise.all(Array.prototype.map.call(list, function (x) {
       var f = x.file || x;
       var path = x.path || f.webkitRelativePath || f.name;
-      return f.arrayBuffer().then(function (b) { return { name: f.name, path: path, text: decode(b) }; });
+      return f.arrayBuffer().then(function (b) {
+        var ext = Core.extName(f.name);
+        var o = { name: f.name, path: path, text: ext === 'D14' || ext === 'D20' ? '' : decode(b) };
+        if (ext === 'D14' || ext === 'D20') o.bytes = new Uint8Array(b);
+        return o;
+      });
     }));
   }
   function inputKey(f) { return f.path || f.name; }
@@ -105,7 +110,7 @@
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null;
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -158,6 +163,11 @@
         addChip(f.name, inputKey(f), function () { state.inputs.splice(i, 1); run(); });
       });
     }
+    if (state.dbf) ['D14', 'D20'].forEach(function (e) {
+      var d = state.dbf[e];
+      if (!d) return;
+      addChip('🗄 ' + d.name + '（' + (e === 'D14' ? '參考點' : '補點') + ' ' + d.db.nrec + ' 筆）', '重測系統檔', function () { delete state.dbf[e]; if (!state.dbf.D14 && !state.dbf.D20) state.dbf = null; run(); });
+    });
     $('pickBig').textContent = state.inputs.length ? '要換檔案或再加檔案？拖進來或點這裡' : '把檔案拖進來，或點這裡選擇';
     $('pickTitle').textContent = state.inputs.length ? '第 1 步：已放入 ' + state.inputs.length + ' 個檔案' : '第 1 步：放入檔案';
     renderTypeBar();
@@ -227,6 +237,7 @@
         var opt = { codeMode: o.codeMode, sep: o.sep, alwaysZero: o.alwaysZero, codeCol: o.codeColumn, neOrder: o.neOrder,
           angleDecimals: o.angleDecimals, distDecimals: o.distDecimals, decisions: state.decisions[key] || {}, codeOverrides: state.codes[key] || {}, noCodeAs: state.askAs[key], badCodeTo: o.badCodeTo,
           outName: state.inputs.length === 1 ? (o.outName || undefined) : undefined };
+        if (state.dbf) opt.known = Core.knownFromDbf(state.dbf.D14 && state.dbf.D14.db, state.dbf.D20 && state.dbf.D20.db);
         var x = state.kind === 'raw2mac' ? Core.rawToMac(inp.text, inp.name, opt) : Core.csvToCntMac(inp.text, inp.name, opt);
         x.source = inp.name;
         x.key = key;
@@ -298,6 +309,7 @@
     renderThumbs(r);
     renderReview(r);
     renderCoaPanel(r);
+    renderDbfPanel(r);
 
     // 副檔名選擇（重測資料匯出時顯示在存檔區最上面）
     var db = $('deviceBar'); db.innerHTML = '';
@@ -762,6 +774,182 @@
     drawList();
   }
 
+  // ═════════════ 直接寫入重測系統檔（D14／D20） ═════════════
+
+  function attachDbf(f) {
+    var ext = Core.extName(f.name);
+    try {
+      var db = Core.parseDbf(f.bytes);
+      var need = ext === 'D14' ? 'COT_NUMBER' : 'CTL_NAME';
+      if (!db.fields.some(function (x) { return x.name === need; })) throw new Error('欄位不對，不是重測系統的 ' + ext);
+      state.dbf = state.dbf || {};
+      state.dbf[ext] = { name: f.name, path: f.path, bytes: f.bytes, db: db };
+      state.dbfDone = null;
+    } catch (e) {
+      toast('讀不懂 ' + f.name + '：' + e.message);
+    }
+  }
+
+  /** 從轉換結果整理出要寫入的點 */
+  function dbfPoints(r) {
+    var pts = [];
+    var badTo = state.opts.badCodeTo || '11';
+    if (r.kind === 'csv2cntmac') {
+      r.parts.forEach(function (p) {
+        p.points.forEach(function (q) {
+          if (!q.include) return;
+          pts.push({ key: p.key + ':' + q.line, name: q.name, code: q.useCode == null || q.useCode === '' ? null : q.useCode,
+            y: q.N, x: q.E, src: 'GPS', line: q.line, file: p.source });
+        });
+      });
+    } else if (r.kind === 'raw2mac') {
+      r.parts.forEach(function (p) {
+        var seen = {};
+        ((p.plot && p.plot.obs) || []).forEach(function (o) {
+          if (o.wasKnown) return; // 照準已知點（檢核）不寫入
+          var code = /^\d{1,2}$/.test(String(o.code).trim()) ? String(o.code).trim() : (String(o.code).trim() ? badTo : null);
+          var k = o.pt + '|' + code;
+          if (seen[k]) return; // 同一點重複觀測，取第一次
+          seen[k] = 1;
+          pts.push({ key: p.key + ':' + o.line, name: o.pt, code: /^q/i.test(o.pt) ? '' : code, y: o.N, x: o.E, src: '全站儀', line: o.line, file: p.source });
+        });
+      });
+    }
+    return pts;
+  }
+
+  var DBF_SHOW = 500;
+  function renderDbfPanel(r) {
+    var panel = $('dbfPanel');
+    if (!state.dbf || !DBF_KINDS[r.kind]) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    var D14 = state.dbf.D14, D20 = state.dbf.D20;
+    if (state.dbfDone) {
+      $('dbf').innerHTML = '<div class="status ok" style="margin:0"><div class="si">✓</div><div><div class="st">已寫入重測系統檔</div><div class="ss">' + state.dbfDone + '</div></div></div>' +
+        '<p class="muted">要再寫一次，請重新放入最新的 D14、D20（避免重複寫入）。</p>';
+      return;
+    }
+    var plan = Core.planDbfWrite({ d14: D14 && D14.db, d20: D20 && D20.db, points: dbfPoints(r), edits: state.dbfEdits });
+    state.dbfPlan = plan;
+    var S = { new: ['新增', 'ok'], renumbered: ['自動改號', 'w'], edited: ['手動指定', 'ok'], needCode: ['缺編碼', 'x'], conflict: ['衝突', 'x'], skip: ['無法寫入', 'x'], excluded: ['不寫入', ''], noFile: ['缺檔案', 'x'] };
+    var h = '<p class="sum">' +
+      (D14 ? '<b>' + esc(D14.name) + '</b>（參考點，原有 ' + D14.db.nrec + ' 筆）將新增 <b>' + plan.toD14.length + '</b> 筆' : '沒有放入 D14（參考點不會寫入）') + '；' +
+      (D20 ? '<b>' + esc(D20.name) + '</b>（補點，原有 ' + D20.db.nrec + ' 筆）將新增 <b>' + plan.toD20.length + '</b> 筆' : '沒有放入 D20（Q 開頭的補點不會寫入）') + '。' +
+      (plan.renumbered ? '其中 <b>' + plan.renumbered + '</b> 點點號重複，已自動改號（見下表黃色）。' : '') + '</p>' +
+      '<p class="muted" style="margin:-4px 0 10px">規則：點名 Q 開頭 → D20 補點；數字點號 → D14 參考點（點號＋編碼，COT_SOURCE 寫 2＝計算求得）。點號可以在表格裡直接改。</p>';
+    if (plan.blocking.length) h += '<div class="blocked" style="margin-bottom:10px">⚠ 有 <b>' + plan.blocking.length + '</b> 點要先處理（缺編碼或點號衝突），處理完才能寫入。</div>';
+    var rows = plan.rows.slice().sort(function (a, b) {
+      var rk = function (x) { return { needCode: 0, conflict: 0, renumbered: 1, skip: 2, noFile: 2 }[x.status] != null ? { needCode: 0, conflict: 0, renumbered: 1, skip: 2, noFile: 2 }[x.status] : 3; };
+      return rk(a) - rk(b);
+    });
+    h += '<div class="tablewrap"><table><thead><tr><th class="c">寫入</th><th class="l">原點名</th><th>原編碼</th><th class="l">寫到</th><th class="l">寫入點號</th><th>Y</th><th>X</th><th class="l">來源</th><th class="l">狀態</th></tr></thead><tbody>';
+    rows.slice(0, DBF_SHOW).forEach(function (row) {
+      var st = S[row.status] || [row.status, ''];
+      var editable = row.target && row.status !== 'skip' && row.status !== 'noFile' && row.status !== 'excluded';
+      var numCell = '';
+      if (editable && row.target === 'D14') {
+        numCell = '<input class="dnum" data-k="' + esc(row.key) + '" value="' + esc(row.num == null ? '' : row.num) + '" inputmode="numeric" maxlength="5" title="點號">' +
+          ' . <input class="dref" data-k="' + esc(row.key) + '" value="' + esc(row.ref == null ? '' : String(row.ref).padStart(2, '0')) + '" inputmode="numeric" maxlength="2" placeholder="??" title="編碼 00～99">';
+      } else if (editable && row.target === 'D20') {
+        numCell = '<input class="dname" data-k="' + esc(row.key) + '" value="' + esc(row.name || '') + '" maxlength="8" title="補點名稱（最多 8 字）">';
+      } else numCell = esc(row.out || '');
+      h += '<tr class="' + (row.status === 'excluded' ? 'off' : '') + '"><td class="c">' + (row.target ? '<input type="checkbox" class="dchk" data-k="' + esc(row.key) + '"' + (row.status === 'excluded' ? '' : ' checked') + '>' : '') + '</td>' +
+        '<td class="l mono">' + esc(row.origName) + '</td><td class="mono">' + esc(row.origCode) + '</td><td class="l">' + (row.target ? '.' + row.target + (row.target === 'D14' ? ' 參考點' : ' 補點') : '—') + '</td>' +
+        '<td class="l mono">' + numCell + '</td><td class="mono">' + Number(row.y).toFixed(3) + '</td><td class="mono">' + Number(row.x).toFixed(3) + '</td>' +
+        '<td class="l">' + esc(row.src) + '</td><td class="l"><span class="flagb ' + st[1] + '">' + st[0] + '</span> ' + esc(row.reason || '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    if (rows.length > DBF_SHOW) h += '<div class="muted" style="padding:8px">只列出前 ' + DBF_SHOW + ' 點，共 ' + rows.length + ' 點。</div>';
+    var canWrite = !plan.blocking.length && (plan.toD14.length || plan.toD20.length);
+    h += '<div class="saveall">' +
+      (window.showDirectoryPicker ? '<button class="btn go" type="button" id="dbfWrite"' + (canWrite ? '' : ' disabled') + '>💾 直接寫入原檔（先自動備份 .bak）</button>' : '') +
+      '<button class="btn primary" type="button" id="dbfDl"' + (canWrite ? '' : ' disabled') + '>⬇ 下載新的 D14 / D20</button>' +
+      '<button class="btn" type="button" id="dbfTable">⬇ 下載對照表</button>' +
+      (window.showDirectoryPicker ? '' : '<span class="muted">這個瀏覽器不能直接寫回原檔，請用 Chrome 或 Edge，或下載後自己取代。</span>') + '</div>';
+    $('dbf').innerHTML = h;
+
+    var edit = function (k) { return (state.dbfEdits[k] = state.dbfEdits[k] || {}); };
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dchk'), function (c) {
+      c.onchange = function () { edit(c.getAttribute('data-k')).skip = !c.checked; renderDbfPanel(state.result); };
+    });
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dnum'), function (c) {
+      c.onchange = function () { var v = c.value.trim(); if (v && !/^\d{1,5}$/.test(v)) { toast('點號要是數字'); return; } edit(c.getAttribute('data-k')).num = v; renderDbfPanel(state.result); };
+    });
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dref'), function (c) {
+      c.onchange = function () { var v = c.value.trim(); if (v && !/^\d{1,2}$/.test(v)) { toast('編碼要是 00～99'); return; } edit(c.getAttribute('data-k')).ref = v; renderDbfPanel(state.result); };
+    });
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dname'), function (c) {
+      c.onchange = function () { edit(c.getAttribute('data-k')).name = c.value.trim(); renderDbfPanel(state.result); };
+    });
+    var build = function () { return Core.buildDbfFiles(plan, D14 && D14.db, D20 && D20.db); };
+    $('dbfTable').onclick = function () {
+      var b = build();
+      download({ name: Core.baseName((D14 || D20).name) + '_寫入對照表.csv', content: b.table });
+    };
+    $('dbfDl').onclick = function () {
+      var b = build();
+      if (b.d14) downloadBytes(D14.name, b.d14);
+      if (b.d20) setTimeout(function () { downloadBytes(D20.name, b.d20); }, 400);
+      toast('已下載新的 D14 / D20，請用它們取代重測系統資料夾裡的原檔（建議先備份原檔）');
+    };
+    if ($('dbfWrite')) $('dbfWrite').onclick = function () { writeDbfToFolder(plan, build()); };
+  }
+
+  function downloadBytes(name, u8) {
+    var a = el('a', { href: URL.createObjectURL(new Blob([u8], { type: 'application/octet-stream' })), download: name });
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+
+  function stampNow() {
+    var d = new Date(), p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes());
+  }
+
+  /** 選重測系統資料夾 → 先把原檔另存 .bak → 再寫入新檔 */
+  function writeDbfToFolder(plan, built) {
+    var jobs = [];
+    if (built.d14) jobs.push({ src: state.dbf.D14, data: built.d14, n: plan.toD14.length });
+    if (built.d20) jobs.push({ src: state.dbf.D20, data: built.d20, n: plan.toD20.length });
+    if (!jobs.length) return;
+    toast('請選擇 ' + jobs.map(function (j) { return j.src.name; }).join('、') + ' 所在的資料夾');
+    window.showDirectoryPicker({ mode: 'readwrite' }).then(function (dir) {
+      // 先確認資料夾裡的檔案就是剛剛放進來的那份（避免寫錯資料夾或檔案已被改過）
+      return Promise.all(jobs.map(function (j) {
+        return dir.getFileHandle(j.src.name).then(function (h) { return h.getFile().then(function (f) { return f.arrayBuffer(); }).then(function (buf) {
+          var cur = new Uint8Array(buf);
+          var same = cur.length === j.src.bytes.length && cur.every(function (v, i) { return v === j.src.bytes[i]; });
+          if (!same) throw new Error('資料夾裡的 ' + j.src.name + ' 和剛剛放進來的不一樣（可能是別的資料夾，或檔案已經被改過）。請重新放入最新的檔案再寫入。');
+          j.handle = h; j.orig = cur;
+        }); }, function () { throw new Error('這個資料夾裡找不到 ' + j.src.name + '，請選重測系統放 D14、D20 的資料夾'); });
+      })).then(function () {
+        return jobs.reduce(function (p, j) {
+          return p.then(function () {
+            var bak = j.src.name + '.bak';
+            return dir.getFileHandle(bak).then(function () { bak = j.src.name + '.' + stampNow() + '.bak'; }, function () {}).then(function () {
+              return dir.getFileHandle(bak, { create: true });
+            }).then(function (bh) {
+              j.bak = bak;
+              return bh.createWritable().then(function (w) { return w.write(j.orig).then(function () { return w.close(); }); });
+            }).then(function () {
+              return j.handle.createWritable().then(function (w) { return w.write(j.data).then(function () { return w.close(); }); });
+            });
+          });
+        }, Promise.resolve());
+      }).then(function () {
+        var msg = jobs.map(function (j) { return j.src.name + ' 新增 ' + j.n + ' 筆（原檔備份成 ' + j.bak + '）'; }).join('；');
+        state.dbfDone = esc(msg) + (plan.renumbered ? '；有 ' + plan.renumbered + ' 點自動改號，請看對照表' : '');
+        jobs.forEach(function (j) { j.src.bytes = j.data; j.src.db = Core.parseDbf(j.data); });
+        renderDbfPanel(state.result);
+        toast('已寫入重測系統檔');
+      });
+    }).catch(function (e) {
+      if (e && e.name === 'AbortError') return;
+      modal('<h3>沒有寫入</h3><p>' + esc(e && e.message || e) + '</p><p class="muted">原檔沒有被改動。</p><div style="text-align:right"><button class="btn primary" id="okW">好</button></div>');
+      $('okW').onclick = closeModal;
+    });
+  }
+
   // ═════════════ GPS 點位檢查 ═════════════
 
   function setDecision(key, line, include) {
@@ -1083,6 +1271,7 @@
   function handleFolder(entries, folderName) {
     var list = entries.map(function (x) { return { name: x.file.name, path: x.path, file: x.file }; });
     var g = Core.groupFolderFiles(list);
+    folderDbf = g.dbf || [];
     // 複丈輸入檔：資料夾裡沒有 L02/L14/L20 時才列出（或已在角落按鈕手動啟用）
     var useCoa = g.coa2csv.length && (!g.l2csv.length || state.coaEnabled || state.kind === 'coa2csv');
     var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'].concat(useCoa ? ['coa2csv'] : []);
@@ -1177,11 +1366,21 @@
   }
 
   /** 讀取勾選的項目並開始轉換 */
+  var folderDbf = [];
   function loadGroups(groups, kind, keepTypes) {
     var files = [].concat.apply([], groups.map(function (gr) {
       return gr.files.filter(function (f) { return !keepTypes || keepTypes.indexOf(Core.extName(f.name)) >= 0; })
         .map(function (f) { return { file: f.file, path: f.path }; });
     }));
+    // GPS／全站儀：資料夾裡有 D14、D20 時一起讀進來（優先同一個資料夾）
+    if (DBF_KINDS[kind] && folderDbf.length) {
+      var dir = groups.length ? groups[0].dir : '';
+      ['D14', 'D20'].forEach(function (e) {
+        var cands = folderDbf.filter(function (d) { return d.ext === e; });
+        var pick = cands.filter(function (d) { return d.dir === dir; })[0] || (cands.length === 1 ? cands[0] : null);
+        if (pick) files.push({ file: pick.files[0].file, path: pick.files[0].path });
+      });
+    }
     readFiles(files).then(function (inputs) {
       closeModal();
       if (state.kind !== kind) openKind(kind);
@@ -1191,7 +1390,13 @@
   }
 
   /** 同路徑的檔案取代，其餘加入 */
+  var DBF_KINDS = { raw2mac: 1, csv2cntmac: 1 };
   function mergeInputs(files) {
+    files = files.filter(function (f) {
+      var ext = Core.extName(f.name);
+      if ((ext === 'D14' || ext === 'D20') && DBF_KINDS[state.kind]) { attachDbf(f); return false; }
+      return true;
+    });
     files.forEach(function (f) {
       var i = state.inputs.findIndex(function (x) { return inputKey(x) === inputKey(f); });
       if (i >= 0) state.inputs[i] = f; else state.inputs.push(f);
@@ -1341,11 +1546,21 @@
       // 首頁：自動判斷
       var kinds = {};
       var unknown = [];
+      var dbfs = [];
       files.forEach(function (f) {
         var k = Core.detectKind(f.name, f.text);
-        if (k) (kinds[k] = kinds[k] || []).push(f); else unknown.push(f.name);
+        if (k === 'dbf') dbfs.push(f);
+        else if (k) (kinds[k] = kinds[k] || []).push(f); else unknown.push(f.name);
       });
       var ks = Object.keys(kinds);
+      if (!ks.length && dbfs.length) {
+        modal('<h3>收到重測系統檔 ' + esc(dbfs.map(function (f) { return f.name; }).join('、')) + '</h3>' +
+          '<p>D14、D20 是用來把 <b>GPS 的 CSV</b> 或 <b>全站儀的 RAW</b> 直接寫進重測系統的。請把 CSV 或 RAW 和 D14、D20 <b>一起</b>拖進來（或選整個資料夾）。</p>' +
+          '<div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
+        $('ok1').onclick = closeModal;
+        return;
+      }
+      if (dbfs.length && ks.length) kinds[ks[0]] = kinds[ks[0]].concat(dbfs.filter(function () { return DBF_KINDS[ks[0]]; }));
       if (!ks.length) {
         modal('<h3>認不出這個檔案</h3><p>' + esc(unknown.join('、')) + '</p><p>請直接在首頁點選要做的轉換，再放入檔案。</p><div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
         $('ok1').onclick = closeModal;

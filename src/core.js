@@ -263,9 +263,14 @@
    * 用檔案裡的已知坐標（UP 等）推算各觀測點的大略位置，給縮圖用；
    * 同時做後視檢核（觀測距離 vs 坐標反算距離）。
    */
-  function computeRawPlot(parsed, report) {
+  function computeRawPlot(parsed, report, extraKnown) {
     var known = {};
+    // 已知坐標：RAW 檔裡的 UP 紀錄優先，再用重測系統檔（D14/D20）
+    if (extraKnown) Object.keys(extraKnown).forEach(function (k) { known[k] = extraKnown[k]; });
     Object.keys(parsed.known).forEach(function (k) { known[k] = parsed.known[k]; });
+    var before = {};
+    Object.keys(known).forEach(function (k) { before[k] = 1; });
+    var obsOut = [];
     var pts = [];
     var rays = [];
     var missing = 0;
@@ -273,6 +278,10 @@
     Object.keys(parsed.known).forEach(function (k) { addPt(k, known[k].N, known[k].E, 'known'); });
 
     parsed.sessions.forEach(function (s) {
+      if ((!known[s.station] || !known[s.back]) && s.obs.length) {
+        report.warn('測站 ' + s.station + '（後視 ' + s.back + '）找不到已知坐標，這站的點無法算出坐標' +
+          (!known[s.station] ? '：缺測站 ' + s.station : '') + (!known[s.back] ? '：缺後視 ' + s.back : ''), s.line);
+      }
       var S = known[s.station], B = known[s.back];
       if (!S || !B) { if (s.obs.length) missing++; return; }
       var azB = Math.atan2(B.E - S.E, B.N - S.N);
@@ -301,13 +310,17 @@
         var az = azB + (ha - ref) / 3600 * Math.PI / 180;
         var P = { N: S.N + hd2 * Math.cos(az), E: S.E + hd2 * Math.sin(az) };
         addPt(o.pt, P.N, P.E, 'obs');
+        // 數字點號要連編碼一起比（5 號界址點 5.00 和 5 號參考點 5.30 是不同點）
+        var codeOk = /^\d{1,2}$/.test(String(o.code || '').trim());
+        var wasKnown = /^\d+$/.test(o.pt) && codeOk ? !!before[o.pt + '.' + pad(parseInt(o.code, 10), 2)] : !!before[o.pt];
+        obsOut.push({ pt: o.pt, code: o.code, N: P.N, E: P.E, line: o.line, station: s.station, wasKnown: wasKnown });
         rays.push({ from: s.station, N1: S.N, E1: S.E, N2: P.N, E2: P.E });
         if (!known[o.pt]) known[o.pt] = P; // 例如先觀測、後來當測站的點（QT60-2）
       });
     });
     var focus = {};
     parsed.sessions.forEach(function (s) { focus[s.station] = 1; focus[s.back] = 1; });
-    return { points: pts, rays: rays, missingStations: missing, focus: focus };
+    return { points: pts, rays: rays, missingStations: missing, focus: focus, obs: obsOut };
   }
 
   function rawToMac(text, filename, opts) {
@@ -372,7 +385,7 @@
       } else if (!seen[p.name]) seen[p.name] = p.line;
     });
 
-    var plot = computeRawPlot(parsed, report);
+    var plot = computeRawPlot(parsed, report, opts.known);
 
     if (parsed.freeStations.length) {
       report.warn('有 ' + parsed.freeStations.length + ' 個自由測站，請自行新增至重測系統（或使用下方的自由測站 .cnt 檔）');
@@ -1115,6 +1128,237 @@
       main: true, desc: '全站儀、GPS 控制器都能匯入：點號,' + (xy ? 'X,Y' : 'Y,X') + '（' + summary + '）' };
   }
 
+  // ═════════════ 5. 直接寫入重測系統檔（.D14 參考點／.D20 補點，dBASE III） ═════════════
+  //
+  // .D14 COT：COT_NUMBER N5、COT_REF N2（編碼）、COT_Y N16.8、COT_X N15.8、COT_MATTER N2、
+  //           COT_SOURCE N1（2 = 計算求得）、COT_SURVEY N2、COT_MSE N2、COT_REMARK C12、TAU_ID N3
+  //           同一點號可有不同編碼（例如 5 號界址點 5.00 與 5 號參考點 5.30），點號＋編碼才是唯一。
+  // .D20 CTL：CTL_NAME C8、CTL_Y N12.3、CTL_X N11.3、CTL_LEVEL C3（補點 Q）、CTL_MATTER/SITUAT/LAND C1、CTL_MODE L
+
+  function toU8(b) {
+    if (b instanceof Uint8Array) return b;
+    if (b instanceof ArrayBuffer) return new Uint8Array(b);
+    return new Uint8Array(b);
+  }
+  function bytesToStr(u8, a, n) {
+    var s = '';
+    for (var i = a; i < a + n; i++) s += String.fromCharCode(u8[i]);
+    return s;
+  }
+
+  function parseDbf(bytes) {
+    var u8 = toU8(bytes);
+    if (u8.length < 33 || (u8[0] & 0x07) !== 3) throw new Error('不是 dBASE III 檔');
+    var nrec = u8[4] | (u8[5] << 8) | (u8[6] << 16) | (u8[7] << 24);
+    var hlen = u8[8] | (u8[9] << 8), rlen = u8[10] | (u8[11] << 8);
+    var fields = [], off = 32, pos = 1;
+    while (off < hlen - 1 && u8[off] !== 0x0D) {
+      var name = bytesToStr(u8, off, 11).replace(/\0.*$/, '');
+      var f = { name: name, type: String.fromCharCode(u8[off + 11]), len: u8[off + 16], dec: u8[off + 17], pos: pos };
+      fields.push(f); pos += f.len; off += 32;
+    }
+    var records = [];
+    for (var i = 0; i < nrec; i++) {
+      var base = hlen + i * rlen;
+      if (base + rlen > u8.length) break;
+      var rec = { deleted: u8[base] === 0x2A, values: {} };
+      fields.forEach(function (fd) { rec.values[fd.name] = bytesToStr(u8, base + fd.pos, fd.len); });
+      records.push(rec);
+    }
+    var dataEnd = hlen + nrec * rlen;
+    return { u8: u8, nrec: nrec, hlen: hlen, rlen: rlen, fields: fields, records: records,
+      hasEof: u8.length > dataEnd && u8[dataEnd] === 0x1A };
+  }
+
+  function encodeField(fd, v) {
+    var s;
+    if (fd.type === 'N' || fd.type === 'F') {
+      if (v === '' || v == null) s = '';
+      else s = typeof v === 'number' ? (fd.dec ? v.toFixed(fd.dec) : String(Math.round(v))) : String(v);
+      if (s.length > fd.len) throw new Error('欄位 ' + fd.name + ' 放不下「' + s + '」（最多 ' + fd.len + ' 字）');
+      while (s.length < fd.len) s = ' ' + s;
+      return s;
+    }
+    if (fd.type === 'L') return v ? 'T' : 'F';
+    s = String(v == null ? '' : v);
+    if (s.length > fd.len) throw new Error('欄位 ' + fd.name + ' 放不下「' + s + '」（最多 ' + fd.len + ' 字）');
+    while (s.length < fd.len) s += ' ';
+    return s;
+  }
+
+  /** 在原檔後面加上新紀錄，回傳新檔的 Uint8Array（更新筆數與日期，其餘位元組原封不動） */
+  function appendDbf(db, rows, now) {
+    var d = now ? new Date(now) : new Date();
+    var n = rows.length;
+    var dataEnd = db.hlen + db.nrec * db.rlen;
+    var out = new Uint8Array(dataEnd + n * db.rlen + (db.hasEof ? 1 : 0));
+    out.set(db.u8.subarray(0, dataEnd), 0);
+    out[1] = d.getFullYear() - 1900; out[2] = d.getMonth() + 1; out[3] = d.getDate();
+    var total = db.nrec + n;
+    out[4] = total & 255; out[5] = (total >> 8) & 255; out[6] = (total >> 16) & 255; out[7] = (total >> 24) & 255;
+    // 沒指定的欄位沿用最後一筆的內容（例如 D20 的 \0 與 T），沒有舊紀錄時用空白
+    var tmpl = db.nrec ? db.u8.subarray(dataEnd - db.rlen, dataEnd) : null;
+    rows.forEach(function (row, i) {
+      var base = dataEnd + i * db.rlen;
+      if (tmpl) out.set(tmpl, base); else for (var k = 0; k < db.rlen; k++) out[base + k] = 0x20;
+      out[base] = 0x20;
+      db.fields.forEach(function (fd) {
+        if (!tmpl && fd.type === 'L') out[base + fd.pos] = 0x54;
+        if (!Object.prototype.hasOwnProperty.call(row, fd.name)) return;
+        var str = encodeField(fd, row[fd.name]);
+        for (var k = 0; k < fd.len; k++) out[base + fd.pos + k] = str.charCodeAt(k) & 255;
+      });
+    });
+    if (db.hasEof) out[out.length - 1] = 0x1A;
+    return out;
+  }
+
+  /** D14 已有的「點號.編碼」與每個編碼目前最大點號 */
+  function d14Index(db) {
+    var keys = {}, maxByRef = {};
+    (db ? db.records : []).forEach(function (r) {
+      if (r.deleted) return;
+      var num = parseInt(r.values.COT_NUMBER, 10), ref = parseInt(r.values.COT_REF, 10) || 0;
+      if (!isFinite(num)) return;
+      keys[num + '.' + ref] = r;
+      if (!(maxByRef[ref] >= num)) maxByRef[ref] = num;
+    });
+    return { keys: keys, maxByRef: maxByRef };
+  }
+  function d20Index(db) {
+    var names = {};
+    (db ? db.records : []).forEach(function (r) { if (!r.deleted) names[r.values.CTL_NAME.trim().toUpperCase()] = r; });
+    return names;
+  }
+
+  /** 已知坐標表（給全站儀 RAW 算坐標用）：D20 點名、D14「點號」（唯一時）與「點號.編碼」 */
+  function knownFromDbf(d14, d20) {
+    var known = {}, byNum = {};
+    (d20 ? d20.records : []).forEach(function (r) {
+      if (r.deleted) return;
+      known[r.values.CTL_NAME.trim()] = { N: parseFloat(r.values.CTL_Y), E: parseFloat(r.values.CTL_X) };
+    });
+    (d14 ? d14.records : []).forEach(function (r) {
+      if (r.deleted) return;
+      var num = parseInt(r.values.COT_NUMBER, 10), ref = parseInt(r.values.COT_REF, 10) || 0;
+      var P = { N: parseFloat(r.values.COT_Y), E: parseFloat(r.values.COT_X) };
+      known[num + '.' + pad(ref, 2)] = P;
+      (byNum[num] = byNum[num] || []).push(P);
+    });
+    Object.keys(byNum).forEach(function (n) { if (byNum[n].length === 1 && !known[n]) known[n] = byNum[n][0]; });
+    return known;
+  }
+
+  function nextFreeName(name, used) {
+    var m = /^(.*?)(\d+)$/.exec(name);
+    var cand, i;
+    if (m) {
+      for (i = parseInt(m[2], 10) + 1; ; i++) { cand = m[1] + i; if (!used[cand.toUpperCase()]) return cand; }
+    }
+    for (i = 1; ; i++) { cand = name + '-' + i; if (!used[cand.toUpperCase()]) return cand; }
+  }
+
+  /**
+   * 規劃要寫進 D14／D20 的點：
+   *   點名 Q 開頭 → D20 補點；數字點號 → D14 參考點（點號＋編碼）；其他 → 不能寫入
+   *   點號（點號＋編碼）或補點名稱已存在 → 自動改號（該編碼最大號＋1／Q 名稱尾數＋1）
+   * points：[{ key, name, code, y, x, src, line }]；edits：{ key: { num, ref, name, skip } }
+   */
+  function planDbfWrite(input) {
+    var d14 = input.d14, d20 = input.d20, edits = input.edits || {};
+    var idx14 = d14Index(d14), idx20 = d20Index(d20);
+    var used14 = {}, used20 = {}, max14 = {};
+    Object.keys(idx14.keys).forEach(function (k) { used14[k] = 1; });
+    Object.keys(idx14.maxByRef).forEach(function (r) { max14[r] = idx14.maxByRef[r]; });
+    Object.keys(idx20).forEach(function (k) { used20[k] = 1; });
+    var rows = [];
+    var userKeys14 = {};
+
+    (input.points || []).forEach(function (p) {
+      var e = edits[p.key] || {};
+      var row = { key: p.key, origName: p.name, origCode: p.code == null ? '' : p.code, y: p.y, x: p.x, src: p.src, line: p.line, file: p.file,
+        skip: !!e.skip, status: '', reason: '' };
+      var name = String(p.name).trim();
+      if (/^q/i.test(name)) row.target = 'D20';
+      else if (/^\d+$/.test(name)) row.target = 'D14';
+      else { row.target = null; row.status = 'skip'; row.reason = '點名不是數字也不是 Q 開頭，無法寫入'; rows.push(row); return; }
+      if (row.skip) { row.status = 'excluded'; row.reason = '不寫入'; rows.push(row); return; }
+      if (row.target === 'D14' && !d14) { row.status = 'noFile'; row.reason = '沒有放入 .D14'; rows.push(row); return; }
+      if (row.target === 'D20' && !d20) { row.status = 'noFile'; row.reason = '沒有放入 .D20'; rows.push(row); return; }
+
+      if (row.target === 'D14') {
+        var num = e.num != null && e.num !== '' ? parseInt(e.num, 10) : parseInt(name, 10);
+        var refRaw = e.ref != null && e.ref !== '' ? e.ref : p.code;
+        var ref = refRaw === '' || refRaw == null ? null : parseInt(refRaw, 10);
+        row.num = num; row.ref = ref;
+        if (ref === null || !isFinite(ref) || ref < 0 || ref > 99) { row.status = 'needCode'; row.reason = '缺編碼（00～99），請填'; rows.push(row); return; }
+        if (!(num >= 1 && num <= 99999)) { row.status = 'conflict'; row.reason = '點號要是 1～99999'; rows.push(row); return; }
+        var k = num + '.' + ref;
+        if (used14[k]) {
+          if (e.num != null && e.num !== '') { row.status = 'conflict'; row.reason = '你指定的 ' + num + '.' + pad(ref, 2) + ' 已經有了'; rows.push(row); return; }
+          var nn = Math.max(max14[ref] || 0, num) + 1;
+          while (used14[nn + '.' + ref]) nn++;
+          row.reason = (idx14.keys[k] ? 'D14 已有 ' : '這批資料裡重複 ') + num + '.' + pad(ref, 2) + '，自動改成 ' + nn + '.' + pad(ref, 2);
+          row.status = 'renumbered'; num = nn; row.num = nn;
+        } else {
+          row.status = e.num != null && e.num !== '' ? 'edited' : 'new';
+        }
+        used14[num + '.' + ref] = 1;
+        max14[ref] = Math.max(max14[ref] || 0, num);
+        row.out = num + '.' + pad(ref, 2);
+        userKeys14[row.out] = 1;
+      } else {
+        var nm = e.name ? String(e.name).trim() : name;
+        if (nm.length > 8) { row.status = 'conflict'; row.reason = '補點名稱最多 8 個字'; row.name = nm; rows.push(row); return; }
+        if (used20[nm.toUpperCase()]) {
+          if (e.name) { row.status = 'conflict'; row.reason = '你指定的 ' + nm + ' 已經有了'; row.name = nm; rows.push(row); return; }
+          var nn2 = nextFreeName(nm, used20);
+          if (nn2.length > 8) { row.status = 'conflict'; row.reason = nm + ' 已存在，自動改號後超過 8 個字，請手動指定'; row.name = nm; rows.push(row); return; }
+          row.reason = (idx20[nm.toUpperCase()] ? 'D20 已有 ' : '這批資料裡重複 ') + nm + '，自動改成 ' + nn2;
+          row.status = 'renumbered'; nm = nn2;
+        } else row.status = e.name ? 'edited' : 'new';
+        used20[nm.toUpperCase()] = 1;
+        row.name = nm; row.out = nm;
+      }
+      rows.push(row);
+    });
+
+    var ok = rows.filter(function (r) { return r.status === 'new' || r.status === 'renumbered' || r.status === 'edited'; });
+    var blocking = rows.filter(function (r) { return r.status === 'needCode' || r.status === 'conflict'; });
+    return {
+      rows: rows,
+      toD14: ok.filter(function (r) { return r.target === 'D14'; }),
+      toD20: ok.filter(function (r) { return r.target === 'D20'; }),
+      blocking: blocking,
+      renumbered: rows.filter(function (r) { return r.status === 'renumbered'; }).length
+    };
+  }
+
+  /** 依規劃產生新的 D14／D20 位元組與對照表 */
+  function buildDbfFiles(plan, d14, d20, now) {
+    var out = {};
+    if (d14 && plan.toD14.length) {
+      out.d14 = appendDbf(d14, plan.toD14.map(function (r) {
+        return { COT_NUMBER: r.num, COT_REF: r.ref, COT_Y: Number(r.y), COT_X: Number(r.x), COT_MATTER: 0, COT_SOURCE: 2,
+          COT_SURVEY: 0, COT_MSE: 0, COT_REMARK: '', TAU_ID: '' };
+      }), now);
+    }
+    if (d20 && plan.toD20.length) {
+      out.d20 = appendDbf(d20, plan.toD20.map(function (r) {
+        return { CTL_NAME: r.name, CTL_Y: Number(r.y), CTL_X: Number(r.x), CTL_LEVEL: 'Q' };
+      }), now);
+    }
+    var STATUS = { new: '新增', renumbered: '自動改號', edited: '手動指定', needCode: '缺編碼', conflict: '衝突', skip: '無法寫入', excluded: '不寫入', noFile: '缺檔案' };
+    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = [['原點名', '原編碼', '寫入檔案', '寫入點號', 'Y', 'X', '來源', '狀態', '說明'].join(',')];
+    plan.rows.forEach(function (r) {
+      lines.push([r.origName, r.origCode, r.target ? '.' + r.target : '', r.out || '', Number(r.y).toFixed(3), Number(r.x).toFixed(3),
+        r.src, STATUS[r.status] || r.status, r.reason].map(cell).join(','));
+    });
+    out.table = '\uFEFF' + joinLines(lines);
+    return out;
+  }
+
   // ───────────────────────── 資料夾掃描 ─────────────────────────
 
   /** 同一個案件的 L02/L14/L20 視為一組：同資料夾、同主檔名（例如 KC0390.L02 + KC0390.L14）。 */
@@ -1130,7 +1374,7 @@
    * 每一項 { key, label, dir, files:[原物件...] }。
    */
   function groupFolderFiles(list) {
-    var out = { l2csv: [], raw2mac: [], csv2cntmac: [], coa2csv: [] };
+    var out = { l2csv: [], raw2mac: [], csv2cntmac: [], coa2csv: [], dbf: [] };
     var cmap = {};
     var lmap = {};
     list.forEach(function (f) {
@@ -1145,6 +1389,10 @@
         }
         lmap[k].files.push(f);
         lmap[k].exts.push(ext);
+      }
+      if (ext === 'D14' || ext === 'D20') out.dbf.push({ key: path, label: f.name, dir: dir, ext: ext, files: [f] });
+      if (L_TYPES[ext]) {
+        // 已處理
       } else if (COA_EXTS.indexOf(ext) >= 0) {
         var ck = lGroupKey(path);
         if (!cmap[ck]) {
@@ -1176,6 +1424,7 @@
     var ext = extName(filename);
     if (ext === 'RAW') return 'raw2mac';
     if (L_TYPES[ext]) return 'l2csv';
+    if (ext === 'D14' || ext === 'D20') return 'dbf';
     if (COA_EXTS.indexOf(ext) >= 0) return 'coa2csv';
     var head = splitLines(text || '').slice(0, 40).join('\n');
     if (/^(ST|SS|F1),/m.test(head)) return 'raw2mac';
@@ -1204,6 +1453,11 @@
     classifyYX: classifyYX,
     coaToCsv: coaToCsv,
     writePoints: writePoints,
+    parseDbf: parseDbf,
+    appendDbf: appendDbf,
+    planDbfWrite: planDbfWrite,
+    buildDbfFiles: buildDbfFiles,
+    knownFromDbf: knownFromDbf,
     parcelKeyOf: parcelKeyOf,
     COA_EXTS: COA_EXTS
   };

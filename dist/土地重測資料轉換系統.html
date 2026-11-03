@@ -273,6 +273,10 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 .pitem:hover{background:#eef3fb}
 .pitem.on{background:var(--brand-soft)}
 .pitem .muted{font-size:12.5px}
+
+#dbf input.dnum{width:66px;text-align:right;font-family:Consolas,monospace;font-weight:700;border:1px solid var(--line);border-radius:6px;padding:2px 4px}
+#dbf input.dref{width:40px;text-align:center;font-family:Consolas,monospace;font-weight:700;border:1px solid var(--line);border-radius:6px;padding:2px 4px}
+#dbf input.dname{width:96px;font-family:Consolas,monospace;font-weight:700;border:1px solid var(--line);border-radius:6px;padding:2px 4px}
 </style>
 </head>
 <body>
@@ -376,6 +380,11 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
         <div id="review"></div>
       </div>
 
+      <div class="panel hidden" id="dbfPanel">
+        <h3>直接寫入重測系統檔（D14 參考點／D20 補點）</h3>
+        <div id="dbf"></div>
+      </div>
+
       <div class="panel" id="filesPanel">
         <h3>第 3 步：存檔 — 按綠色按鈕下載</h3>
         <div class="devbar hidden" id="deviceBar"></div>
@@ -416,7 +425,7 @@ input.pcode.need{border:2px solid #e9a400;background:#fff8e6}
 <div class="toast hidden" id="toast"></div>
 
 <script>
-window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","date":"2026-11-03","repo":"gn01918004-hub/change-system","file":"dist/土地重測資料轉換系統.html","changelog":[{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
+window.APP_INFO = {"name":"土地重測資料轉換系統","version":"2.0.0","date":"2026-11-03","repo":"gn01918004-hub/change-system","file":"dist/土地重測資料轉換系統.html","changelog":[{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
 /*
  * 土地重測資料轉換系統 — 轉換核心
  *
@@ -682,9 +691,14 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
    * 用檔案裡的已知坐標（UP 等）推算各觀測點的大略位置，給縮圖用；
    * 同時做後視檢核（觀測距離 vs 坐標反算距離）。
    */
-  function computeRawPlot(parsed, report) {
+  function computeRawPlot(parsed, report, extraKnown) {
     var known = {};
+    // 已知坐標：RAW 檔裡的 UP 紀錄優先，再用重測系統檔（D14/D20）
+    if (extraKnown) Object.keys(extraKnown).forEach(function (k) { known[k] = extraKnown[k]; });
     Object.keys(parsed.known).forEach(function (k) { known[k] = parsed.known[k]; });
+    var before = {};
+    Object.keys(known).forEach(function (k) { before[k] = 1; });
+    var obsOut = [];
     var pts = [];
     var rays = [];
     var missing = 0;
@@ -692,6 +706,10 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
     Object.keys(parsed.known).forEach(function (k) { addPt(k, known[k].N, known[k].E, 'known'); });
 
     parsed.sessions.forEach(function (s) {
+      if ((!known[s.station] || !known[s.back]) && s.obs.length) {
+        report.warn('測站 ' + s.station + '（後視 ' + s.back + '）找不到已知坐標，這站的點無法算出坐標' +
+          (!known[s.station] ? '：缺測站 ' + s.station : '') + (!known[s.back] ? '：缺後視 ' + s.back : ''), s.line);
+      }
       var S = known[s.station], B = known[s.back];
       if (!S || !B) { if (s.obs.length) missing++; return; }
       var azB = Math.atan2(B.E - S.E, B.N - S.N);
@@ -720,13 +738,17 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
         var az = azB + (ha - ref) / 3600 * Math.PI / 180;
         var P = { N: S.N + hd2 * Math.cos(az), E: S.E + hd2 * Math.sin(az) };
         addPt(o.pt, P.N, P.E, 'obs');
+        // 數字點號要連編碼一起比（5 號界址點 5.00 和 5 號參考點 5.30 是不同點）
+        var codeOk = /^\d{1,2}$/.test(String(o.code || '').trim());
+        var wasKnown = /^\d+$/.test(o.pt) && codeOk ? !!before[o.pt + '.' + pad(parseInt(o.code, 10), 2)] : !!before[o.pt];
+        obsOut.push({ pt: o.pt, code: o.code, N: P.N, E: P.E, line: o.line, station: s.station, wasKnown: wasKnown });
         rays.push({ from: s.station, N1: S.N, E1: S.E, N2: P.N, E2: P.E });
         if (!known[o.pt]) known[o.pt] = P; // 例如先觀測、後來當測站的點（QT60-2）
       });
     });
     var focus = {};
     parsed.sessions.forEach(function (s) { focus[s.station] = 1; focus[s.back] = 1; });
-    return { points: pts, rays: rays, missingStations: missing, focus: focus };
+    return { points: pts, rays: rays, missingStations: missing, focus: focus, obs: obsOut };
   }
 
   function rawToMac(text, filename, opts) {
@@ -791,7 +813,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
       } else if (!seen[p.name]) seen[p.name] = p.line;
     });
 
-    var plot = computeRawPlot(parsed, report);
+    var plot = computeRawPlot(parsed, report, opts.known);
 
     if (parsed.freeStations.length) {
       report.warn('有 ' + parsed.freeStations.length + ' 個自由測站，請自行新增至重測系統（或使用下方的自由測站 .cnt 檔）');
@@ -1534,6 +1556,237 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
       main: true, desc: '全站儀、GPS 控制器都能匯入：點號,' + (xy ? 'X,Y' : 'Y,X') + '（' + summary + '）' };
   }
 
+  // ═════════════ 5. 直接寫入重測系統檔（.D14 參考點／.D20 補點，dBASE III） ═════════════
+  //
+  // .D14 COT：COT_NUMBER N5、COT_REF N2（編碼）、COT_Y N16.8、COT_X N15.8、COT_MATTER N2、
+  //           COT_SOURCE N1（2 = 計算求得）、COT_SURVEY N2、COT_MSE N2、COT_REMARK C12、TAU_ID N3
+  //           同一點號可有不同編碼（例如 5 號界址點 5.00 與 5 號參考點 5.30），點號＋編碼才是唯一。
+  // .D20 CTL：CTL_NAME C8、CTL_Y N12.3、CTL_X N11.3、CTL_LEVEL C3（補點 Q）、CTL_MATTER/SITUAT/LAND C1、CTL_MODE L
+
+  function toU8(b) {
+    if (b instanceof Uint8Array) return b;
+    if (b instanceof ArrayBuffer) return new Uint8Array(b);
+    return new Uint8Array(b);
+  }
+  function bytesToStr(u8, a, n) {
+    var s = '';
+    for (var i = a; i < a + n; i++) s += String.fromCharCode(u8[i]);
+    return s;
+  }
+
+  function parseDbf(bytes) {
+    var u8 = toU8(bytes);
+    if (u8.length < 33 || (u8[0] & 0x07) !== 3) throw new Error('不是 dBASE III 檔');
+    var nrec = u8[4] | (u8[5] << 8) | (u8[6] << 16) | (u8[7] << 24);
+    var hlen = u8[8] | (u8[9] << 8), rlen = u8[10] | (u8[11] << 8);
+    var fields = [], off = 32, pos = 1;
+    while (off < hlen - 1 && u8[off] !== 0x0D) {
+      var name = bytesToStr(u8, off, 11).replace(/\0.*$/, '');
+      var f = { name: name, type: String.fromCharCode(u8[off + 11]), len: u8[off + 16], dec: u8[off + 17], pos: pos };
+      fields.push(f); pos += f.len; off += 32;
+    }
+    var records = [];
+    for (var i = 0; i < nrec; i++) {
+      var base = hlen + i * rlen;
+      if (base + rlen > u8.length) break;
+      var rec = { deleted: u8[base] === 0x2A, values: {} };
+      fields.forEach(function (fd) { rec.values[fd.name] = bytesToStr(u8, base + fd.pos, fd.len); });
+      records.push(rec);
+    }
+    var dataEnd = hlen + nrec * rlen;
+    return { u8: u8, nrec: nrec, hlen: hlen, rlen: rlen, fields: fields, records: records,
+      hasEof: u8.length > dataEnd && u8[dataEnd] === 0x1A };
+  }
+
+  function encodeField(fd, v) {
+    var s;
+    if (fd.type === 'N' || fd.type === 'F') {
+      if (v === '' || v == null) s = '';
+      else s = typeof v === 'number' ? (fd.dec ? v.toFixed(fd.dec) : String(Math.round(v))) : String(v);
+      if (s.length > fd.len) throw new Error('欄位 ' + fd.name + ' 放不下「' + s + '」（最多 ' + fd.len + ' 字）');
+      while (s.length < fd.len) s = ' ' + s;
+      return s;
+    }
+    if (fd.type === 'L') return v ? 'T' : 'F';
+    s = String(v == null ? '' : v);
+    if (s.length > fd.len) throw new Error('欄位 ' + fd.name + ' 放不下「' + s + '」（最多 ' + fd.len + ' 字）');
+    while (s.length < fd.len) s += ' ';
+    return s;
+  }
+
+  /** 在原檔後面加上新紀錄，回傳新檔的 Uint8Array（更新筆數與日期，其餘位元組原封不動） */
+  function appendDbf(db, rows, now) {
+    var d = now ? new Date(now) : new Date();
+    var n = rows.length;
+    var dataEnd = db.hlen + db.nrec * db.rlen;
+    var out = new Uint8Array(dataEnd + n * db.rlen + (db.hasEof ? 1 : 0));
+    out.set(db.u8.subarray(0, dataEnd), 0);
+    out[1] = d.getFullYear() - 1900; out[2] = d.getMonth() + 1; out[3] = d.getDate();
+    var total = db.nrec + n;
+    out[4] = total & 255; out[5] = (total >> 8) & 255; out[6] = (total >> 16) & 255; out[7] = (total >> 24) & 255;
+    // 沒指定的欄位沿用最後一筆的內容（例如 D20 的 \0 與 T），沒有舊紀錄時用空白
+    var tmpl = db.nrec ? db.u8.subarray(dataEnd - db.rlen, dataEnd) : null;
+    rows.forEach(function (row, i) {
+      var base = dataEnd + i * db.rlen;
+      if (tmpl) out.set(tmpl, base); else for (var k = 0; k < db.rlen; k++) out[base + k] = 0x20;
+      out[base] = 0x20;
+      db.fields.forEach(function (fd) {
+        if (!tmpl && fd.type === 'L') out[base + fd.pos] = 0x54;
+        if (!Object.prototype.hasOwnProperty.call(row, fd.name)) return;
+        var str = encodeField(fd, row[fd.name]);
+        for (var k = 0; k < fd.len; k++) out[base + fd.pos + k] = str.charCodeAt(k) & 255;
+      });
+    });
+    if (db.hasEof) out[out.length - 1] = 0x1A;
+    return out;
+  }
+
+  /** D14 已有的「點號.編碼」與每個編碼目前最大點號 */
+  function d14Index(db) {
+    var keys = {}, maxByRef = {};
+    (db ? db.records : []).forEach(function (r) {
+      if (r.deleted) return;
+      var num = parseInt(r.values.COT_NUMBER, 10), ref = parseInt(r.values.COT_REF, 10) || 0;
+      if (!isFinite(num)) return;
+      keys[num + '.' + ref] = r;
+      if (!(maxByRef[ref] >= num)) maxByRef[ref] = num;
+    });
+    return { keys: keys, maxByRef: maxByRef };
+  }
+  function d20Index(db) {
+    var names = {};
+    (db ? db.records : []).forEach(function (r) { if (!r.deleted) names[r.values.CTL_NAME.trim().toUpperCase()] = r; });
+    return names;
+  }
+
+  /** 已知坐標表（給全站儀 RAW 算坐標用）：D20 點名、D14「點號」（唯一時）與「點號.編碼」 */
+  function knownFromDbf(d14, d20) {
+    var known = {}, byNum = {};
+    (d20 ? d20.records : []).forEach(function (r) {
+      if (r.deleted) return;
+      known[r.values.CTL_NAME.trim()] = { N: parseFloat(r.values.CTL_Y), E: parseFloat(r.values.CTL_X) };
+    });
+    (d14 ? d14.records : []).forEach(function (r) {
+      if (r.deleted) return;
+      var num = parseInt(r.values.COT_NUMBER, 10), ref = parseInt(r.values.COT_REF, 10) || 0;
+      var P = { N: parseFloat(r.values.COT_Y), E: parseFloat(r.values.COT_X) };
+      known[num + '.' + pad(ref, 2)] = P;
+      (byNum[num] = byNum[num] || []).push(P);
+    });
+    Object.keys(byNum).forEach(function (n) { if (byNum[n].length === 1 && !known[n]) known[n] = byNum[n][0]; });
+    return known;
+  }
+
+  function nextFreeName(name, used) {
+    var m = /^(.*?)(\d+)$/.exec(name);
+    var cand, i;
+    if (m) {
+      for (i = parseInt(m[2], 10) + 1; ; i++) { cand = m[1] + i; if (!used[cand.toUpperCase()]) return cand; }
+    }
+    for (i = 1; ; i++) { cand = name + '-' + i; if (!used[cand.toUpperCase()]) return cand; }
+  }
+
+  /**
+   * 規劃要寫進 D14／D20 的點：
+   *   點名 Q 開頭 → D20 補點；數字點號 → D14 參考點（點號＋編碼）；其他 → 不能寫入
+   *   點號（點號＋編碼）或補點名稱已存在 → 自動改號（該編碼最大號＋1／Q 名稱尾數＋1）
+   * points：[{ key, name, code, y, x, src, line }]；edits：{ key: { num, ref, name, skip } }
+   */
+  function planDbfWrite(input) {
+    var d14 = input.d14, d20 = input.d20, edits = input.edits || {};
+    var idx14 = d14Index(d14), idx20 = d20Index(d20);
+    var used14 = {}, used20 = {}, max14 = {};
+    Object.keys(idx14.keys).forEach(function (k) { used14[k] = 1; });
+    Object.keys(idx14.maxByRef).forEach(function (r) { max14[r] = idx14.maxByRef[r]; });
+    Object.keys(idx20).forEach(function (k) { used20[k] = 1; });
+    var rows = [];
+    var userKeys14 = {};
+
+    (input.points || []).forEach(function (p) {
+      var e = edits[p.key] || {};
+      var row = { key: p.key, origName: p.name, origCode: p.code == null ? '' : p.code, y: p.y, x: p.x, src: p.src, line: p.line, file: p.file,
+        skip: !!e.skip, status: '', reason: '' };
+      var name = String(p.name).trim();
+      if (/^q/i.test(name)) row.target = 'D20';
+      else if (/^\d+$/.test(name)) row.target = 'D14';
+      else { row.target = null; row.status = 'skip'; row.reason = '點名不是數字也不是 Q 開頭，無法寫入'; rows.push(row); return; }
+      if (row.skip) { row.status = 'excluded'; row.reason = '不寫入'; rows.push(row); return; }
+      if (row.target === 'D14' && !d14) { row.status = 'noFile'; row.reason = '沒有放入 .D14'; rows.push(row); return; }
+      if (row.target === 'D20' && !d20) { row.status = 'noFile'; row.reason = '沒有放入 .D20'; rows.push(row); return; }
+
+      if (row.target === 'D14') {
+        var num = e.num != null && e.num !== '' ? parseInt(e.num, 10) : parseInt(name, 10);
+        var refRaw = e.ref != null && e.ref !== '' ? e.ref : p.code;
+        var ref = refRaw === '' || refRaw == null ? null : parseInt(refRaw, 10);
+        row.num = num; row.ref = ref;
+        if (ref === null || !isFinite(ref) || ref < 0 || ref > 99) { row.status = 'needCode'; row.reason = '缺編碼（00～99），請填'; rows.push(row); return; }
+        if (!(num >= 1 && num <= 99999)) { row.status = 'conflict'; row.reason = '點號要是 1～99999'; rows.push(row); return; }
+        var k = num + '.' + ref;
+        if (used14[k]) {
+          if (e.num != null && e.num !== '') { row.status = 'conflict'; row.reason = '你指定的 ' + num + '.' + pad(ref, 2) + ' 已經有了'; rows.push(row); return; }
+          var nn = Math.max(max14[ref] || 0, num) + 1;
+          while (used14[nn + '.' + ref]) nn++;
+          row.reason = (idx14.keys[k] ? 'D14 已有 ' : '這批資料裡重複 ') + num + '.' + pad(ref, 2) + '，自動改成 ' + nn + '.' + pad(ref, 2);
+          row.status = 'renumbered'; num = nn; row.num = nn;
+        } else {
+          row.status = e.num != null && e.num !== '' ? 'edited' : 'new';
+        }
+        used14[num + '.' + ref] = 1;
+        max14[ref] = Math.max(max14[ref] || 0, num);
+        row.out = num + '.' + pad(ref, 2);
+        userKeys14[row.out] = 1;
+      } else {
+        var nm = e.name ? String(e.name).trim() : name;
+        if (nm.length > 8) { row.status = 'conflict'; row.reason = '補點名稱最多 8 個字'; row.name = nm; rows.push(row); return; }
+        if (used20[nm.toUpperCase()]) {
+          if (e.name) { row.status = 'conflict'; row.reason = '你指定的 ' + nm + ' 已經有了'; row.name = nm; rows.push(row); return; }
+          var nn2 = nextFreeName(nm, used20);
+          if (nn2.length > 8) { row.status = 'conflict'; row.reason = nm + ' 已存在，自動改號後超過 8 個字，請手動指定'; row.name = nm; rows.push(row); return; }
+          row.reason = (idx20[nm.toUpperCase()] ? 'D20 已有 ' : '這批資料裡重複 ') + nm + '，自動改成 ' + nn2;
+          row.status = 'renumbered'; nm = nn2;
+        } else row.status = e.name ? 'edited' : 'new';
+        used20[nm.toUpperCase()] = 1;
+        row.name = nm; row.out = nm;
+      }
+      rows.push(row);
+    });
+
+    var ok = rows.filter(function (r) { return r.status === 'new' || r.status === 'renumbered' || r.status === 'edited'; });
+    var blocking = rows.filter(function (r) { return r.status === 'needCode' || r.status === 'conflict'; });
+    return {
+      rows: rows,
+      toD14: ok.filter(function (r) { return r.target === 'D14'; }),
+      toD20: ok.filter(function (r) { return r.target === 'D20'; }),
+      blocking: blocking,
+      renumbered: rows.filter(function (r) { return r.status === 'renumbered'; }).length
+    };
+  }
+
+  /** 依規劃產生新的 D14／D20 位元組與對照表 */
+  function buildDbfFiles(plan, d14, d20, now) {
+    var out = {};
+    if (d14 && plan.toD14.length) {
+      out.d14 = appendDbf(d14, plan.toD14.map(function (r) {
+        return { COT_NUMBER: r.num, COT_REF: r.ref, COT_Y: Number(r.y), COT_X: Number(r.x), COT_MATTER: 0, COT_SOURCE: 2,
+          COT_SURVEY: 0, COT_MSE: 0, COT_REMARK: '', TAU_ID: '' };
+      }), now);
+    }
+    if (d20 && plan.toD20.length) {
+      out.d20 = appendDbf(d20, plan.toD20.map(function (r) {
+        return { CTL_NAME: r.name, CTL_Y: Number(r.y), CTL_X: Number(r.x), CTL_LEVEL: 'Q' };
+      }), now);
+    }
+    var STATUS = { new: '新增', renumbered: '自動改號', edited: '手動指定', needCode: '缺編碼', conflict: '衝突', skip: '無法寫入', excluded: '不寫入', noFile: '缺檔案' };
+    var cell = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = [['原點名', '原編碼', '寫入檔案', '寫入點號', 'Y', 'X', '來源', '狀態', '說明'].join(',')];
+    plan.rows.forEach(function (r) {
+      lines.push([r.origName, r.origCode, r.target ? '.' + r.target : '', r.out || '', Number(r.y).toFixed(3), Number(r.x).toFixed(3),
+        r.src, STATUS[r.status] || r.status, r.reason].map(cell).join(','));
+    });
+    out.table = '\uFEFF' + joinLines(lines);
+    return out;
+  }
+
   // ───────────────────────── 資料夾掃描 ─────────────────────────
 
   /** 同一個案件的 L02/L14/L20 視為一組：同資料夾、同主檔名（例如 KC0390.L02 + KC0390.L14）。 */
@@ -1549,7 +1802,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
    * 每一項 { key, label, dir, files:[原物件...] }。
    */
   function groupFolderFiles(list) {
-    var out = { l2csv: [], raw2mac: [], csv2cntmac: [], coa2csv: [] };
+    var out = { l2csv: [], raw2mac: [], csv2cntmac: [], coa2csv: [], dbf: [] };
     var cmap = {};
     var lmap = {};
     list.forEach(function (f) {
@@ -1564,6 +1817,10 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
         }
         lmap[k].files.push(f);
         lmap[k].exts.push(ext);
+      }
+      if (ext === 'D14' || ext === 'D20') out.dbf.push({ key: path, label: f.name, dir: dir, ext: ext, files: [f] });
+      if (L_TYPES[ext]) {
+        // 已處理
       } else if (COA_EXTS.indexOf(ext) >= 0) {
         var ck = lGroupKey(path);
         if (!cmap[ck]) {
@@ -1595,6 +1852,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
     var ext = extName(filename);
     if (ext === 'RAW') return 'raw2mac';
     if (L_TYPES[ext]) return 'l2csv';
+    if (ext === 'D14' || ext === 'D20') return 'dbf';
     if (COA_EXTS.indexOf(ext) >= 0) return 'coa2csv';
     var head = splitLines(text || '').slice(0, 40).join('\n');
     if (/^(ST|SS|F1),/m.test(head)) return 'raw2mac';
@@ -1623,6 +1881,11 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
     classifyYX: classifyYX,
     coaToCsv: coaToCsv,
     writePoints: writePoints,
+    parseDbf: parseDbf,
+    appendDbf: appendDbf,
+    planDbfWrite: planDbfWrite,
+    buildDbfFiles: buildDbfFiles,
+    knownFromDbf: knownFromDbf,
     parcelKeyOf: parcelKeyOf,
     COA_EXTS: COA_EXTS
   };
@@ -1698,7 +1961,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
   var GROUPED = { l2csv: 1, coa2csv: 1 }; // 依案件（同名檔）分組的轉換
 
   // ─────────── 狀態 ───────────
-  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false };
+  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false, dbf: null, dbfEdits: {}, dbfDone: null };
 
   function loadOpts() {
     var d = { ext: 'csv', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaNearestN: 2, outFormat: 'csv', swapXY: false, stripCode: false };
@@ -1723,7 +1986,12 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
     return Promise.all(Array.prototype.map.call(list, function (x) {
       var f = x.file || x;
       var path = x.path || f.webkitRelativePath || f.name;
-      return f.arrayBuffer().then(function (b) { return { name: f.name, path: path, text: decode(b) }; });
+      return f.arrayBuffer().then(function (b) {
+        var ext = Core.extName(f.name);
+        var o = { name: f.name, path: path, text: ext === 'D14' || ext === 'D20' ? '' : decode(b) };
+        if (ext === 'D14' || ext === 'D20') o.bytes = new Uint8Array(b);
+        return o;
+      });
     }));
   }
   function inputKey(f) { return f.path || f.name; }
@@ -1737,7 +2005,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null;
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -1790,6 +2058,11 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
         addChip(f.name, inputKey(f), function () { state.inputs.splice(i, 1); run(); });
       });
     }
+    if (state.dbf) ['D14', 'D20'].forEach(function (e) {
+      var d = state.dbf[e];
+      if (!d) return;
+      addChip('🗄 ' + d.name + '（' + (e === 'D14' ? '參考點' : '補點') + ' ' + d.db.nrec + ' 筆）', '重測系統檔', function () { delete state.dbf[e]; if (!state.dbf.D14 && !state.dbf.D20) state.dbf = null; run(); });
+    });
     $('pickBig').textContent = state.inputs.length ? '要換檔案或再加檔案？拖進來或點這裡' : '把檔案拖進來，或點這裡選擇';
     $('pickTitle').textContent = state.inputs.length ? '第 1 步：已放入 ' + state.inputs.length + ' 個檔案' : '第 1 步：放入檔案';
     renderTypeBar();
@@ -1859,6 +2132,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
         var opt = { codeMode: o.codeMode, sep: o.sep, alwaysZero: o.alwaysZero, codeCol: o.codeColumn, neOrder: o.neOrder,
           angleDecimals: o.angleDecimals, distDecimals: o.distDecimals, decisions: state.decisions[key] || {}, codeOverrides: state.codes[key] || {}, noCodeAs: state.askAs[key], badCodeTo: o.badCodeTo,
           outName: state.inputs.length === 1 ? (o.outName || undefined) : undefined };
+        if (state.dbf) opt.known = Core.knownFromDbf(state.dbf.D14 && state.dbf.D14.db, state.dbf.D20 && state.dbf.D20.db);
         var x = state.kind === 'raw2mac' ? Core.rawToMac(inp.text, inp.name, opt) : Core.csvToCntMac(inp.text, inp.name, opt);
         x.source = inp.name;
         x.key = key;
@@ -1930,6 +2204,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
     renderThumbs(r);
     renderReview(r);
     renderCoaPanel(r);
+    renderDbfPanel(r);
 
     // 副檔名選擇（重測資料匯出時顯示在存檔區最上面）
     var db = $('deviceBar'); db.innerHTML = '';
@@ -2394,6 +2669,182 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
     drawList();
   }
 
+  // ═════════════ 直接寫入重測系統檔（D14／D20） ═════════════
+
+  function attachDbf(f) {
+    var ext = Core.extName(f.name);
+    try {
+      var db = Core.parseDbf(f.bytes);
+      var need = ext === 'D14' ? 'COT_NUMBER' : 'CTL_NAME';
+      if (!db.fields.some(function (x) { return x.name === need; })) throw new Error('欄位不對，不是重測系統的 ' + ext);
+      state.dbf = state.dbf || {};
+      state.dbf[ext] = { name: f.name, path: f.path, bytes: f.bytes, db: db };
+      state.dbfDone = null;
+    } catch (e) {
+      toast('讀不懂 ' + f.name + '：' + e.message);
+    }
+  }
+
+  /** 從轉換結果整理出要寫入的點 */
+  function dbfPoints(r) {
+    var pts = [];
+    var badTo = state.opts.badCodeTo || '11';
+    if (r.kind === 'csv2cntmac') {
+      r.parts.forEach(function (p) {
+        p.points.forEach(function (q) {
+          if (!q.include) return;
+          pts.push({ key: p.key + ':' + q.line, name: q.name, code: q.useCode == null || q.useCode === '' ? null : q.useCode,
+            y: q.N, x: q.E, src: 'GPS', line: q.line, file: p.source });
+        });
+      });
+    } else if (r.kind === 'raw2mac') {
+      r.parts.forEach(function (p) {
+        var seen = {};
+        ((p.plot && p.plot.obs) || []).forEach(function (o) {
+          if (o.wasKnown) return; // 照準已知點（檢核）不寫入
+          var code = /^\d{1,2}$/.test(String(o.code).trim()) ? String(o.code).trim() : (String(o.code).trim() ? badTo : null);
+          var k = o.pt + '|' + code;
+          if (seen[k]) return; // 同一點重複觀測，取第一次
+          seen[k] = 1;
+          pts.push({ key: p.key + ':' + o.line, name: o.pt, code: /^q/i.test(o.pt) ? '' : code, y: o.N, x: o.E, src: '全站儀', line: o.line, file: p.source });
+        });
+      });
+    }
+    return pts;
+  }
+
+  var DBF_SHOW = 500;
+  function renderDbfPanel(r) {
+    var panel = $('dbfPanel');
+    if (!state.dbf || !DBF_KINDS[r.kind]) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    var D14 = state.dbf.D14, D20 = state.dbf.D20;
+    if (state.dbfDone) {
+      $('dbf').innerHTML = '<div class="status ok" style="margin:0"><div class="si">✓</div><div><div class="st">已寫入重測系統檔</div><div class="ss">' + state.dbfDone + '</div></div></div>' +
+        '<p class="muted">要再寫一次，請重新放入最新的 D14、D20（避免重複寫入）。</p>';
+      return;
+    }
+    var plan = Core.planDbfWrite({ d14: D14 && D14.db, d20: D20 && D20.db, points: dbfPoints(r), edits: state.dbfEdits });
+    state.dbfPlan = plan;
+    var S = { new: ['新增', 'ok'], renumbered: ['自動改號', 'w'], edited: ['手動指定', 'ok'], needCode: ['缺編碼', 'x'], conflict: ['衝突', 'x'], skip: ['無法寫入', 'x'], excluded: ['不寫入', ''], noFile: ['缺檔案', 'x'] };
+    var h = '<p class="sum">' +
+      (D14 ? '<b>' + esc(D14.name) + '</b>（參考點，原有 ' + D14.db.nrec + ' 筆）將新增 <b>' + plan.toD14.length + '</b> 筆' : '沒有放入 D14（參考點不會寫入）') + '；' +
+      (D20 ? '<b>' + esc(D20.name) + '</b>（補點，原有 ' + D20.db.nrec + ' 筆）將新增 <b>' + plan.toD20.length + '</b> 筆' : '沒有放入 D20（Q 開頭的補點不會寫入）') + '。' +
+      (plan.renumbered ? '其中 <b>' + plan.renumbered + '</b> 點點號重複，已自動改號（見下表黃色）。' : '') + '</p>' +
+      '<p class="muted" style="margin:-4px 0 10px">規則：點名 Q 開頭 → D20 補點；數字點號 → D14 參考點（點號＋編碼，COT_SOURCE 寫 2＝計算求得）。點號可以在表格裡直接改。</p>';
+    if (plan.blocking.length) h += '<div class="blocked" style="margin-bottom:10px">⚠ 有 <b>' + plan.blocking.length + '</b> 點要先處理（缺編碼或點號衝突），處理完才能寫入。</div>';
+    var rows = plan.rows.slice().sort(function (a, b) {
+      var rk = function (x) { return { needCode: 0, conflict: 0, renumbered: 1, skip: 2, noFile: 2 }[x.status] != null ? { needCode: 0, conflict: 0, renumbered: 1, skip: 2, noFile: 2 }[x.status] : 3; };
+      return rk(a) - rk(b);
+    });
+    h += '<div class="tablewrap"><table><thead><tr><th class="c">寫入</th><th class="l">原點名</th><th>原編碼</th><th class="l">寫到</th><th class="l">寫入點號</th><th>Y</th><th>X</th><th class="l">來源</th><th class="l">狀態</th></tr></thead><tbody>';
+    rows.slice(0, DBF_SHOW).forEach(function (row) {
+      var st = S[row.status] || [row.status, ''];
+      var editable = row.target && row.status !== 'skip' && row.status !== 'noFile' && row.status !== 'excluded';
+      var numCell = '';
+      if (editable && row.target === 'D14') {
+        numCell = '<input class="dnum" data-k="' + esc(row.key) + '" value="' + esc(row.num == null ? '' : row.num) + '" inputmode="numeric" maxlength="5" title="點號">' +
+          ' . <input class="dref" data-k="' + esc(row.key) + '" value="' + esc(row.ref == null ? '' : String(row.ref).padStart(2, '0')) + '" inputmode="numeric" maxlength="2" placeholder="??" title="編碼 00～99">';
+      } else if (editable && row.target === 'D20') {
+        numCell = '<input class="dname" data-k="' + esc(row.key) + '" value="' + esc(row.name || '') + '" maxlength="8" title="補點名稱（最多 8 字）">';
+      } else numCell = esc(row.out || '');
+      h += '<tr class="' + (row.status === 'excluded' ? 'off' : '') + '"><td class="c">' + (row.target ? '<input type="checkbox" class="dchk" data-k="' + esc(row.key) + '"' + (row.status === 'excluded' ? '' : ' checked') + '>' : '') + '</td>' +
+        '<td class="l mono">' + esc(row.origName) + '</td><td class="mono">' + esc(row.origCode) + '</td><td class="l">' + (row.target ? '.' + row.target + (row.target === 'D14' ? ' 參考點' : ' 補點') : '—') + '</td>' +
+        '<td class="l mono">' + numCell + '</td><td class="mono">' + Number(row.y).toFixed(3) + '</td><td class="mono">' + Number(row.x).toFixed(3) + '</td>' +
+        '<td class="l">' + esc(row.src) + '</td><td class="l"><span class="flagb ' + st[1] + '">' + st[0] + '</span> ' + esc(row.reason || '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    if (rows.length > DBF_SHOW) h += '<div class="muted" style="padding:8px">只列出前 ' + DBF_SHOW + ' 點，共 ' + rows.length + ' 點。</div>';
+    var canWrite = !plan.blocking.length && (plan.toD14.length || plan.toD20.length);
+    h += '<div class="saveall">' +
+      (window.showDirectoryPicker ? '<button class="btn go" type="button" id="dbfWrite"' + (canWrite ? '' : ' disabled') + '>💾 直接寫入原檔（先自動備份 .bak）</button>' : '') +
+      '<button class="btn primary" type="button" id="dbfDl"' + (canWrite ? '' : ' disabled') + '>⬇ 下載新的 D14 / D20</button>' +
+      '<button class="btn" type="button" id="dbfTable">⬇ 下載對照表</button>' +
+      (window.showDirectoryPicker ? '' : '<span class="muted">這個瀏覽器不能直接寫回原檔，請用 Chrome 或 Edge，或下載後自己取代。</span>') + '</div>';
+    $('dbf').innerHTML = h;
+
+    var edit = function (k) { return (state.dbfEdits[k] = state.dbfEdits[k] || {}); };
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dchk'), function (c) {
+      c.onchange = function () { edit(c.getAttribute('data-k')).skip = !c.checked; renderDbfPanel(state.result); };
+    });
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dnum'), function (c) {
+      c.onchange = function () { var v = c.value.trim(); if (v && !/^\d{1,5}$/.test(v)) { toast('點號要是數字'); return; } edit(c.getAttribute('data-k')).num = v; renderDbfPanel(state.result); };
+    });
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dref'), function (c) {
+      c.onchange = function () { var v = c.value.trim(); if (v && !/^\d{1,2}$/.test(v)) { toast('編碼要是 00～99'); return; } edit(c.getAttribute('data-k')).ref = v; renderDbfPanel(state.result); };
+    });
+    Array.prototype.forEach.call($('dbf').querySelectorAll('.dname'), function (c) {
+      c.onchange = function () { edit(c.getAttribute('data-k')).name = c.value.trim(); renderDbfPanel(state.result); };
+    });
+    var build = function () { return Core.buildDbfFiles(plan, D14 && D14.db, D20 && D20.db); };
+    $('dbfTable').onclick = function () {
+      var b = build();
+      download({ name: Core.baseName((D14 || D20).name) + '_寫入對照表.csv', content: b.table });
+    };
+    $('dbfDl').onclick = function () {
+      var b = build();
+      if (b.d14) downloadBytes(D14.name, b.d14);
+      if (b.d20) setTimeout(function () { downloadBytes(D20.name, b.d20); }, 400);
+      toast('已下載新的 D14 / D20，請用它們取代重測系統資料夾裡的原檔（建議先備份原檔）');
+    };
+    if ($('dbfWrite')) $('dbfWrite').onclick = function () { writeDbfToFolder(plan, build()); };
+  }
+
+  function downloadBytes(name, u8) {
+    var a = el('a', { href: URL.createObjectURL(new Blob([u8], { type: 'application/octet-stream' })), download: name });
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+
+  function stampNow() {
+    var d = new Date(), p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes());
+  }
+
+  /** 選重測系統資料夾 → 先把原檔另存 .bak → 再寫入新檔 */
+  function writeDbfToFolder(plan, built) {
+    var jobs = [];
+    if (built.d14) jobs.push({ src: state.dbf.D14, data: built.d14, n: plan.toD14.length });
+    if (built.d20) jobs.push({ src: state.dbf.D20, data: built.d20, n: plan.toD20.length });
+    if (!jobs.length) return;
+    toast('請選擇 ' + jobs.map(function (j) { return j.src.name; }).join('、') + ' 所在的資料夾');
+    window.showDirectoryPicker({ mode: 'readwrite' }).then(function (dir) {
+      // 先確認資料夾裡的檔案就是剛剛放進來的那份（避免寫錯資料夾或檔案已被改過）
+      return Promise.all(jobs.map(function (j) {
+        return dir.getFileHandle(j.src.name).then(function (h) { return h.getFile().then(function (f) { return f.arrayBuffer(); }).then(function (buf) {
+          var cur = new Uint8Array(buf);
+          var same = cur.length === j.src.bytes.length && cur.every(function (v, i) { return v === j.src.bytes[i]; });
+          if (!same) throw new Error('資料夾裡的 ' + j.src.name + ' 和剛剛放進來的不一樣（可能是別的資料夾，或檔案已經被改過）。請重新放入最新的檔案再寫入。');
+          j.handle = h; j.orig = cur;
+        }); }, function () { throw new Error('這個資料夾裡找不到 ' + j.src.name + '，請選重測系統放 D14、D20 的資料夾'); });
+      })).then(function () {
+        return jobs.reduce(function (p, j) {
+          return p.then(function () {
+            var bak = j.src.name + '.bak';
+            return dir.getFileHandle(bak).then(function () { bak = j.src.name + '.' + stampNow() + '.bak'; }, function () {}).then(function () {
+              return dir.getFileHandle(bak, { create: true });
+            }).then(function (bh) {
+              j.bak = bak;
+              return bh.createWritable().then(function (w) { return w.write(j.orig).then(function () { return w.close(); }); });
+            }).then(function () {
+              return j.handle.createWritable().then(function (w) { return w.write(j.data).then(function () { return w.close(); }); });
+            });
+          });
+        }, Promise.resolve());
+      }).then(function () {
+        var msg = jobs.map(function (j) { return j.src.name + ' 新增 ' + j.n + ' 筆（原檔備份成 ' + j.bak + '）'; }).join('；');
+        state.dbfDone = esc(msg) + (plan.renumbered ? '；有 ' + plan.renumbered + ' 點自動改號，請看對照表' : '');
+        jobs.forEach(function (j) { j.src.bytes = j.data; j.src.db = Core.parseDbf(j.data); });
+        renderDbfPanel(state.result);
+        toast('已寫入重測系統檔');
+      });
+    }).catch(function (e) {
+      if (e && e.name === 'AbortError') return;
+      modal('<h3>沒有寫入</h3><p>' + esc(e && e.message || e) + '</p><p class="muted">原檔沒有被改動。</p><div style="text-align:right"><button class="btn primary" id="okW">好</button></div>');
+      $('okW').onclick = closeModal;
+    });
+  }
+
   // ═════════════ GPS 點位檢查 ═════════════
 
   function setDecision(key, line, include) {
@@ -2715,6 +3166,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
   function handleFolder(entries, folderName) {
     var list = entries.map(function (x) { return { name: x.file.name, path: x.path, file: x.file }; });
     var g = Core.groupFolderFiles(list);
+    folderDbf = g.dbf || [];
     // 複丈輸入檔：資料夾裡沒有 L02/L14/L20 時才列出（或已在角落按鈕手動啟用）
     var useCoa = g.coa2csv.length && (!g.l2csv.length || state.coaEnabled || state.kind === 'coa2csv');
     var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'].concat(useCoa ? ['coa2csv'] : []);
@@ -2809,11 +3261,21 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
   }
 
   /** 讀取勾選的項目並開始轉換 */
+  var folderDbf = [];
   function loadGroups(groups, kind, keepTypes) {
     var files = [].concat.apply([], groups.map(function (gr) {
       return gr.files.filter(function (f) { return !keepTypes || keepTypes.indexOf(Core.extName(f.name)) >= 0; })
         .map(function (f) { return { file: f.file, path: f.path }; });
     }));
+    // GPS／全站儀：資料夾裡有 D14、D20 時一起讀進來（優先同一個資料夾）
+    if (DBF_KINDS[kind] && folderDbf.length) {
+      var dir = groups.length ? groups[0].dir : '';
+      ['D14', 'D20'].forEach(function (e) {
+        var cands = folderDbf.filter(function (d) { return d.ext === e; });
+        var pick = cands.filter(function (d) { return d.dir === dir; })[0] || (cands.length === 1 ? cands[0] : null);
+        if (pick) files.push({ file: pick.files[0].file, path: pick.files[0].path });
+      });
+    }
     readFiles(files).then(function (inputs) {
       closeModal();
       if (state.kind !== kind) openKind(kind);
@@ -2823,7 +3285,13 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
   }
 
   /** 同路徑的檔案取代，其餘加入 */
+  var DBF_KINDS = { raw2mac: 1, csv2cntmac: 1 };
   function mergeInputs(files) {
+    files = files.filter(function (f) {
+      var ext = Core.extName(f.name);
+      if ((ext === 'D14' || ext === 'D20') && DBF_KINDS[state.kind]) { attachDbf(f); return false; }
+      return true;
+    });
     files.forEach(function (f) {
       var i = state.inputs.findIndex(function (x) { return inputKey(x) === inputKey(f); });
       if (i >= 0) state.inputs[i] = f; else state.inputs.push(f);
@@ -2973,11 +3441,21 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"1.9.0","da
       // 首頁：自動判斷
       var kinds = {};
       var unknown = [];
+      var dbfs = [];
       files.forEach(function (f) {
         var k = Core.detectKind(f.name, f.text);
-        if (k) (kinds[k] = kinds[k] || []).push(f); else unknown.push(f.name);
+        if (k === 'dbf') dbfs.push(f);
+        else if (k) (kinds[k] = kinds[k] || []).push(f); else unknown.push(f.name);
       });
       var ks = Object.keys(kinds);
+      if (!ks.length && dbfs.length) {
+        modal('<h3>收到重測系統檔 ' + esc(dbfs.map(function (f) { return f.name; }).join('、')) + '</h3>' +
+          '<p>D14、D20 是用來把 <b>GPS 的 CSV</b> 或 <b>全站儀的 RAW</b> 直接寫進重測系統的。請把 CSV 或 RAW 和 D14、D20 <b>一起</b>拖進來（或選整個資料夾）。</p>' +
+          '<div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
+        $('ok1').onclick = closeModal;
+        return;
+      }
+      if (dbfs.length && ks.length) kinds[ks[0]] = kinds[ks[0]].concat(dbfs.filter(function () { return DBF_KINDS[ks[0]]; }));
       if (!ks.length) {
         modal('<h3>認不出這個檔案</h3><p>' + esc(unknown.join('、')) + '</p><p>請直接在首頁點選要做的轉換，再放入檔案。</p><div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
         $('ok1').onclick = closeModal;
