@@ -224,7 +224,7 @@
         var x = Core.coaToCsv(g.files, {
           outName: (cg.length === 1 && o.outName) || undefined,
           parcels: cg.length === 1 && c.mode === 'pick' ? c.picked : null,
-          ctl: c.ctl, nearestN: o.coaNearestN, ctlAdd: c.ctlAdd, ctlRemove: c.ctlRemove, ctlFirst: o.coaCtlFirst !== false,
+          ctl: c.ctl, nearestN: o.coaNearestN, ctlAdd: c.ctlAdd, ctlRemove: c.ctlRemove,
           format: o.outFormat,
           order: o.xyOrder === 'xy' ? 'xy' : 'yx', ext: o.ext
         });
@@ -730,9 +730,7 @@
         '<div class="plist" id="cqList"></div></div>';
     }
 
-    h += '<div class="coarow"><span class="lbl">排序：</span><div class="seg" id="coaSort">' +
-      '<button type="button" data-v="1" class="' + (o.coaCtlFirst !== false ? 'on' : '') + '">控制點在前</button>' +
-      '<button type="button" data-v="0" class="' + (o.coaCtlFirst === false ? 'on' : '') + '">界址點在前</button></div></div>';
+    h += '<div class="coarow"><span class="lbl">排序：</span><span class="muted">一律界址點在前、控制點在後</span></div>';
     $('coa').innerHTML = h;
 
     var segBind = function (id, fn) {
@@ -746,7 +744,6 @@
       run();
     });
     segBind('coaCtl', function (v) { c.ctl = v; run(); });
-    segBind('coaSort', function (v) { o.coaCtlFirst = v === '1'; saveOpts(); run(); });
     if ($('coaN')) $('coaN').onchange = function () {
       var v = parseInt(this.value, 10);
       if (!(v >= 1 && v <= 20)) { toast('請輸入 1～20'); this.value = o.coaNearestN; return; }
@@ -962,9 +959,9 @@
   }
 
   function downloadBytes(name, u8) {
-    var a = el('a', { href: URL.createObjectURL(new Blob([u8], { type: 'application/octet-stream' })), download: name });
-    document.body.appendChild(a); a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    var blob = new Blob([u8], { type: 'application/octet-stream' });
+    if (saveDir) { saveBlob(name, blob, true); return; }
+    browserDownload(name, blob);
   }
 
   function stampNow() {
@@ -1286,12 +1283,110 @@
 
   // ─────────── 存檔 ───────────
   function blobOf(f) { return new Blob([f.content], { type: 'text/plain' }); }
-  function download(f, silent) {
-    var a = el('a', { href: URL.createObjectURL(blobOf(f)), download: f.name });
-    document.body.appendChild(a); a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  /** 下載：有設定存檔資料夾就直接存進去，否則交給瀏覽器（「下載」資料夾） */
+  function download(f, silent, browserOnly) {
+    if (saveDir && !browserOnly) { saveBlob(f.name, blobOf(f), silent); return; }
+    browserDownload(f.name, blobOf(f));
     if (!silent) toast('已下載 ' + f.name + '（在瀏覽器的「下載」資料夾）');
   }
+  function browserDownload(name, blob) {
+    var a = el('a', { href: URL.createObjectURL(blob), download: name });
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+
+  // ═════════════ 存檔位置（每份系統各記各的資料夾） ═════════════
+
+  var saveDir = null;
+  // 用這份 HTML 所在的資料夾當鑰匙：複製到不同地方的系統會各自記住自己的存檔位置
+  var HERE = (function () { try { return decodeURIComponent(location.pathname.replace(/[^\/]*$/, '')); } catch (e) { return location.pathname; } })();
+  var PICK_ID = 'd' + (function (str) { var h = 5381; for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); })(HERE);
+
+  function idbStore(mode, fn) {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('no indexedDB')); return; }
+      var req = indexedDB.open('chsys', 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore('dirs'); };
+      req.onerror = function () { reject(req.error); };
+      req.onsuccess = function () {
+        try {
+          var tx = req.result.transaction('dirs', mode), st = tx.objectStore('dirs');
+          var r = fn(st);
+          tx.oncomplete = function () { resolve(r && r.result); };
+          tx.onerror = function () { reject(tx.error); };
+        } catch (e) { reject(e); }
+      };
+    });
+  }
+  function loadSaveDir() {
+    idbStore('readonly', function (st) { return st.get(HERE); }).then(function (h) {
+      if (h && h.getFileHandle) { saveDir = h; renderSaveBtn(); }
+    }).catch(function () {});
+  }
+  function rememberSaveDir(h) {
+    saveDir = h; renderSaveBtn();
+    idbStore('readwrite', function (st) { return h ? st.put(h, HERE) : st.delete(HERE); }).catch(function () {});
+  }
+  function ensurePermission(h) {
+    var o = { mode: 'readwrite' };
+    if (!h.queryPermission) return Promise.resolve(true);
+    return h.queryPermission(o).then(function (p) { return p === 'granted' ? true : h.requestPermission(o).then(function (q) { return q === 'granted'; }); });
+  }
+  /** 存進設定的資料夾；同名檔案已存在時改名成「名稱 (1).副檔名」，不會蓋掉舊檔 */
+  function saveBlob(name, blob, silent) {
+    var h = saveDir;
+    return ensurePermission(h).then(function (ok) {
+      if (!ok) throw new Error('沒有取得資料夾的寫入權限');
+      var dot = name.lastIndexOf('.'), stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+      var tryName = function (i) {
+        var nm = i ? stem + ' (' + i + ')' + ext : name;
+        return h.getFileHandle(nm).then(function () { return i < 99 ? tryName(i + 1) : nm; }, function () { return nm; });
+      };
+      return tryName(0).then(function (nm) {
+        return h.getFileHandle(nm, { create: true }).then(function (fh) {
+          return fh.createWritable().then(function (w) { return w.write(blob).then(function () { return w.close(); }); });
+        }).then(function () { if (!silent || nm !== name) toast('已存到「' + h.name + '」：' + nm); return nm; });
+      });
+    }).catch(function (e) {
+      browserDownload(name, blob);
+      toast('存不進「' + (h && h.name) + '」（' + (e && e.message || e) + '），改存到瀏覽器的「下載」資料夾');
+    });
+  }
+
+  function renderSaveBtn() {
+    var b = $('btnSaveDir');
+    if (!b) return;
+    b.textContent = saveDir ? '📁 存到：' + saveDir.name : '⬇ 存到：下載資料夾';
+    b.title = saveDir ? '按下載會直接存到「' + saveDir.name + '」（點一下可更改）' : '目前存到瀏覽器的「下載」資料夾（點一下可改成指定資料夾）';
+  }
+
+  function showSaveDirDialog() {
+    if (!window.showDirectoryPicker) {
+      modal('<h3>存檔位置</h3><p>這個瀏覽器不支援直接存到指定資料夾，請改用 <b>Chrome</b> 或 <b>Edge</b>。</p>' +
+        '<p class="muted">或在瀏覽器設定裡打開「下載前詢問每個檔案的儲存位置」，每次下載時自己選。</p><div style="text-align:right"><button class="btn primary" id="sdOk">好</button></div>');
+      $('sdOk').onclick = closeModal;
+      return;
+    }
+    modal('<h3>存檔位置</h3>' +
+      '<p>目前：' + (saveDir ? '<b>📁 ' + esc(saveDir.name) + '</b>（按下載會直接存進去）' : '<b>瀏覽器的「下載」資料夾</b>') + '</p>' +
+      '<p>這份系統放在：<br><code class="mono" style="word-break:break-all">' + esc(HERE) + '</code></p>' +
+      '<ol class="next"><li><div>按下面的「📁 選資料夾」，到<b>上面這個位置</b>選資料夾（要存到別的地方也可以）。</div></li>' +
+      '<li><div>之後在這份系統按「⬇ 下載」都會<b>直接存進那個資料夾</b>；同名檔案已存在時會自動加上 (1)、(2)，不會蓋掉。</div></li>' +
+      '<li><div>每一份複製到不同位置的系統<b>各自記住自己的資料夾</b>。重新打開時瀏覽器可能會問一次「允許編輯檔案」，按允許即可。</div></li></ol>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px">' +
+      (saveDir ? '<button class="btn" id="sdReset">改回瀏覽器下載資料夾</button>' : '') +
+      '<button class="btn" id="sdCancel">取消</button><button class="btn primary" id="sdPick">📁 選資料夾</button></div>');
+    $('sdCancel').onclick = closeModal;
+    if ($('sdReset')) $('sdReset').onclick = function () { rememberSaveDir(null); closeModal(); toast('改回存到瀏覽器的「下載」資料夾'); };
+    $('sdPick').onclick = function () {
+      window.showDirectoryPicker({ id: PICK_ID, mode: 'readwrite' }).then(function (h) {
+        rememberSaveDir(h); closeModal(); toast('之後按下載會直接存到「' + h.name + '」');
+      }).catch(function (e) { if (e && e.name !== 'AbortError') toast('選資料夾失敗：' + e.message); });
+    };
+  }
+  $('btnSaveDir').onclick = showSaveDirDialog;
+  renderSaveBtn();
+  loadSaveDir();
   function saveToDir(files) {
     window.showDirectoryPicker({ mode: 'readwrite' }).then(function (dir) {
       return files.reduce(function (p, f) {
@@ -1734,7 +1829,7 @@
     fetchWithTimeout(RAW_BASE + file.split('/').map(encodeURIComponent).join('/') + '?t=' + Date.now(), 30000)
       .then(function (r) { return r.text(); })
       .then(function (html) {
-        download({ name: name, content: html }, true);
+        download({ name: name, content: html }, true, true);
         modal('<h3>新版 v' + esc(remote.version) + ' 已下載</h3>' +
           '<ol class="next"><li><div>到瀏覽器的「下載」資料夾找到 <b>' + esc(name) + '</b>。</div></li>' +
           '<li><div>用它<b>取代</b>你原本放的舊檔（或直接改用新檔）。</div></li>' +

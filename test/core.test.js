@@ -124,22 +124,22 @@ test('GPS CSV：標題列略過、第 2 點重合時換後視點', () => {
   assert.strictEqual(mac[5], '4.01 90.0000 100.000');
 });
 
-test('L 檔 → 儀器 CSV（控制點→界址→補點、每行多點、標題自動略過、重複點只留一筆）', () => {
+test('L 檔 → 儀器 CSV（界址/參考點→補點→控制點、每行多點、標題自動略過、重複點只留一筆）', () => {
   const inputs = ['範例.L14', '範例.L20', '範例.L02'].map((n) => ({ name: n, text: sample(n) }));
   inputs.push({ name: 'dup.L14', text: '101 2650100.000 251000.000\n' });
   const r = Core.lToCsv(inputs);
   assert.deepStrictEqual(lines(r.files[0].content), [
-    '101,2650100.000,251000.000',
-    '102,2650185.432,251000.000',
     '1001,2650116.723,251016.893',
     '1002,2650084.390,251026.952',
     '1003,2650112.880,250999.990',
-    '2001,2650130.111,251030.222'
+    '101,2650100.000,251000.000',   // dup.L14 先讀到，L02 的同一點只留一筆
+    '2001,2650130.111,251030.222',
+    '102,2650185.432,251000.000'
   ]);
   assert.strictEqual(r.files.length, 1);
   assert.ok(r.files[0].name.endsWith('.csv'));
   const sw = Core.lToCsv(inputs, { swapXY: true, ext: 'txt' });
-  assert.strictEqual(lines(sw.files[0].content)[0], '101,251000.000,2650100.000');
+  assert.strictEqual(lines(sw.files[0].content)[0], '1001,251016.893,2650116.723');
   assert.ok(sw.files[0].name.endsWith('.txt'));
 });
 
@@ -265,13 +265,13 @@ test('複丈輸入檔：COA + CTL + BNP + PAR → CSV，可依地號挑選、控
   const inputs = [{ name: 'KC9999.COA', text: coa }, { name: 'KC9999.CTL', text: ctl }, { name: 'KC9999.PAR', text: par }, { name: 'KC9999.BNP', text: bnp }];
   const all = Core.coaToCsv(inputs);
   assert.deepStrictEqual(lines(all.files[0].content), [
-    'BKC001,2707760.653,219830.220', 'BKC002,2700000.822,210000.600',
-    '1,2707758.002,219829.249', '2,2707565.582,220573.485', '3,2707796.091,219898.484'
+    '1,2707758.002,219829.249', '2,2707565.582,220573.485', '3,2707796.091,219898.484',
+    'BKC001,2707760.653,219830.220', 'BKC002,2700000.822,210000.600'
   ]);
   assert.deepStrictEqual(all.parcels.map((p) => p.key), ['1', '2', '1000']);
   assert.strictEqual(all.parcels[2].area, '6.63');       // 4 位數母號，面積不會黏在一起
   // 只要地號 1，控制點取最近 1 點，界址點在前，X,Y；檔名加上地號（同舊程式）
-  const r = Core.coaToCsv(inputs, { parcels: ['0001'], ctl: 'nearest', nearestN: 1, ctlFirst: false, order: 'xy', ext: 'txt' });
+  const r = Core.coaToCsv(inputs, { parcels: ['0001'], ctl: 'nearest', nearestN: 1, order: 'xy', ext: 'txt' });
   assert.deepStrictEqual(lines(r.files[0].content), ['1,219829.249,2707758.002', '3,219898.484,2707796.091', 'BKC001,219830.220,2707760.653']);
   assert.strictEqual(r.files[0].name, 'KC99991.txt');
   assert.match(r.ctlList.find((c) => c.name === 'BKC001').auto, /地號 1 最近/);
@@ -388,7 +388,9 @@ test('GPS CSV 補點：Q 開頭有高程、或編碼寫 Q 開頭；沒有高程�
   const mac = lines(r.files.find((f) => f.name === 'a.mac').content);
   // CNT／MAC 不能有 Q 點：QW 編碼的 12 號 → 12.11；QGGC32 → 這批最大點號＋1（13）.11
   assert.ok(!mac.some((l) => l.startsWith('Q')) && mac.some((l) => l.startsWith('12.11 ')) && mac.some((l) => l.startsWith('13.11 ')));
-  assert.deepStrictEqual(lines(F(r, 'a.cnt').content).slice(0, 2), ['13.11,2704014.796,219334.519', '2.30,2704022.003,219315.270']);
+  // CNT 排序：參考點在前、補點（已轉成參考點形式）在後
+  assert.deepStrictEqual(lines(F(r, 'a.cnt').content), ['2.30,2704022.003,219315.270', '3.30,2704012.859,219317.843',
+    '13.11,2704014.796,219334.519', '12.11,2704027.882,219294.880']);
   const tbl = r.files.find((f) => f.name === 'a_編碼對照表.csv').content;
   assert.ok(tbl.includes('12,QW,12.11,QW12,') && tbl.includes('QGGC32,,13.11,QGGC32,'));
   assert.ok(Core.csvToCntMac('5,2704000.1,219300.1,100.1,QW5\n6,2704001.1,219301.1,100.2,30\n7,2704002.1,219302.1,100.3,30', 'b.csv').points[0].name === 'QW5');

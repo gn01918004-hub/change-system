@@ -749,7 +749,8 @@
       report.info(qOnly.map(function (p) { return p.name + ' → ' + p.autoNum + '.' + badToMac; }).join('、') +
         '：Q 開頭的補點在 CNT 裡要用參考點的形式，已自動編號（見編碼對照表）；直接寫入 D20 時仍用原名稱');
     }
-    var macPts = pts;
+    // 輸出排序：參考點在前、補點在後（各自保持原檔順序）
+    var macPts = pts.filter(function (p) { return !p.supp; }).concat(pts.filter(function (p) { return p.supp; }));
     macPts.forEach(function (p) {
       p.macBase = p.autoNum || p.renamedFrom || p.name;
       p.macCode = p.supp ? badToMac : (p.useCode || '');
@@ -862,8 +863,8 @@
   };
 
   // 全站儀與 GPS 控制器吃的格式相同（點號,Y,X），只輸出一種檔。
-  // 點位順序：控制點 → 界址點/參考點 → 補點（現場先找控制點）。
-  var L_ORDER = ['L02', 'L14', 'L20'];
+  // 輸出排序一律：界址點／參考點 → 補點 → 控制點
+  var L_ORDER = ['L14', 'L20', 'L02'];
 
   function normalizeName(name, stripCode) {
     if (stripCode) {
@@ -1077,7 +1078,7 @@
    * inputs：同一案件的檔案 [{ name, text }]（依副檔名辨認）。
    * opts.parcels：要匯出的地號（陣列；不給 = 全部界址點）
    * opts.ctl：'all'（預設）| 'near'（地號周圍）| 'none'；opts.buffer：公尺（預設 200）
-   * opts.ctlFirst：控制點在前（預設 true）；opts.order：'yx' | 'xy'；opts.ext：'csv' | 'txt'
+   * 排序一律界址點在前、控制點在後；opts.order：'yx' | 'xy'；opts.ext：'csv' | 'txt'
    */
   function coaToCsv(inputs, opts) {
     opts = opts || {};
@@ -1177,7 +1178,7 @@
     });
     if (mode === 'nearest' && !ctlPts.length && ctl.length) report.warn('沒有選到任何控制點，請確認地號或手動加入');
 
-    var points = opts.ctlFirst === false ? bnd.concat(ctlPts) : ctlPts.concat(bnd);
+    var points = bnd.concat(ctlPts); // 界址點 → 控制點
     result.order = opts.order === 'xy' ? 'xy' : 'yx';
     result.preview = points;
     result.stats.points = points.length;
