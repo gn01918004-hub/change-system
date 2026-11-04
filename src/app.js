@@ -66,7 +66,7 @@
   var GROUPED = { l2csv: 1, coa2csv: 1 }; // 依案件（同名檔）分組的轉換
 
   // ─────────── 狀態 ───────────
-  var state = { kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false, dbf: null, dbfEdits: {}, dbfDone: null };
+  var state = { fileRenames: {}, kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false, dbf: null, dbfEdits: {}, dbfDone: null };
 
   function loadOpts() {
     var d = { ext: 'csv', macStyle: 'excel', neOrder: 'auto', badCodeTo: '11', codeMode: 'pad2', sep: 'space', alwaysZero: false, codeColumn: 'auto', angleDecimals: 0, distDecimals: 3, xyOrder: 'yx', coaCtlFirst: true, coaNearestN: 2, outFormat: 'csv', swapXY: false, stripCode: false };
@@ -110,7 +110,7 @@
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null; state.showOldFiles = false;
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null; state.showOldFiles = false; state.fileRenames = {};
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -271,6 +271,8 @@
       for (var k in p.stats) if (typeof p.stats[k] === 'number') r.stats[k] = (r.stats[k] || 0) + p.stats[k];
     });
     if (state.kind === 'csv2cntmac') r.stats.maxErrMm = Math.max.apply(null, parts.map(function (p) { return p.stats.maxErrMm || 0; }));
+    // 使用者改過的檔名
+    r.files.forEach(function (f) { f.origName = f.name; if (state.fileRenames[f.name]) f.name = state.fileRenames[f.name]; });
     if (GROUPED[state.kind]) r.perFile = [].concat.apply([], parts.map(function (p) { return p.perFile; }));
     state.result = r;
     renderResult();
@@ -370,7 +372,7 @@
       var first = r.parts.length && r.parts[0].preview[0];
       if (first) {
         var ex = r.order === 'xy' ? [first.name, first.x, first.y] : [first.name, first.y, first.x];
-        row2.appendChild(el('span', { 'class': 'muted' }, '例：<span class="mono">' + esc(ex.join(',')) + '</span>（Y 是 27… 開頭、X 是 21… 開頭，系統會自動判斷原檔哪個是 Y）'));
+        row2.appendChild(el('span', { 'class': 'muted' }, '例：<span class="mono">' + esc(ex.join(',')) + '</span>（Y 是 7 位整數、X 是 6 位整數，系統會自動判斷原檔哪個是 Y）'));
       }
       db.appendChild(row2);
       }
@@ -405,8 +407,11 @@
       shown.forEach(function (f) {
         var d = el('div', { 'class': 'file' + (f.recommended ? ' rec' : '') });
         var lines = f.content.split('\r\n').length - 1;
-        d.innerHTML = '<div class="grow"><div class="fn">' + esc(f.name) + (f.recommended ? '<span class="badge rec">建議使用</span>' : '') + '</div>' +
+        d.innerHTML = '<div class="grow"><div class="fn"><span class="fname" tabindex="0" role="button" title="點一下改檔名">' + esc(f.name) + ' <span class="pen">✏️</span></span>' +
+          (f.name !== f.origName ? ' <span class="muted renamed">（原檔名 ' + esc(f.origName) + '）</span>' : '') +
+          (f.recommended ? '<span class="badge rec">建議使用</span>' : '') + '</div>' +
           '<div class="fd">' + esc(f.desc || '') + '（' + lines + ' 行）</div></div>';
+        bindRename(d.querySelector('.fname'), f);
         var view = el('button', { 'class': 'btn small' }, '看內容');
         var dl = el('button', { 'class': 'btn go' }, '⬇ 下載');
         var pre = el('pre', { 'class': 'view hidden' });
@@ -430,12 +435,7 @@
         all.onclick = function () { mainFiles.forEach(function (f, i) { setTimeout(function () { download(f, true); }, i * 400); }); toast('已開始下載 ' + mainFiles.length + ' 個檔案'); };
         sa.appendChild(all);
       }
-      if (mainFiles.length && window.showDirectoryPicker) {
-        var dir = el('button', { 'class': 'btn' }, '📁 全部存到指定資料夾…');
-        dir.onclick = function () { saveToDir(mainFiles); };
-        sa.appendChild(dir);
-        sa.appendChild(el('span', { 'class': 'muted' }, '可以直接選擇要存放的資料夾（例如重測系統或隨身碟）'));
-      }
+      if (mainFiles.length) sa.appendChild(makeSaveDirBtn());
     }
 
     // 下一步
@@ -924,7 +924,7 @@
     h += '<div class="saveall">' +
       (window.showDirectoryPicker ? '<button class="btn go" type="button" id="dbfWrite"' + (canWrite ? '' : ' disabled') + '>💾 直接寫入原檔（先自動備份 .bak）</button>' : '') +
       '<button class="btn primary" type="button" id="dbfDl"' + (canWrite ? '' : ' disabled') + '>⬇ 下載新的 D14 / D20</button>' +
-      '<button class="btn" type="button" id="dbfTable">⬇ 下載對照表</button>' +
+      '<button class="btn" type="button" id="dbfTable">⬇ 下載對照表</button><span id="dbfSaveDir"></span>' +
       (window.showDirectoryPicker ? '' : '<span class="muted">這個瀏覽器不能直接寫回原檔，請用 Chrome 或 Edge，或下載後自己取代。</span>') + '</div>';
     $('dbf').innerHTML = h;
 
@@ -956,6 +956,7 @@
       toast('已下載新的 D14 / D20，請用它們取代重測系統資料夾裡的原檔（建議先備份原檔）');
     };
     if ($('dbfWrite')) $('dbfWrite').onclick = function () { writeDbfToFolder(plan, build()); };
+    $('dbfSaveDir').appendChild(makeSaveDirBtn());
   }
 
   function downloadBytes(name, u8) {
@@ -1320,11 +1321,12 @@
   }
   function loadSaveDir() {
     idbStore('readonly', function (st) { return st.get(HERE); }).then(function (h) {
-      if (h && h.getFileHandle) { saveDir = h; renderSaveBtn(); }
+      if (h && h.getFileHandle) { saveDir = h; renderSaveBtn(); if (state.result) renderResult(); }
     }).catch(function () {});
   }
   function rememberSaveDir(h) {
     saveDir = h; renderSaveBtn();
+    if (state.result && !$('resultArea').classList.contains('hidden')) renderResult();
     idbStore('readwrite', function (st) { return h ? st.put(h, HERE) : st.delete(HERE); }).catch(function () {});
   }
   function ensurePermission(h) {
@@ -1351,6 +1353,41 @@
       browserDownload(name, blob);
       toast('存不進「' + (h && h.name) + '」（' + (e && e.message || e) + '），改存到瀏覽器的「下載」資料夾');
     });
+  }
+
+  /** 下載按鈕旁邊的「存到哪裡」按鈕 */
+  function makeSaveDirBtn() {
+    var b = el('button', { 'class': 'btn savedir' + (saveDir ? ' set' : ''), type: 'button', title: '按下載時要存到哪裡；點一下可以更改' },
+      saveDir ? '📁 存到：<b>' + esc(saveDir.name) + '</b>（更改）' : '📁 選擇存檔資料夾（目前存到瀏覽器的「下載」）');
+    b.onclick = showSaveDirDialog;
+    return b;
+  }
+
+  /** 點檔名改檔名（沒打副檔名會自動補回原本的副檔名） */
+  function bindRename(span, f) {
+    var start = function () {
+      var inp = el('input', { type: 'text', 'class': 'fnedit', value: f.name, 'aria-label': '新檔名' });
+      span.replaceWith(inp);
+      inp.focus();
+      var dot = f.name.lastIndexOf('.');
+      inp.setSelectionRange(0, dot > 0 ? dot : f.name.length);
+      var done = false;
+      var commit = function (save) {
+        if (done) return; done = true;
+        var v = inp.value.trim().replace(/[\\/:*?"<>|]/g, '_');
+        if (save && v) {
+          var ext = f.origName.slice(f.origName.lastIndexOf('.'));
+          if (f.origName.lastIndexOf('.') > 0 && v.toLowerCase().slice(-ext.length) !== ext.toLowerCase()) v += ext;
+          if (v === f.origName) delete state.fileRenames[f.origName]; else state.fileRenames[f.origName] = v;
+          if (v !== f.name) toast('檔名改成 ' + v);
+        }
+        run();
+      };
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') commit(true); if (e.key === 'Escape') commit(false); });
+      inp.addEventListener('blur', function () { commit(true); });
+    };
+    span.addEventListener('click', start);
+    span.addEventListener('keydown', function (e) { if (e.key === 'Enter') start(); });
   }
 
   function renderSaveBtn() {
@@ -1387,17 +1424,7 @@
   $('btnSaveDir').onclick = showSaveDirDialog;
   renderSaveBtn();
   loadSaveDir();
-  function saveToDir(files) {
-    window.showDirectoryPicker({ mode: 'readwrite' }).then(function (dir) {
-      return files.reduce(function (p, f) {
-        return p.then(function () {
-          return dir.getFileHandle(f.name, { create: true }).then(function (h) {
-            return h.createWritable().then(function (w) { return w.write(blobOf(f)).then(function () { return w.close(); }); });
-          });
-        });
-      }, Promise.resolve()).then(function () { toast('已存好 ' + files.length + ' 個檔案到「' + dir.name + '」'); });
-    }).catch(function (e) { if (e && e.name !== 'AbortError') toast('存檔失敗：' + e.message); });
-  }
+
 
   var toastTimer;
   function toast(msg) {
