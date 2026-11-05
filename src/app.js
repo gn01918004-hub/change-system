@@ -1355,8 +1355,36 @@
     });
   }
 
+  /**
+   * 選或拖進來的資料夾：裡面就有這份系統（同名 HTML）→ 直接設成存檔資料夾；
+   * 不是的話先記下來，下載按鈕旁邊會多一個「存到剛剛選的資料夾」可以一鍵切換。
+   */
+  var pendingDir = null;
+  var HTML_NAME = (function () { try { return decodeURIComponent(location.pathname.split('/').pop()); } catch (e) { return ''; } })();
+  function considerSaveDir(h, files) {
+    if (!h || !h.getFileHandle) return;
+    var hasMe = HTML_NAME && (files || []).some(function (f) { return f.path === h.name + '/' + HTML_NAME; });
+    if (hasMe) {
+      pendingDir = null;
+      if (!saveDir || saveDir.name !== h.name) { rememberSaveDir(h); toast('下載會直接存到「' + h.name + '」（這份系統所在的資料夾）'); }
+    } else if (!saveDir || saveDir.name !== h.name) {
+      pendingDir = h;
+    }
+  }
+
   /** 下載按鈕旁邊的「存到哪裡」按鈕 */
   function makeSaveDirBtn() {
+    if (pendingDir && (!saveDir || saveDir.name !== pendingDir.name)) {
+      var wrap = el('span', { 'class': 'savedirs' });
+      var quick = el('button', { 'class': 'btn savedir quick', type: 'button', title: '把下載存到剛剛選的資料夾' }, '📁 存到剛剛選的「<b>' + esc(pendingDir.name) + '</b>」');
+      quick.onclick = function () { var h = pendingDir; pendingDir = null; rememberSaveDir(h); toast('之後按下載會直接存到「' + h.name + '」'); };
+      wrap.appendChild(quick);
+      wrap.appendChild(makeSaveDirBtnPlain());
+      return wrap;
+    }
+    return makeSaveDirBtnPlain();
+  }
+  function makeSaveDirBtnPlain() {
     var b = el('button', { 'class': 'btn savedir' + (saveDir ? ' set' : ''), type: 'button', title: '按下載時要存到哪裡；點一下可以更改' },
       saveDir ? '📁 存到：<b>' + esc(saveDir.name) + '</b>（更改）' : '📁 選擇存檔資料夾（目前存到瀏覽器的「下載」）');
     b.onclick = showSaveDirDialog;
@@ -1407,6 +1435,7 @@
     modal('<h3>存檔位置</h3>' +
       '<p>目前：' + (saveDir ? '<b>📁 ' + esc(saveDir.name) + '</b>（按下載會直接存進去）' : '<b>瀏覽器的「下載」資料夾</b>') + '</p>' +
       '<p>這份系統放在：<br><code class="mono" style="word-break:break-all">' + esc(HERE) + '</code></p>' +
+      '<p class="muted">小技巧：用「📁 選擇整個資料夾」讀檔時，<b>直接選這份系統所在的資料夾</b>（或把它拖進來），就會自動設成存檔位置，不用另外設定。</p>' +
       '<ol class="next"><li><div>按下面的「📁 選資料夾」，到<b>上面這個位置</b>選資料夾（要存到別的地方也可以）。</div></li>' +
       '<li><div>之後在這份系統按「⬇ 下載」都會<b>直接存進那個資料夾</b>；同名檔案已存在時會自動加上 (1)、(2)，不會蓋掉。</div></li>' +
       '<li><div>每一份複製到不同位置的系統<b>各自記住自己的資料夾</b>。重新打開時瀏覽器可能會問一次「允許編輯檔案」，按允許即可。</div></li></ol>' +
@@ -1614,13 +1643,15 @@
     if (!dirEntry) return Promise.resolve({ files: plainFiles, folder: null });
     var dirName = dirEntry.name;
 
+    var dirHandle = null;
     return Promise.all(handleProms)
       .then(function (handles) {
-        if (!handles.some(function (h) { return h && h.kind === 'directory'; })) return [];
+        dirHandle = handles.filter(function (h) { return h && h.kind === 'directory'; })[0] || null;
+        if (!dirHandle) return [];
         return walkHandles(handles).catch(function () { return []; });
       })
       .then(function (out) { return out.length ? out : walkEntries(entries.filter(Boolean)); })
-      .then(function (out) { return { files: out, folder: dirName, blocked: !out.length }; });
+      .then(function (out) { return { files: out, folder: dirName, blocked: !out.length, dirHandle: dirHandle }; });
   }
 
   /** 新方法（File System Access API）：逐層讀資料夾 */
@@ -1711,7 +1742,7 @@
     if (!e.dataTransfer) return;
     collectDropped(e.dataTransfer).then(function (res) {
       if (res.blocked) dropBlocked(res.folder);
-      else if (res.folder) handleFolder(res.files, res.folder);
+      else if (res.folder) { considerSaveDir(res.dirHandle, res.files); handleFolder(res.files, res.folder); }
       else if (res.files.length) handleFiles(res.files);
       else toast('沒有讀到檔案，請改用「📁 選資料夾」按鈕');
     }).catch(function (err) {
@@ -1720,7 +1751,21 @@
   });
   $('fileInput').addEventListener('change', function () { if (this.files.length) handleFiles(this.files); });
 
-  var openDir = function () { $('dirInput').value = ''; $('dirInput').click(); };
+  var openDir = function () {
+    if (!window.showDirectoryPicker) { $('dirInput').value = ''; $('dirInput').click(); return; }
+    // 用 Chrome/Edge 的資料夾選擇：讀檔之外也能拿到存檔權限（選的資料夾裡有這份系統就直接當存檔位置）
+    window.showDirectoryPicker({ id: PICK_ID, mode: 'readwrite' }).then(function (h) {
+      toast('讀取「' + h.name + '」中…');
+      return walkHandles([h]).then(function (files) {
+        considerSaveDir(h, files);
+        handleFolder(files, h.name);
+      });
+    }).catch(function (e) {
+      if (e && e.name === 'AbortError') return;
+      // 不能用新方法時退回舊的選資料夾
+      $('dirInput').value = ''; $('dirInput').click();
+    });
+  };
   $('homeDirBtn').onclick = function (e) { e.stopPropagation(); openDir(); };
   $('workDirBtn').onclick = openDir;
   $('dirInput').addEventListener('change', function () {
