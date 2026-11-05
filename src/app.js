@@ -412,6 +412,9 @@
           (f.recommended ? '<span class="badge rec">建議使用</span>' : '') + '</div>' +
           '<div class="fd">' + esc(f.desc || '') + '（' + lines + ' 行）</div></div>';
         bindRename(d.querySelector('.fname'), f);
+        var stat = el('div', { 'class': 'fstat ' + (saveLog[f.origName || f.name] ? saveLog[f.origName || f.name].kind : ''), 'data-key': f.origName || f.name });
+        stat.textContent = saveLog[f.origName || f.name] ? saveLog[f.origName || f.name].text : '';
+        d.querySelector('.grow').appendChild(stat);
         var view = el('button', { 'class': 'btn small' }, '看內容');
         var dl = el('button', { 'class': 'btn go' }, '⬇ 下載');
         var pre = el('pre', { 'class': 'view hidden' });
@@ -432,7 +435,7 @@
       var sa = $('saveAll'); sa.innerHTML = '';
       if (mainFiles.length > 1) {
         var all = el('button', { 'class': 'btn primary' }, '全部下載（' + mainFiles.length + ' 個）');
-        all.onclick = function () { mainFiles.forEach(function (f, i) { setTimeout(function () { download(f, true); }, i * 400); }); toast('已開始下載 ' + mainFiles.length + ' 個檔案'); };
+        all.onclick = function () { downloadAll(mainFiles); };
         sa.appendChild(all);
       }
       if (mainFiles.length) sa.appendChild(makeSaveDirBtn());
@@ -961,7 +964,7 @@
 
   function downloadBytes(name, u8) {
     var blob = new Blob([u8], { type: 'application/octet-stream' });
-    if (saveDir) { saveBlob(name, blob, true); return; }
+    if (saveDir) { saveBlob(name, blob, { key: name }); return; }
     browserDownload(name, blob);
   }
 
@@ -1285,10 +1288,91 @@
   // ─────────── 存檔 ───────────
   function blobOf(f) { return new Blob([f.content], { type: 'text/plain' }); }
   /** 下載：有設定存檔資料夾就直接存進去，否則交給瀏覽器（「下載」資料夾） */
+  /**
+   * 下載：有設定存檔資料夾就直接存進去（存完會回頭檢查），否則交給瀏覽器。
+   * 回傳 Promise：{ ok, where, name, size } 或 { ok: false, reason }
+   */
   function download(f, silent, browserOnly) {
-    if (saveDir && !browserOnly) { saveBlob(f.name, blobOf(f), silent); return; }
+    var key = f.origName || f.name;
+    if (saveDir && !browserOnly) return saveBlob(f.name, blobOf(f), { silent: silent, key: key });
     browserDownload(f.name, blobOf(f));
-    if (!silent) toast('已下載 ' + f.name + '（在瀏覽器的「下載」資料夾）');
+    setSaveLog(key, 'browser', '⬇ ' + nowHM() + ' 已交給瀏覽器下載，請看瀏覽器右上角的下載圖示（沒看到檔案的話，看網址列右邊有沒有「已封鎖下載」）');
+    if (!silent) toast('已交給瀏覽器下載 ' + f.name + '（在「下載」資料夾）');
+    return Promise.resolve({ ok: true, where: 'browser', name: f.name });
+  }
+
+  function nowHM() { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+  function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
+
+  /** 全部下載：存進資料夾時一個接一個存，最後統一回報；交給瀏覽器時提醒「多個下載」可能被擋 */
+  function downloadAll(files) {
+    if (!saveDir) {
+      files.forEach(function (f, i) { setTimeout(function () { download(f, true); }, i * 400); });
+      toast('已交給瀏覽器下載 ' + files.length + ' 個檔案');
+      setTimeout(function () {
+        modal('<h3>已交給瀏覽器下載 ' + files.length + ' 個檔案</h3><p>請到瀏覽器的「下載」資料夾確認。</p>' +
+          '<p class="muted">如果只有第一個檔案下載成功：瀏覽器可能擋下了「同時下載多個檔案」，請看網址列右邊有沒有「已封鎖」的圖示，按它選「允許」，再按一次全部下載。<br>' +
+          '或設定「📁 存檔資料夾」，系統會直接存進資料夾，就不會被擋。</p>' +
+          '<div style="text-align:right;margin-top:12px"><button class="btn primary" id="daOk">知道了</button></div>');
+        $('daOk').onclick = closeModal;
+      }, files.length * 400 + 300);
+      return;
+    }
+    var results = [];
+    files.reduce(function (p, f) {
+      return p.then(function () { return saveBlob(f.name, blobOf(f), { silent: true, key: f.origName || f.name, batch: true }).then(function (r) { results.push(r); }); });
+    }, Promise.resolve()).then(function () {
+      var ok = results.filter(function (r) { return r.ok; }), bad = results.filter(function (r) { return !r.ok; });
+      if (!bad.length) { toast('✓ ' + ok.length + ' 個檔案都存到「' + saveDir.name + '」了'); return; }
+      modal('<h3>' + (ok.length ? '⚠ 有 ' + bad.length + ' 個檔案沒有存成功' : '❌ 檔案都沒有存成功') + '</h3>' +
+        (ok.length ? '<p>✓ 已存好：' + ok.map(function (r) { return esc(r.name); }).join('、') + '</p>' : '') +
+        '<ul class="report">' + bad.map(function (r) { return '<li class="error"><span class="lv">失敗</span><span>' + esc(r.name) + '：' + esc(r.reason) + '</span></li>'; }).join('') + '</ul>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px">' +
+        '<button class="btn" id="baPick">📁 重新選資料夾</button><button class="btn" id="baBrowser">⬇ 失敗的改存到瀏覽器的「下載」</button>' +
+        '<button class="btn primary" id="baRetry">🔁 失敗的再試一次</button></div>');
+      $('baPick').onclick = function () { closeModal(); showSaveDirDialog(); };
+      $('baBrowser').onclick = function () {
+        closeModal();
+        bad.forEach(function (r, i) { setTimeout(function () { browserDownload(r.name, r.blob); }, i * 400); });
+        files.forEach(function (f) { if (bad.some(function (r) { return r.name === f.name; })) setSaveLog(f.origName || f.name, 'browser', '⬇ ' + nowHM() + ' 改交給瀏覽器下載'); });
+      };
+      $('baRetry').onclick = function () { closeModal(); downloadAll(files.filter(function (f) { return bad.some(function (r) { return r.name === f.name; }); })); };
+    });
+  }
+
+  /** 每個檔案最近一次存檔的結果，顯示在檔案那一列 */
+  var saveLog = {};
+  function setSaveLog(key, kind, text) {
+    saveLog[key] = { kind: kind, text: text };
+    Array.prototype.forEach.call(document.querySelectorAll('.fstat'), function (n) {
+      if (n.getAttribute('data-key') === key) { n.className = 'fstat ' + kind; n.textContent = text; }
+    });
+  }
+
+  /** 把存檔失敗的原因翻成白話 */
+  function explainSaveError(e, dirName) {
+    var n = e && e.name, m = (e && e.message) || String(e);
+    if (e && e.needGesture) return '瀏覽器要你再按一次「允許」，才能寫入「' + dirName + '」（重新打開系統後常見）。';
+    if (n === 'NotFoundError') return '找不到資料夾「' + dirName + '」：可能被移動、改名、刪除，或隨身碟／網路磁碟已經拔掉或斷線。';
+    if (n === 'NotAllowedError' || n === 'SecurityError') return '沒有寫入「' + dirName + '」的權限：可能按了「封鎖」或權限已過期。';
+    if (n === 'NoModificationAllowedError' || n === 'InvalidStateError' || /lock|in use|being used/i.test(m)) return '檔案正被其他程式使用（例如用 Excel 或重測系統開著同名檔案），請先關掉再試。';
+    if (n === 'QuotaExceededError' || /space|quota/i.test(m)) return '磁碟空間不足。';
+    if (e && e.verify) return '寫入後檢查發現檔案大小不對（應為 ' + e.expected + ' bytes，實際 ' + e.actual + ' bytes），檔案可能沒存完整。';
+    return '寫入失敗：' + m;
+  }
+
+  function showSaveFail(name, blob, reason, retry, key) {
+    modal('<h3>❌ 沒有存成功：' + esc(name) + '</h3><p>' + esc(reason) + '</p><p class="muted">檔案還沒存好，請選下面一個方式：</p>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px">' +
+      '<button class="btn" id="sfPick">📁 重新選資料夾</button>' +
+      '<button class="btn" id="sfBrowser">⬇ 改存到瀏覽器的「下載」</button>' +
+      '<button class="btn primary" id="sfRetry">🔁 再試一次</button></div>');
+    $('sfRetry').onclick = function () { closeModal(); retry(); };
+    $('sfBrowser').onclick = function () {
+      closeModal(); browserDownload(name, blob); toast('已交給瀏覽器下載 ' + name);
+      setSaveLog(key || name, 'browser', '⬇ ' + nowHM() + ' 改交給瀏覽器下載，請看瀏覽器右上角的下載圖示');
+    };
+    $('sfPick').onclick = function () { closeModal(); showSaveDirDialog(); };
   }
   function browserDownload(name, blob) {
     var a = el('a', { href: URL.createObjectURL(blob), download: name });
@@ -1332,13 +1416,27 @@
   function ensurePermission(h) {
     var o = { mode: 'readwrite' };
     if (!h.queryPermission) return Promise.resolve(true);
-    return h.queryPermission(o).then(function (p) { return p === 'granted' ? true : h.requestPermission(o).then(function (q) { return q === 'granted'; }); });
+    return h.queryPermission(o).then(function (p) {
+      if (p === 'granted') return true;
+      return h.requestPermission(o).then(function (q) {
+        if (q !== 'granted') { var err = new Error('權限被拒絕'); err.name = 'NotAllowedError'; throw err; }
+        return true;
+      }, function (e) {
+        // 「需要使用者操作」：要在按鈕裡再要一次權限
+        if (e && (e.name === 'SecurityError' || /activation|gesture/i.test(e.message || ''))) { var g = new Error(e.message); g.needGesture = true; throw g; }
+        throw e;
+      });
+    });
   }
-  /** 存進設定的資料夾；同名檔案已存在時改名成「名稱 (1).副檔名」，不會蓋掉舊檔 */
-  function saveBlob(name, blob, silent) {
-    var h = saveDir;
-    return ensurePermission(h).then(function (ok) {
-      if (!ok) throw new Error('沒有取得資料夾的寫入權限');
+  /**
+   * 存進設定的資料夾；同名檔案已存在時改名成「名稱 (1).副檔名」，不會蓋掉舊檔。
+   * 存完會重新讀一次檔案大小確認真的存好；失敗會跳窗說明原因（opt.batch 時改由呼叫端統一回報）。
+   */
+  function saveBlob(name, blob, opt) {
+    opt = opt || {};
+    var h = saveDir, key = opt.key || name;
+    var retry = function () { return saveBlob(name, blob, opt); };
+    return ensurePermission(h).then(function () {
       var dot = name.lastIndexOf('.'), stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
       var tryName = function (i) {
         var nm = i ? stem + ' (' + i + ')' + ext : name;
@@ -1346,12 +1444,24 @@
       };
       return tryName(0).then(function (nm) {
         return h.getFileHandle(nm, { create: true }).then(function (fh) {
-          return fh.createWritable().then(function (w) { return w.write(blob).then(function () { return w.close(); }); });
-        }).then(function () { if (!silent || nm !== name) toast('已存到「' + h.name + '」：' + nm); return nm; });
+          return fh.createWritable().then(function (w) { return w.write(blob).then(function () { return w.close(); }); })
+            .then(function () { return fh.getFile ? fh.getFile() : null; })
+            .then(function (f) {
+              if (f && f.size !== blob.size) { var v = new Error('size'); v.verify = true; v.expected = blob.size; v.actual = f.size; throw v; }
+              return nm;
+            });
+        });
       });
-    }).catch(function (e) {
-      browserDownload(name, blob);
-      toast('存不進「' + (h && h.name) + '」（' + (e && e.message || e) + '），改存到瀏覽器的「下載」資料夾');
+    }).then(function (nm) {
+      var msg = '✓ ' + nowHM() + ' 已存好：「' + h.name + '」裡的 ' + nm + '（' + fmtSize(blob.size) + '）';
+      setSaveLog(key, 'ok', msg);
+      if (!opt.silent || nm !== name) toast('✓ 已存到「' + h.name + '」：' + nm);
+      return { ok: true, where: h.name, name: nm, size: blob.size };
+    }, function (e) {
+      var reason = explainSaveError(e, h && h.name);
+      setSaveLog(key, 'fail', '❌ ' + nowHM() + ' 沒有存成功：' + reason);
+      if (!opt.batch) showSaveFail(name, blob, reason, retry, key);
+      return { ok: false, name: name, reason: reason, retry: retry, blob: blob };
     });
   }
 
