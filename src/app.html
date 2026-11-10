@@ -9,7 +9,7 @@
 :root{
   --bg:#f4f6f8; --card:#ffffff; --ink:#1d2733; --ink2:#5b6776; --line:#dde3ea;
   --brand:#1f6feb; --brand-ink:#ffffff; --brand-soft:#e8f0fe;
-  --in:#0f8a5f; --in-soft:#e3f5ec; --out:#b45309; --out-soft:#fdf0e1;
+  --in:#0f8a5f; --in-soft:#e3f5ec; --out:#b45309; --out-soft:#fdf0e1; --oth:#5b4bc4; --oth-soft:#eeebfb;
   --ok:#11845b; --ok-soft:#e6f6ee; --warn:#a15c00; --warn-soft:#fff4dc; --err:#c62828; --err-soft:#fdeaea;
   --info:#1f5fbf; --info-soft:#e9f1fd; --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06);
   --radius:14px;
@@ -47,6 +47,11 @@ main.wrap{padding-top:28px;padding-bottom:60px}
 .group h2 .tag{font-size:13px;padding:2px 10px;border-radius:999px;font-weight:700}
 .group.in h2 .tag{background:var(--in-soft);color:var(--in)}
 .group.out h2 .tag{background:var(--out-soft);color:var(--out)}
+.group.other{grid-column:1/-1}
+.group.other h2 .tag{background:var(--oth-soft);color:var(--oth)}
+.group.other .card .ico,.bmcard .ico,.bmshort .ico{background:var(--oth-soft);color:var(--oth)}
+.group.other .card{max-width:calc(50% - 10px)}
+@media (max-width:760px){.group.other .card{max-width:none}}
 .card{display:flex;gap:14px;align-items:center;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;cursor:pointer;box-shadow:var(--shadow);transition:.15s;color:inherit}
 .card:hover{transform:translateY(-1px);border-color:var(--brand)}
 .card .ico{flex:none;width:52px;height:52px;border-radius:12px;display:grid;place-items:center}
@@ -118,6 +123,35 @@ ul.report li.warn{background:var(--warn-soft)} ul.report li.warn .lv{background:
 ul.report li.info{background:var(--info-soft)} ul.report li.info .lv{background:var(--info);color:#fff}
 ul.report li .ln{color:var(--ink2);font-size:13px;white-space:nowrap}
 
+.fsec.other h4 span{color:var(--oth)}
+.bmcard{margin:4px 0 0}
+.bmshort{display:flex;align-items:center;gap:14px;padding:12px 18px}
+.bmshort .ico{flex:none;width:40px;height:40px;border-radius:10px;display:grid;place-items:center}.bmshort .ico svg{width:24px;height:24px}
+.bmshort .grow,.bmout .grow{flex:1}
+.bmsec{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}.bmsec:first-child{padding-top:0}.bmsec:last-child{border-bottom:0;padding-bottom:0}
+.bmnum{flex:none;width:30px;height:30px;border-radius:50%;background:var(--oth-soft);color:var(--oth);font-weight:800;display:grid;place-items:center}
+.bmbody{flex:1;min-width:0}.bmbody h4{margin:3px 0 10px;font-size:17px}
+.bmnote{margin-top:10px;padding:8px 12px;background:#fff8e6;border:1px solid #f3dca4;border-radius:8px}
+.bmsrcs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.bmsrc{flex:1;min-width:220px;border:2px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;gap:2px;position:relative}
+.bmsrc input{position:absolute;opacity:0}.bmsrc span{color:var(--ink2);font-size:14px}
+.bmsrc.on{border-color:var(--oth);background:var(--oth-soft)}
+.bmhow{padding:10px 12px;background:#f3f7fb;border-radius:8px;line-height:1.7}
+.bmguide{padding:9px 12px;border-radius:8px;background:#f3f7fb;margin:6px 0 8px;min-height:22px}
+.bmguide.active{background:#fff3cd;border:1px solid #f0c95a}
+.bmview{position:relative;height:min(62vh,600px);overflow:hidden;background:#1d2733;border-radius:8px;cursor:grab;touch-action:none;user-select:none}
+.bmview.picking{cursor:crosshair}
+.bmin{position:absolute;left:0;top:0;transform-origin:0 0}
+.bmin img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.bmin svg{position:absolute;left:0;top:0;overflow:visible}
+.bmzoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px}
+.bmzoom button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:18px;cursor:pointer}
+.bmvfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.bmvpairs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.pchip{background:#f3f7fb;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:14px}.pchip.off{opacity:.45}
+.pchip button{border:0;background:none;cursor:pointer;color:#c62828}
+.pavg{font-weight:700;padding:3px 6px}
+.bmvbtns{display:flex;gap:10px;margin-top:12px;align-items:center}.bmvbtns .grow{flex:1}
 .bmgrid{display:grid;grid-template-columns:70px 1fr;gap:8px 12px;align-items:center}
 .bmgrid>label{color:var(--ink2);font-weight:600}
 .bmmodes{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}.bmr{cursor:pointer}.bmr.dis{opacity:.45;cursor:default}
@@ -381,6 +415,15 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
             <span class="flow"><b>.COA</b> <b>.CTL</b> <b>.BNP</b> <b>.PAR</b> → <b>.csv</b> / <b>.sdr</b></span></span>
         </button>
       </div>
+      <div class="group other">
+        <h2><span class="tag">其他</span>參考圖資</h2>
+        <button class="card" data-kind="basemap">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.8"/></svg></span>
+          <span><span class="t">輸出航照圖</span>
+            <span class="d">依案件點位自動抓國土測繪中心正射影像並置中，可選套合點校正偏差</span>
+            <span class="flow"><b>.L14</b> <b>.L20</b> → <b>.jpg</b> <b>.jgw</b>（TWD97，CAD／GIS 直接疊圖）</span></span>
+        </button>
+      </div>
     </div>
   </section>
 
@@ -440,10 +483,15 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
         <div class="saveall" id="saveAll"></div>
       </div>
 
-      <details class="panel hidden" id="bmPanel">
-        <summary>🛰 航照底圖 <span class="muted" style="font-weight:400;font-size:14px">（自動抓本次範圍的正射影像，存 JPG + JGW，可校正偏差）</span></summary>
+      <div class="panel hidden" id="bmPanel">
         <div id="bm"></div>
-      </details>
+      </div>
+
+      <div class="panel hidden bmshort" id="bmShortcut">
+        <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.8"/></svg></span>
+        <span class="grow"><b>也要航照底圖？</b><span class="muted">　用這些點的範圍輸出 JPG + JGW（可校正偏差）</span></span>
+        <button class="btn" id="bmGoKind" type="button">輸出航照圖 →</button>
+      </div>
 
       <div class="panel" id="nextPanel">
         <h3>接下來在重測系統 / 儀器上這樣做</h3>

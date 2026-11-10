@@ -530,3 +530,20 @@ test('航照底圖：範圍規劃（_3826 直接裁切、通用版轉投影）�
   assert.ok(big.reduced > 0 && !big.tooBig);
   assert.strictEqual(Core.worldFileText(0.25, 220811.125, 2706986.5), '0.25\r\n0\r\n0\r\n-0.25\r\n220811.125\r\n2706986.5\r\n');
 });
+
+test('航照底圖：範圍以主要點群為中心，排除遠方零星點（KC1101 的 L20 補點）', () => {
+  const pts = [];
+  for (let i = 0; i < 40; i++) pts.push({ E: 217180 + (i % 8) * 15, N: 2702930 + Math.floor(i / 8) * 35, name: 'P' + i });
+  pts.push({ E: 216329.011, N: 2704249.741, name: 'QW1' });
+  const a = Core.basemapArea(pts, { margin: 30, minSize: 200 });
+  assert.deepStrictEqual(a.outliers.map((q) => q.name), ['QW1']);
+  assert.strictEqual(a.main.length, 40);
+  assert.ok(Math.abs((a.bbox.minE + a.bbox.maxE) / 2 - a.center.E) < 1e-6 && Math.abs((a.bbox.minN + a.bbox.maxN) / 2 - a.center.N) < 1e-6);
+  assert.ok(Math.abs(a.center.E - (217180 + 217285) / 2) < 1e-6);
+  assert.strictEqual(Math.round(a.size[0]), 200); // 105 + 60 < 200 → 最小 200
+  assert.strictEqual(Math.round(a.size[1]), 200); // 140 + 60 = 200
+  const all = Core.basemapArea(pts, { includeAll: true });
+  assert.strictEqual(all.outliers.length, 0);
+  assert.ok(all.bbox.minE < 216330);
+  assert.strictEqual(Core.splitClusters(pts, 150).length, 2);
+});

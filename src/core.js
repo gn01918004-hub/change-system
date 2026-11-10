@@ -1580,6 +1580,49 @@
   }
 
   /**
+   * 點位分群（相距 link 公尺以內的點連成一群），由大到小排序。用來排除離主要範圍很遠的零星點。
+   */
+  function splitClusters(points, link) {
+    link = link || 150;
+    var pts = points.filter(function (p) { return isFinite(p.E) && isFinite(p.N); });
+    var parent = pts.map(function (_, i) { return i; });
+    var find = function (i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+    var grid = {};
+    pts.forEach(function (p, i) { var k = Math.floor(p.E / link) + ',' + Math.floor(p.N / link); (grid[k] = grid[k] || []).push(i); });
+    pts.forEach(function (p, i) {
+      var cx = Math.floor(p.E / link), cy = Math.floor(p.N / link);
+      for (var dx = -1; dx <= 1; dx++) for (var dy = -1; dy <= 1; dy++) {
+        (grid[(cx + dx) + ',' + (cy + dy)] || []).forEach(function (j) {
+          if (j <= i) return;
+          if (Math.hypot(pts[j].E - p.E, pts[j].N - p.N) <= link) { var a = find(i), b = find(j); if (a !== b) parent[a] = b; }
+        });
+      }
+    });
+    var groups = {};
+    pts.forEach(function (p, i) { var r = find(i); (groups[r] = groups[r] || []).push(p); });
+    return Object.keys(groups).map(function (k) { return groups[k]; }).sort(function (a, b) { return b.length - a.length; });
+  }
+
+  /**
+   * 底圖範圍：取點最多的那一群（其他離很遠的零星點不算，除非 includeAll），
+   * 以這群的中心為圖的中心，四周外擴 margin，且邊長至少 minSize 公尺。
+   * 回傳 { bbox, center, main, outliers, size:[寬,高] }
+   */
+  function basemapArea(points, opt) {
+    opt = opt || {};
+    var margin = opt.margin == null ? 30 : opt.margin, minSize = opt.minSize == null ? 200 : opt.minSize;
+    var ok = points.filter(function (p) { p.E = Number(p.E); p.N = Number(p.N); return isFinite(p.E) && isFinite(p.N) && isYVal(p.N) && isXVal(p.E); });
+    if (!ok.length) return null;
+    var cl = splitClusters(ok, opt.link || 150);
+    var main = opt.includeAll ? ok : cl[0], outliers = opt.includeAll ? [] : [].concat.apply([], cl.slice(1));
+    var b = pointsBBox(main, 0);
+    var cE = (b.minE + b.maxE) / 2, cN = (b.minN + b.maxN) / 2;
+    var hw = Math.max((b.maxE - b.minE) / 2 + margin, minSize / 2), hh = Math.max((b.maxN - b.minN) / 2 + margin, minSize / 2);
+    return { bbox: { minE: cE - hw, maxE: cE + hw, minN: cN - hh, maxN: cN + hh, count: main.length },
+      center: { E: cE, N: cN }, main: main, outliers: outliers, size: [2 * hw, 2 * hh] };
+  }
+
+  /**
    * 航照偏差：配對「航照上讀到的位置」與「實測位置」，位移 = 實測 − 航照（取平均）。
    * pairs：[{ img: {N, E}, real: {N, E}, label }] → { dN, dE, n, residuals: [mm…], maxResidual }
    */
@@ -1838,6 +1881,8 @@
     lonLatToMercPx: lonLatToMercPx,
     BASEMAP_SOURCES: BASEMAP_SOURCES,
     pointsBBox: pointsBBox,
+    splitClusters: splitClusters,
+    basemapArea: basemapArea,
     shiftFromPairs: shiftFromPairs,
     suggestImagePairs: suggestImagePairs,
     imagePairsFromPoints: imagePairsFromPoints,

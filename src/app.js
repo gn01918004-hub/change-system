@@ -61,9 +61,17 @@
       hint: '同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR 一起放進來，最簡單是直接選整個資料夾',
       step2: '選擇範圍',
       next: function (r) { return KINDS.l2csv.next(r); }
+    },
+    basemap: {
+      title: '輸出航照圖（JPG + JGW）',
+      accept: '.l02,.l14,.l20,.d14',
+      hint: '放入同一案件的 .L14（界址/參考點）、.L20（補點），最簡單是直接選整個資料夾；有 D14 時可以點 D14 的參考點當套合點',
+      step2: '範圍與校正',
+      next: function () { return []; }
     }
   };
-  var GROUPED = { l2csv: 1, coa2csv: 1 }; // 依案件（同名檔）分組的轉換
+  var GROUPED = { l2csv: 1, coa2csv: 1 };
+  var BM_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.8"/></svg>'; // 依案件（同名檔）分組的轉換
 
   // ─────────── 狀態 ───────────
   var state = { fileRenames: {}, kind: null, inputs: [], opts: loadOpts(), result: null, decisions: {}, reviewFilter: null, lOff: {}, codes: {}, askAs: {}, coa: null, coaEnabled: false, dbf: null, dbfEdits: {}, dbfDone: null };
@@ -152,7 +160,7 @@
       b.onclick = onRemove;
       c.appendChild(b); chips.appendChild(c);
     };
-    if (GROUPED[state.kind]) {
+    if (GROUPED[state.kind] || state.kind === 'basemap') {
       lGroups(state.inputs).forEach(function (g) {
         var exts = g.files.map(function (f) { return Core.extName(f.name); }).join('、');
         addChip(g.label + '（' + exts + '）', g.files.map(inputKey).join('\n'), function () {
@@ -203,10 +211,10 @@
     renderWork();
     if (!state.inputs.length) return;
     var o = state.opts, parts;
-    if (state.kind === 'l2csv') {
+    if (state.kind === 'l2csv' || state.kind === 'basemap') {
       var groups = lGroups(state.inputs.filter(function (f) { return !state.lOff[Core.extName(f.name)]; }));
       if (!groups.length) {
-        state.result = { kind: 'l2csv', ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], parts: [], perFile: [], stats: { points: 0 },
+        state.result = { kind: state.kind, ext: o.ext === 'txt' ? 'txt' : 'csv', files: [], parts: [], perFile: [], stats: { points: 0 },
           report: [{ level: 'error', msg: '沒有勾選任何要匯出的資料（控制點 / 界址點 / 補點），請在上方勾選至少一種' }] };
         renderResult();
         return;
@@ -274,7 +282,7 @@
     if (state.kind === 'csv2cntmac') r.stats.maxErrMm = Math.max.apply(null, parts.map(function (p) { return p.stats.maxErrMm || 0; }));
     // 使用者改過的檔名
     r.files.forEach(function (f) { f.origName = f.name; if (state.fileRenames[f.name]) f.name = state.fileRenames[f.name]; });
-    if (GROUPED[state.kind]) r.perFile = [].concat.apply([], parts.map(function (p) { return p.perFile; }));
+    if (GROUPED[state.kind] || state.kind === 'basemap') r.perFile = [].concat.apply([], parts.map(function (p) { return p.perFile; }));
     state.result = r;
     renderResult();
   }
@@ -327,6 +335,8 @@
       setSteps(3);
     }
 
+    if (r.kind === 'basemap') { renderBasemapOnly(r); return; }
+    ['previewPanel', 'optsPanel'].forEach(function (id) { $(id).classList.remove('hidden'); });
     renderThumbs(r);
     renderReview(r);
     renderCoaPanel(r);
@@ -472,6 +482,22 @@
     renderOpts();
   }
 
+  /** 輸出航照圖：只顯示航照面板 */
+  function renderBasemapOnly(r) {
+    ['thumbPanel', 'coaPanel', 'reviewPanel', 'dbfPanel', 'filesPanel', 'nextPanel', 'previewPanel', 'optsPanel'].forEach(function (id) { $(id).classList.add('hidden'); });
+    var area = bmArea(r), st = $('status');
+    if (area) {
+      st.className = 'status ok';
+      st.innerHTML = '<div class="si">🛰</div><div><div class="st">讀到 ' + bmAllPoints(r).length + ' 個點，可以抓航照了</div><div class="ss">範圍以 ' + area.main.length + ' 個點為中心，約 ' + Math.round(area.size[0]) + ' × ' + Math.round(area.size[1]) + ' m。照下面 1～4 步做。</div></div>';
+    }
+    setSteps(bmState().out ? 3 : 2);
+    renderBasemapPanel(r);
+    var rp = $('report'); rp.innerHTML = '';
+    var items = r.report.filter(function (x) { return x.level === 'error'; });
+    $('reportPanel').classList.toggle('hidden', !items.length);
+    items.forEach(function (it) { rp.appendChild(el('li', { 'class': it.level }, '<span class="lv">錯誤</span><span>' + esc(it.msg) + '</span>')); });
+  }
+
   // ═════════════ 縮圖 ═════════════
 
   var STYLE = {
@@ -490,6 +516,7 @@
     csv2cntmac: [['ok', '要轉換'], ['flag', '要轉換但有疑慮'], ['off', '剔除（不轉換）'], ['station', '虛擬測站 / 後視']],
     raw2mac: [['station', '測站'], ['known', '檔案內已知點'], ['obs', '觀測點（推算位置）']],
     l2csv: [['ctl', '控制點 L02'], ['bnd', '界址點/參考點 L14'], ['add', '補點 L20']],
+    basemap: [['ctl', '控制點 L02'], ['bnd', '界址點/參考點 L14'], ['add', '補點 L20']],
     coa2csv: [['ctl', '控制點 .CTL'], ['bnd', '界址點 .COA']]
   };
 
@@ -1608,23 +1635,26 @@
     var useCoa = g.coa2csv.length && (!g.l2csv.length || state.coaEnabled || state.kind === 'coa2csv');
     var ALL = ['l2csv', 'raw2mac', 'csv2cntmac'].concat(useCoa ? ['coa2csv'] : []);
     if (!useCoa) g.coa2csv = [];
-    var kinds = state.kind ? [state.kind] : ALL;
+    var kinds = state.kind === 'basemap' ? [] : state.kind ? [state.kind] : ALL;
+    // 輸出航照圖頁面：直接用資料夾裡的 L 檔
+    if (state.kind === 'basemap' && g.l2csv.length === 1) { loadGroups([g.l2csv[0]], 'basemap', null); return; }
     // 目前頁面要的檔案在資料夾裡沒有，但有其他種類：列出來讓使用者改做那一種
-    if (state.kind && !g[state.kind].length && ALL.some(function (k) { return g[k].length; })) {
+    if (state.kind && state.kind !== 'basemap' && !g[state.kind].length && ALL.some(function (k) { return g[k].length; })) {
       kinds = ALL;
       toast('資料夾裡沒有這個轉換要用的檔案，以下是找到的其他資料');
     }
     var total = kinds.reduce(function (n, k) { return n + g[k].length; }, 0);
-    if (!total) {
+    var bmOpt = g.l2csv.length > 0; // 有 L02/L14/L20 就多一個「其他：輸出航照圖」
+    if (!total && !bmOpt) {
       modal('<h3>資料夾裡沒有找到可以轉換的檔案</h3><p class="muted">「' + esc(folderName) + '」裡共 ' + entries.length + ' 個檔案，沒有 ' +
-        (state.kind === 'l2csv' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : state.kind === 'coa2csv' ? '.COA' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。' + ignoredNote + '</p>' +
+        (state.kind === 'l2csv' || state.kind === 'basemap' ? '.L02 / .L14 / .L20' : state.kind === 'raw2mac' ? '.RAW' : state.kind === 'csv2cntmac' ? '.CSV' : state.kind === 'coa2csv' ? '.COA' : '.RAW、.CSV、.L02 / .L14 / .L20') + '。' + ignoredNote + '</p>' +
         '<div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
       $('ok1').onclick = closeModal;
       return;
     }
     // 只有一項：直接開始（重測資料有兩種以上時還是要讓使用者選要匯入哪些）
     var single = total === 1 ? g[kinds.filter(function (k) { return g[k].length; })[0]] : null;
-    if (total === 1 && !(single === g.l2csv && g.l2csv[0].exts.length > 1)) {
+    if (total === 1 && !bmOpt) {
       var k1 = kinds.filter(function (k) { return g[k].length; })[0];
       loadGroups([g[k1][0]], k1, null);
       return;
@@ -1660,10 +1690,20 @@
       h += '<button class="btn primary go-btn" disabled>轉換勾選的項目 →</button>';
       h += '</div></div>';
     });
+    if (bmOpt) {
+      h += '<div class="fsec other"><h4><span>其他</span></h4>' + g.l2csv.map(function (item, i) {
+        return '<button class="card bmcard" type="button" data-bi="' + i + '"><span class="ico">' + BM_ICON + '</span><span><span class="t">輸出航照圖' + (g.l2csv.length > 1 ? '：' + esc(item.label) : '') + '</span>' +
+          '<span class="d">依 ' + esc(item.label) + ' 的點位範圍，自動抓國土測繪中心正射影像並置中，可選套合點校正偏差</span>' +
+          '<span class="flow"><b>' + item.exts.filter(function (e) { return e !== 'L02'; }).concat(item.exts.length === 1 ? item.exts : []).filter(function (e, k, a) { return a.indexOf(e) === k; }).join('</b> <b>') + '</b> → <b>.jpg</b> <b>.jgw</b></span></span></button>';
+      }).join('') + '</div>';
+    }
     h += '<div style="text-align:right;margin-top:14px"><button class="btn" id="fCancel">取消</button></div>';
     modal(h);
+    Array.prototype.forEach.call($('modalBox').querySelectorAll('.bmcard'), function (c) {
+      c.onclick = function () { loadGroups([g.l2csv[+c.getAttribute('data-bi')]], 'basemap', null); };
+    });
     $('fCancel').onclick = closeModal;
-    Array.prototype.forEach.call($('modalBox').querySelectorAll('.fsec'), function (sec) {
+    Array.prototype.forEach.call($('modalBox').querySelectorAll('.fsec:not(.other)'), function (sec) {
       var k = sec.getAttribute('data-k');
       var boxes = sec.querySelectorAll('input[data-i]');
       var btns = sec.querySelectorAll('.go-btn');
@@ -1928,7 +1968,7 @@
 
   // ═════════════ 航照底圖（國土測繪中心 WMTS）＋ 偏差校正 ═════════════
 
-  var bmD14 = null; // 航照判讀點（87）用的 D14：{ name, db }
+  var bmD14 = null; // 套合用的 D14：{ name, db }
   function stashBmD14(f) {
     try { var db = Core.parseDbf(f.bytes); if (db.fields.some(function (x) { return x.name === 'COT_NUMBER'; })) bmD14 = { name: f.name, db: db }; } catch (e) {}
   }
@@ -1937,101 +1977,171 @@
   function bmState() {
     if (!state.bm) {
       var m = loadBm();
-      state.bm = { src: m.src || 'PHOTO3826', margin: m.margin != null ? m.margin : 30, mode: null, manual: m.manual || {}, off: {}, out: null, busy: false };
+      state.bm = { src: m.src || 'PHOTO3826', margin: m.margin != null ? m.margin : 30, minSize: m.minSize != null ? m.minSize : 200,
+        code: m.code != null ? m.code : 87, mode: null, manual: m.manual || {}, clicks: {}, off: {}, incAll: false, out: null, busy: false };
     }
     return state.bm;
   }
+  function bmPersist() { var b = bmState(); saveBm({ src: b.src, margin: b.margin, minSize: b.minSize, code: b.code, manual: b.manual }); }
   function bmD14Now() { return (state.dbf && state.dbf.D14 && { name: state.dbf.D14.name, db: state.dbf.D14.db }) || bmD14; }
 
-  /** 本次作業的點（決定底圖範圍）：剔除的點不算；重測資料有界址點時，控制點不算（控制點常分散很遠） */
-  function bmJobPoints(r) {
+  /** 本次作業的所有點（含控制點），給套合選點用 */
+  function bmAllPoints(r) {
     var pts = [];
-    r.parts.forEach(function (p) { var d = plotData(r, p, false); pts = pts.concat(d.bbox.filter(function (q) { return q.cls !== 'off'; })); });
-    var nonCtl = pts.filter(function (q) { return q.cls !== 'ctl'; });
+    r.parts.forEach(function (p) { pts = pts.concat(plotData(r, p, true).pts.filter(function (q) { return q.cls !== 'off'; })); });
+    return pts;
+  }
+  /** 決定範圍用的點：控制點常分散很遠，有其他點時不算 */
+  function bmAreaPoints(r) {
+    var pts = bmAllPoints(r), nonCtl = pts.filter(function (q) { return q.cls !== 'ctl'; });
     return nonCtl.length ? nonCtl : pts;
   }
-  function bmPairs() {
-    var d = bmD14Now();
-    return d ? Core.suggestImagePairs(d.db).filter(function (x) { return x.real; }) : [];
+  function bmArea(r) {
+    var b = bmState();
+    return Core.basemapArea(bmAreaPoints(r).map(function (q) { return { N: q.N, E: q.E, name: q.name }; }), { margin: b.margin, minSize: b.minSize, includeAll: b.incAll });
   }
-  function bmShift() {
-    var b = bmState(), pairs = bmPairs();
-    var mode = b.mode || (pairs.length ? 'auto' : (b.manual[b.src] ? 'manual' : 'none'));
-    if (mode === 'auto') {
-      var sh = Core.shiftFromPairs(pairs.filter(function (x) { return !b.off[x.label]; }));
+  /** 套合點：D14 的航照判讀點（自動）＋ 使用者在航照上點的 */
+  function bmPairs() {
+    var b = bmState(), d = bmD14Now(), list = [];
+    if (d && b.code !== '' && b.code != null) Core.suggestImagePairs(d.db, +b.code).forEach(function (x) {
+      if (x.real) list.push({ id: 'a:' + x.img.label, auto: true, real: x.real, img: x.img });
+    });
+    (b.clicks[b.src] || []).forEach(function (x) { list.push(x); });
+    list.forEach(function (x) { x.on = !b.off[x.id]; });
+    return list;
+  }
+  function bmShiftFor(mode) {
+    var b = bmState();
+    if (mode === 'pairs') {
+      var sh = Core.shiftFromPairs(bmPairs().filter(function (x) { return x.on; }));
       return sh ? { dN: sh.dN, dE: sh.dE, mode: mode, info: sh } : { dN: 0, dE: 0, mode: mode };
     }
     if (mode === 'manual') { var m = b.manual[b.src] || {}; return { dN: +m.dN || 0, dE: +m.dE || 0, mode: mode }; }
     return { dN: 0, dE: 0, mode: 'none' };
   }
+  function bmShift() {
+    var b = bmState();
+    return bmShiftFor(b.mode || 'pairs');
+  }
+  var f3 = function (v) { return (v >= 0 ? '+' : '') + v.toFixed(3); };
+
+  /** 其他轉換的結果頁：一行捷徑，改做航照圖 */
+  function renderBmShortcut(r) {
+    var sc = $('bmShortcut');
+    var show = (r.kind === 'l2csv' || r.kind === 'coa2csv') && bmAllPoints(r).length > 0;
+    sc.classList.toggle('hidden', !show);
+    if (!show) return;
+    $('bmGoKind').onclick = function () {
+      var keep = state.inputs.slice(), d14 = bmD14Now();
+      openKind('basemap'); state.inputs = keep; if (d14) bmD14 = d14; run();
+    };
+  }
 
   function renderBasemapPanel(r) {
     var panel = $('bmPanel'), box = $('bm');
+    var isBm = r.kind === 'basemap';
+    panel.classList.toggle('hidden', !isBm);
+    renderBmShortcut(r);
+    if (!isBm) return;
     var b = bmState();
-    var pts = bmJobPoints(r);
-    var bbox = Core.pointsBBox(pts, b.margin);
-    panel.classList.toggle('hidden', !bbox);
-    if (!bbox) return;
+    var area = bmArea(r);
+    if (!area) { box.innerHTML = '<div class="blocked">讀不到坐標，請確認放的是 .L14／.L20（或 .L02）。</div>'; return; }
     var sh = bmShift(), pairs = bmPairs(), d14 = bmD14Now();
-    var plan = Core.planBasemap(bbox, b.src, sh);
-    var srcOpts = Object.keys(Core.BASEMAP_SOURCES).map(function (k) { return '<option value="' + k + '"' + (k === b.src ? ' selected' : '') + '>' + esc(Core.BASEMAP_SOURCES[k].label) + '</option>'; }).join('');
-    var f2 = function (v) { return (v >= 0 ? '+' : '') + v.toFixed(3); };
+    var plan = Core.planBasemap(area.bbox, b.src, sh);
     var h = [];
-    h.push('<p class="muted" style="margin-top:0">依本次的 ' + pts.length + ' 個點自動決定範圍，從國土測繪中心抓正射影像，存成 <b>JPG + JGW</b>（TWD97 坐標，CAD／GIS 直接疊圖）。需要網路。</p>');
-    h.push('<div class="bmgrid">');
-    h.push('<label>範圍</label><div>約 ' + Math.round(plan.areaM[0]) + ' × ' + Math.round(plan.areaM[1]) + ' m（點位外擴 <input id="bmMargin" type="number" min="0" max="500" step="10" value="' + b.margin + '" style="width:70px"> m）</div>');
-    h.push('<label>圖源</label><div><select id="bmSrc">' + srcOpts + '</select>' +
-      (b.src === 'PHOTO2' ? '<div class="muted">較新、較清楚，但和 _3826 不是同一年的航照，偏差可能不同；87 點若是在 _3826 上讀的，建議改用「手動」並放大檢查。</div>' : '') + '</div>');
-    h.push('<label>解析度</label><div>' + plan.res.toFixed(3) + ' m／像素，' + plan.width + ' × ' + plan.height + ' 像素（' + plan.tiles.length + ' 張圖磚）' +
-      (plan.reduced ? '<span class="warnTxt">　範圍較大，已自動降低解析度</span>' : '') + (plan.tooBig ? '<span class="warnTxt">　範圍太大，請縮小外擴距離</span>' : '') + '</div>');
-    h.push('</div>');
 
-    // 偏差校正
-    h.push('<h4 style="margin:14px 0 6px">偏差校正 <span class="muted">（航照位置 → 實測位置）</span></h4>');
-    var radio = function (v, t, dis) { return '<label class="bmr' + (dis ? ' dis' : '') + '"><input type="radio" name="bmMode" value="' + v + '"' + (sh.mode === v ? ' checked' : '') + (dis ? ' disabled' : '') + '> ' + t + '</label>'; };
-    h.push('<div class="bmmodes">' + radio('auto', '自動（D14 的 87 航照判讀點）', !pairs.length) + radio('manual', '手動輸入') + radio('none', '不校正') + '</div>');
-    if (sh.mode === 'auto') {
-      h.push('<table class="bmpairs"><thead><tr><th>用</th><th>航照上讀的點</th><th>實測點</th><th>ΔN</th><th>ΔE</th><th>距離</th><th>和平均差</th></tr></thead><tbody>');
-      pairs.forEach(function (x) {
-        var dN = x.real.N - x.img.N, dE = x.real.E - x.img.E, on = !b.off[x.label];
-        var resid = on && sh.info ? Math.hypot(dN - sh.dN, dE - sh.dE) : null;
-        h.push('<tr' + (on ? '' : ' class="off"') + '><td><input type="checkbox" class="bmUse" data-l="' + esc(x.label) + '"' + (on ? ' checked' : '') + '></td><td>' + esc(x.img.label) + '</td><td>' + esc(x.real.label) + '</td><td>' + f2(dN) + '</td><td>' + f2(dE) + '</td><td>' + Math.hypot(dN, dE).toFixed(2) + ' m</td><td' + (resid > 0.5 ? ' class="warnTxt"' : '') + '>' + (resid == null ? '—' : resid.toFixed(2) + ' m') + '</td></tr>');
-      });
-      h.push('</tbody></table><div class="muted">來源：' + esc(d14.name) + '。自動配對：87 點找 10 m 內最近的參考點。和平均差超過 0.5 m 的配對可能配錯，可取消勾選。</div>');
+    // ① 範圍
+    h.push('<div class="bmsec"><div class="bmnum">1</div><div class="bmbody"><h4>範圍 <span class="muted">（以點位為中心）</span></h4>');
+    h.push('<div class="bmgrid">');
+    h.push('<label>中心</label><div>' + area.main.length + ' 個點的中心（N ' + area.center.N.toFixed(1) + '、E ' + area.center.E.toFixed(1) + '）</div>');
+    h.push('<label>大小</label><div>' + Math.round(area.size[0]) + ' × ' + Math.round(area.size[1]) + ' m　點位外擴 <input id="bmMargin" type="number" min="0" max="500" step="10" value="' + b.margin + '" style="width:64px"> m，最小 <input id="bmMin" type="number" min="50" max="2000" step="50" value="' + b.minSize + '" style="width:72px"> m</div>');
+    h.push('</div>');
+    if (area.outliers.length || b.incAll) {
+      var od = area.outliers.slice(0, 5).map(function (q) { return esc(q.name) + '（離中心 ' + fmtDist(Math.hypot(q.E - area.center.E, q.N - area.center.N)) + '）'; }).join('、');
+      h.push('<div class="bmnote">' + (b.incAll ? '已把所有點都算進範圍。' : '⚠ 有 ' + area.outliers.length + ' 個點離其他點很遠，沒算進範圍，圖才會置中：' + od + (area.outliers.length > 5 ? ' …' : '')) +
+        ' <label style="cursor:pointer"><input type="checkbox" id="bmIncAll"' + (b.incAll ? ' checked' : '') + '> 全部算進去</label></div>');
+    }
+    h.push('</div></div>');
+
+    // ② 圖源
+    var srcCards = ['PHOTO3826', 'PHOTO2'].map(function (k) {
+      var S = Core.BASEMAP_SOURCES[k];
+      var t = k === 'PHOTO3826' ? ['正射影像圖(通用)_3826', 'TWD97 原生，0.26 m／像素（建議）'] : ['正射影像圖(通用)', '較新、較清楚，約 0.14 m／像素（自動轉投影）'];
+      return '<label class="bmsrc' + (k === b.src ? ' on' : '') + '"><input type="radio" name="bmSrc" value="' + k + '"' + (k === b.src ? ' checked' : '') + '><b>' + t[0] + '</b><span>' + t[1] + '</span></label>';
+    }).join('');
+    h.push('<div class="bmsec"><div class="bmnum">2</div><div class="bmbody"><h4>圖源 <span class="muted">（國土測繪中心，需要網路）</span></h4><div class="bmsrcs">' + srcCards + '</div>' +
+      '<div class="muted">輸出 ' + plan.width + ' × ' + plan.height + ' 像素（' + plan.res.toFixed(3) + ' m／像素，' + plan.tiles.length + ' 張圖磚）' +
+      (plan.reduced ? '<span class="warnTxt">　範圍較大，已自動降低解析度</span>' : '') + (plan.tooBig ? '<span class="warnTxt">　範圍太大，請縮小</span>' : '') +
+      (b.src === 'PHOTO2' ? '<br>兩個圖源是不同年份的航照，偏差可能不一樣，換圖源要重新選套合點。' : '') + '</div></div></div>');
+
+    // ③ 偏差校正
+    var radio = function (v, t) { return '<label class="bmr"><input type="radio" name="bmMode" value="' + v + '"' + (sh.mode === v ? ' checked' : '') + '> ' + t + '</label>'; };
+    h.push('<div class="bmsec"><div class="bmnum">3</div><div class="bmbody"><h4>偏差校正 <span class="muted">（把航照移到實測位置）</span></h4>');
+    h.push('<div class="bmmodes">' + radio('pairs', '用套合點（建議）') + radio('manual', '直接輸入位移') + radio('none', '不校正') + '</div>');
+    if (sh.mode === 'pairs') {
+      if (pairs.length) {
+        h.push('<table class="bmpairs"><thead><tr><th>用</th><th>實測點</th><th>航照上的位置</th><th>ΔN</th><th>ΔE</th><th>距離</th><th>和平均差</th><th></th></tr></thead><tbody>');
+        pairs.forEach(function (x) {
+          var dN = x.real.N - x.img.N, dE = x.real.E - x.img.E;
+          var resid = x.on && sh.info ? Math.hypot(dN - sh.dN, dE - sh.dE) : null;
+          h.push('<tr' + (x.on ? '' : ' class="off"') + '><td><input type="checkbox" class="bmUse" data-id="' + esc(x.id) + '"' + (x.on ? ' checked' : '') + '></td><td>' + esc(x.real.label) + '</td><td>' + (x.auto ? esc(x.img.label) + ' <span class="muted">（D14 判讀點）</span>' : '在航照上點選') + '</td><td>' + f3(dN) + '</td><td>' + f3(dE) + '</td><td>' + Math.hypot(dN, dE).toFixed(2) + ' m</td><td' + (resid > 0.5 ? ' class="warnTxt"' : '') + '>' + (resid == null ? '—' : resid.toFixed(2) + ' m') + '</td><td>' + (x.auto ? '' : '<button class="btn small bmDel" data-id="' + esc(x.id) + '" type="button" title="刪除">✕</button>') + '</td></tr>');
+        });
+        h.push('</tbody></table><div class="muted">多選幾組、分散在圖的四周最準。「和平均差」超過 0.5 m 的可能點錯，可取消勾選或刪除。</div>');
+      } else {
+        h.push('<div class="bmhow"><b>怎麼做：</b>先按下面「抓航照底圖」輸出一次 → 按「🎯 選套合點」→ 點一下<b>實測點</b>（例如建物角、圍牆角）→ 再點一下<b>航照上那個點真正的位置</b>。選 2～3 組後按「套用並重新輸出」。</div>');
+      }
+      h.push('<div class="muted" style="margin-top:6px">D14 的航照判讀點編碼 <input id="bmCode" type="number" min="0" max="99" value="' + esc(b.code) + '" style="width:56px">（D14 裡有這個編碼的點，會自動配對 10 m 內最近的實測點；不用就清空）' +
+        (d14 ? '　來源：' + esc(d14.name) : '　<button class="btn small" id="bmPickD14" type="button">選 D14 檔</button>') + '</div>');
     } else if (sh.mode === 'manual') {
       var m = b.manual[b.src] || {};
-      h.push('<div>N 方向 <input id="bmDN" type="number" step="0.001" value="' + (m.dN != null ? m.dN : '') + '" placeholder="0" style="width:100px"> m　E 方向 <input id="bmDE" type="number" step="0.001" value="' + (m.dE != null ? m.dE : '') + '" placeholder="0" style="width:100px"> m　<span class="muted">（實測 − 航照，例：航照偏西南就填正值；會記住，下次同圖源自動帶入）</span></div>');
+      h.push('<div>N <input id="bmDN" type="number" step="0.001" value="' + (m.dN != null ? m.dN : '') + '" placeholder="0" style="width:100px"> m　E <input id="bmDE" type="number" step="0.001" value="' + (m.dE != null ? m.dE : '') + '" placeholder="0" style="width:100px"> m　<span class="muted">（實測 − 航照；會記住）</span></div>');
     }
-    if (!pairs.length) h.push('<div class="muted" style="margin-top:6px">' + (d14 ? esc(d14.name) + ' 裡沒有 87 編碼的航照判讀點。' : '想自動校正？') + '<button class="btn small" id="bmPickD14" type="button">選 D14 檔讀 87 點</button></div>');
-    h.push('<div class="bmshift">套用位移：<b>N ' + f2(sh.dN) + ' m、E ' + f2(sh.dE) + ' m</b>（共 ' + Math.hypot(sh.dN, sh.dE).toFixed(2) + ' m）</div>');
+    h.push('<div class="bmshift">套用位移：<b>N ' + f3(sh.dN) + ' m、E ' + f3(sh.dE) + ' m</b>（共 ' + Math.hypot(sh.dN, sh.dE).toFixed(2) + ' m）</div>');
+    h.push('</div></div>');
 
-    h.push('<div class="bmact"><button class="btn primary" id="bmGo" type="button"' + (plan.tooBig || b.busy ? ' disabled' : '') + '>' + (b.busy ? '下載中…' : '🛰 抓航照底圖') + '</button><span id="bmProg" class="muted"></span></div>');
+    // ④ 輸出
+    h.push('<div class="bmsec"><div class="bmnum">4</div><div class="bmbody"><h4>輸出</h4>');
+    h.push('<div class="bmact"><button class="btn go" id="bmGo" type="button"' + (plan.tooBig || b.busy ? ' disabled' : '') + '>' + (b.busy ? '下載中…' : (b.out ? '🛰 重新抓航照底圖' : '🛰 抓航照底圖')) + '</button><span id="bmProg" class="muted"></span></div>');
     if (b.out) {
-      h.push('<div class="bmout"><img id="bmThumb" src="' + b.out.url + '" alt="航照底圖" title="點一下放大檢查"><div><div><b>' + esc(b.out.files[0].name) + '</b>＋<b>' + esc(b.out.files[1].name) + '</b>　' + b.out.w + ' × ' + b.out.h + '，' + fmtSize(b.out.files[0].content.size) + '</div>' +
+      var stale = Math.abs(b.out.shift.dN - sh.dN) > 0.0005 || Math.abs(b.out.shift.dE - sh.dE) > 0.0005 || b.out.plan.source !== b.src ||
+        Math.abs(b.out.plan.ulE - plan.ulE) > 0.01 || Math.abs(b.out.plan.ulN - plan.ulN) > 0.01 || b.out.plan.width !== plan.width;
+      h.push('<div class="bmout"><img id="bmThumb" src="' + b.out.url + '" alt="航照底圖" title="點一下放大、選套合點"><div class="grow"><div><b>' + esc(b.out.files[0].name) + '</b>＋<b>' + esc(b.out.files[1].name) + '</b>　' + b.out.w + ' × ' + b.out.h + '，' + fmtSize(b.out.files[0].content.size) + '</div>' +
         '<div class="muted">' + esc(b.out.note) + '</div>' +
-        '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn go" id="bmSave" type="button">⬇ 下載 JPG + JGW</button><button class="btn" id="bmView" type="button">🔍 放大檢查（疊點位）</button></div></div></div>');
+        (stale ? '<div class="warnTxt">設定改過了，請按「重新抓航照底圖」更新。</div>' : '') +
+        '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn go" id="bmSave" type="button">⬇ 下載 JPG + JGW</button><button class="btn primary" id="bmPick" type="button">🎯 選套合點</button><button class="btn" id="bmView" type="button">🔍 放大檢查</button></div>' +
+        '<div class="fstat" data-key="' + esc(b.out.files[0].name) + '"></div></div></div>');
     }
+    h.push('</div></div>');
     box.innerHTML = h.join('');
 
     var rerender = function () { renderBasemapPanel(state.result); };
-    var persist = function () { saveBm({ src: b.src, margin: b.margin, manual: b.manual }); };
-    $('bmMargin').onchange = function () { b.margin = Math.max(0, Math.min(500, +this.value || 0)); persist(); rerender(); };
-    $('bmSrc').onchange = function () { b.src = this.value; persist(); rerender(); };
+    $('bmMargin').onchange = function () { b.margin = Math.max(0, Math.min(500, +this.value || 0)); bmPersist(); rerender(); };
+    $('bmMin').onchange = function () { b.minSize = Math.max(50, Math.min(2000, +this.value || 200)); bmPersist(); rerender(); };
+    if ($('bmIncAll')) $('bmIncAll').onchange = function () { b.incAll = this.checked; rerender(); };
+    Array.prototype.forEach.call(box.querySelectorAll('input[name=bmSrc]'), function (x) { x.onchange = function () { b.src = x.value; bmPersist(); rerender(); }; });
     Array.prototype.forEach.call(box.querySelectorAll('input[name=bmMode]'), function (x) { x.onchange = function () { b.mode = x.value; rerender(); }; });
-    Array.prototype.forEach.call(box.querySelectorAll('.bmUse'), function (x) { x.onchange = function () { b.off[x.getAttribute('data-l')] = !x.checked; rerender(); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('.bmUse'), function (x) { x.onchange = function () { b.off[x.getAttribute('data-id')] = !x.checked; rerender(); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('.bmDel'), function (x) { x.onclick = function () { bmDelPair(x.getAttribute('data-id')); rerender(); }; });
+    if ($('bmCode')) $('bmCode').onchange = function () { b.code = this.value === '' ? '' : Math.max(0, Math.min(99, parseInt(this.value, 10) || 0)); bmPersist(); rerender(); };
     if ($('bmDN')) [$('bmDN'), $('bmDE')].forEach(function (x) {
-      x.onchange = function () { var v = $('bmDN').value, w = $('bmDE').value; b.manual[b.src] = { dN: v === '' ? 0 : +v, dE: w === '' ? 0 : +w }; persist(); rerender(); };
+      x.onchange = function () { var v = $('bmDN').value, w = $('bmDE').value; b.manual[b.src] = { dN: v === '' ? 0 : +v, dE: w === '' ? 0 : +w }; bmPersist(); rerender(); };
     });
     if ($('bmPickD14')) $('bmPickD14').onclick = function () {
       var inp = el('input', { type: 'file', accept: '.D14,.d14' });
-      inp.onchange = function () { if (!inp.files[0]) return; readFiles([inp.files[0]]).then(function (l) { stashBmD14(l[0]); if (!bmD14) toast('讀不懂這個 D14'); b.mode = null; rerender(); }); };
+      inp.onchange = function () { if (!inp.files[0]) return; readFiles([inp.files[0]]).then(function (l) { stashBmD14(l[0]); if (!bmD14) toast('讀不懂這個 D14'); rerender(); }); };
       inp.click();
     };
-    $('bmGo').onclick = function () { makeBasemap(r, bbox, sh); };
+    $('bmGo').onclick = function () { makeBasemap(r, area.bbox, sh); };
     if (b.out) {
       $('bmSave').onclick = function () { downloadAll(b.out.files); };
-      $('bmView').onclick = $('bmThumb').onclick = function () { viewBasemap(r); };
+      $('bmPick').onclick = function () { viewBasemap(r, true); };
+      $('bmView').onclick = $('bmThumb').onclick = function () { viewBasemap(r, false); };
     }
+  }
+  function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m'; }
+  function bmDelPair(id) {
+    var b = bmState();
+    b.clicks[b.src] = (b.clicks[b.src] || []).filter(function (x) { return x.id !== id; });
   }
 
   /** 依序抓磁磚（同時 6 張），拼成一張圖 */
@@ -2058,11 +2168,11 @@
     var b = bmState();
     var plan = Core.planBasemap(bbox, b.src, sh);
     if (plan.tooBig) return;
-    b.busy = true; b.out = null; renderBasemapPanel(r);
+    b.busy = true; renderBasemapPanel(r);
     var prog = function (d, n) { var e = $('bmProg'); if (e) e.textContent = '下載圖磚 ' + d + ' / ' + n; };
     fetchTiles(plan, prog).then(function (m) {
       if (m.failed === plan.tiles.length) throw new Error('連不上國土測繪中心的圖資服務（' + m.lastErr + '）。請確認電腦有連上網路，或稍後再試。');
-      var e = $('bmProg'); if (e) e.textContent = '組合影像中…';
+      var e = $('bmProg'); if (e) e.textContent = '接圖中…';
       return new Promise(function (ok) { setTimeout(ok, 30); }).then(function () {
         var out = document.createElement('canvas'); out.width = plan.width; out.height = plan.height;
         var og = out.getContext('2d');
@@ -2073,18 +2183,18 @@
         } else {
           og.drawImage(m.canvas, plan.cropX, plan.cropY, plan.width, plan.height, 0, 0, plan.width, plan.height);
         }
-        return new Promise(function (ok, bad) { out.toBlob(function (bl) { bl ? ok({ blob: bl, failed: m.failed, canvas: out }) : bad(new Error('影像太大，瀏覽器無法存成 JPG，請縮小範圍')); }, 'image/jpeg', 0.9); });
+        return new Promise(function (ok, bad) { out.toBlob(function (bl) { bl ? ok({ blob: bl, failed: m.failed }) : bad(new Error('影像太大，瀏覽器無法存成 JPG，請縮小範圍')); }, 'image/jpeg', 0.9); });
       });
     }).then(function (x) {
       var base = bmBaseName();
       var note = (b.src === 'PHOTO2' ? '正射影像圖(通用)' : '正射影像圖(通用)_3826') + '，' + plan.res.toFixed(3) + ' m／像素；' +
-        (sh.mode === 'none' ? '未校正偏差' : '已校正 N ' + (sh.dN >= 0 ? '+' : '') + sh.dN.toFixed(3) + '、E ' + (sh.dE >= 0 ? '+' : '') + sh.dE.toFixed(3) + ' m') +
+        (sh.mode === 'none' || (!sh.dN && !sh.dE) ? '未校正偏差' : '已校正 N ' + f3(sh.dN) + '、E ' + f3(sh.dE) + ' m') +
         (x.failed ? '；有 ' + x.failed + ' 張圖磚沒抓到（白色區塊）' : '');
       if (b.out && b.out.url) URL.revokeObjectURL(b.out.url);
-      b.out = { url: URL.createObjectURL(x.blob), w: plan.width, h: plan.height, plan: plan, shift: sh, note: note,
+      b.out = { url: URL.createObjectURL(x.blob), w: plan.width, h: plan.height, plan: plan, shift: { dN: sh.dN, dE: sh.dE }, note: note,
         files: [{ name: base + '_航照.jpg', content: x.blob }, { name: base + '_航照.jgw', content: Core.worldFileText(plan.res, plan.ulE, plan.ulN) }] };
-      b.busy = false; renderBasemapPanel(r);
-      toast('航照底圖好了，按「下載 JPG + JGW」存檔');
+      b.busy = false; renderBasemapPanel(r); setSteps(3);
+      toast('航照底圖好了！可以先「選套合點」校正，或直接下載');
     }).catch(function (e) {
       b.busy = false; renderBasemapPanel(r);
       modal('<h3>❌ 航照底圖沒有抓成功</h3><p>' + esc(e.message || e) + '</p><div style="text-align:right;margin-top:12px"><button class="btn primary" id="bmErrOk">知道了</button></div>');
@@ -2097,27 +2207,138 @@
     return n || '航照';
   }
 
-  /** 放大檢查：影像上疊本次點位與 87 配對（紅＝實測、藍＝航照判讀） */
-  function viewBasemap(r) {
+  /**
+   * 放大檢查／選套合點：滾輪縮放、拖曳移動。
+   * 選點：① 點實測點（黃＝本次點位、灰＝D14 參考點）② 點航照上它真正的位置。
+   * 已選的套合點會即時預覽校正後的樣子（影像跟著移動）。
+   */
+  function viewBasemap(r, pickMode) {
     var b = bmState(), o = b.out; if (!o) return;
-    var W = 900, H = Math.round(900 * o.h / o.w);
-    if (H > 640) { H = 640; W = Math.round(640 * o.w / o.h); }
-    var s = W / o.w, pl = o.plan;
-    var X = function (E) { return ((E - pl.ulE) / pl.res + 0.5) * s; }, Y = function (N) { return ((pl.ulN - N) / pl.res + 0.5) * s; };
-    var svg = ['<svg viewBox="0 0 ' + W + ' ' + H + '" style="position:absolute;left:0;top:0;width:100%;height:100%">'];
-    bmJobPoints(r).forEach(function (q) { svg.push('<circle cx="' + X(q.E).toFixed(1) + '" cy="' + Y(q.N).toFixed(1) + '" r="3" fill="#ffd400" stroke="#000" stroke-width=".8"><title>' + esc(q.name) + '</title></circle>'); });
-    bmPairs().forEach(function (x) {
-      svg.push('<line x1="' + X(x.img.E).toFixed(1) + '" y1="' + Y(x.img.N).toFixed(1) + '" x2="' + X(x.real.E).toFixed(1) + '" y2="' + Y(x.real.N).toFixed(1) + '" stroke="#fff" stroke-width="1"/>');
-      svg.push('<circle cx="' + X(x.img.E).toFixed(1) + '" cy="' + Y(x.img.N).toFixed(1) + '" r="5" fill="none" stroke="#19c3ff" stroke-width="2"><title>' + esc(x.img.label) + '（航照判讀）</title></circle>');
-      svg.push('<circle cx="' + X(x.real.E).toFixed(1) + '" cy="' + Y(x.real.N).toFixed(1) + '" r="5" fill="none" stroke="#ff3b30" stroke-width="2"><title>' + esc(x.real.label) + '（實測）</title></circle>');
+    var pl = o.plan;
+    var toPx = function (E, N) { return [(E - pl.ulE) / pl.res + 0.5, (pl.ulN - N) / pl.res + 0.5]; };
+    var toEN = function (x, y) { return { E: pl.ulE + (x - 0.5) * pl.res, N: pl.ulN - (y - 0.5) * pl.res }; };
+    var inside = function (q) { var p = toPx(q.E, q.N); return p[0] >= -20 && p[1] >= -20 && p[0] <= o.w + 20 && p[1] <= o.h + 20; };
+    // 候選實測點：本次點位＋D14 參考點（編碼 00 以外、在圖內）
+    var cands = bmAllPoints(r).filter(inside).map(function (q) { return { E: q.E, N: q.N, label: q.name, job: true }; });
+    var seen = {}; cands.forEach(function (q) { seen[Math.round(q.E * 100) + ',' + Math.round(q.N * 100)] = 1; });
+    var d14 = bmD14Now();
+    if (d14) d14.db.records.forEach(function (rec) {
+      if (rec.deleted) return;
+      var q = { E: parseFloat(rec.values.COT_X), N: parseFloat(rec.values.COT_Y) };
+      var ref = parseInt(rec.values.COT_REF, 10) || 0;
+      q.label = parseInt(rec.values.COT_NUMBER, 10) + '.' + (ref < 10 ? '0' : '') + ref;
+      if (!isFinite(q.E) || !isFinite(q.N) || !inside(q) || String(ref) === String(b.code)) return;
+      var k = Math.round(q.E * 100) + ',' + Math.round(q.N * 100);
+      if (!seen[k]) { seen[k] = 1; cands.push(q); }
     });
-    svg.push('</svg>');
-    modal('<h3>航照底圖檢查 <span class="muted">' + esc(o.note) + '</span></h3>' +
-      '<div class="legend"><span><i style="background:#ffd400"></i>本次點位</span><span><i style="border:2px solid #ff3b30"></i>實測點</span><span><i style="border:2px solid #19c3ff"></i>87 航照判讀點</span></div>' +
-      '<div style="position:relative;width:' + W + 'px;max-width:100%;margin:8px auto 0"><img src="' + o.url + '" style="display:block;width:100%">' + svg.join('') + '</div>' +
-      '<p class="muted">校正後，建物角、圍牆等地物應該對到<b>紅圈（實測）</b>。滑鼠移到點上可看點名。</p>' +
-      '<div style="text-align:right;margin-top:8px"><button class="btn primary" id="bmClose">關閉</button></div>', true);
-    $('bmClose').onclick = closeModal;
+    var V = { z: 1, tx: 0, ty: 0, step: pickMode ? 1 : 0, sel: null, preview: true };
+
+    modal('<div class="bmvhead"><h3>' + (pickMode ? '🎯 選套合點' : '🔍 放大檢查') + ' <span class="muted">' + esc(o.note) + '</span></h3></div>' +
+      '<div class="bmguide" id="bmGuide"></div>' +
+      '<div class="bmview" id="bmViewer"><div class="bmin" id="bmIn"><img src="' + o.url + '" id="bmImg" draggable="false"><svg id="bmSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
+      '<div class="bmzoom"><button type="button" id="bmZin" title="放大">＋</button><button type="button" id="bmZout" title="縮小">－</button><button type="button" id="bmZfit" title="看全圖">⤢</button></div></div>' +
+      '<div class="bmvfoot"><div class="legend"><span><i style="background:#ffd400"></i>本次點位</span>' + (d14 ? '<span><i style="background:#d0d7de"></i>D14 參考點</span>' : '') + '<span><i style="border:2px solid #ff3b30"></i>套合：實測</span><span><i style="border:2px solid #19c3ff"></i>套合：航照位置</span></div>' +
+      '<label class="muted" style="cursor:pointer"><input type="checkbox" id="bmPrev" checked> 預覽校正後的樣子</label></div>' +
+      '<div id="bmVPairs" class="bmvpairs"></div>' +
+      '<div class="bmvbtns"><button class="btn primary" id="bmAdd" type="button">➕ 新增套合點</button><span class="grow"></span><button class="btn" id="bmClose" type="button">關閉</button><button class="btn go" id="bmApply" type="button">✓ 套用並重新輸出</button></div>', true);
+
+    var view = $('bmViewer'), inner = $('bmIn'), img = $('bmImg'), svg = $('bmSvg');
+    inner.style.width = o.w + 'px'; inner.style.height = o.h + 'px';
+    svg.setAttribute('width', o.w); svg.setAttribute('height', o.h); svg.setAttribute('viewBox', '0 0 ' + o.w + ' ' + o.h);
+    var fitZ = function () { return Math.min(view.clientWidth / o.w, view.clientHeight / o.h); };
+    var apply = function () { inner.style.transform = 'translate(' + V.tx + 'px,' + V.ty + 'px) scale(' + V.z + ')'; draw(); };
+    var fit = function () { V.z = fitZ(); V.tx = (view.clientWidth - o.w * V.z) / 2; V.ty = (view.clientHeight - o.h * V.z) / 2; apply(); };
+    var zoomAt = function (f, cx, cy) {
+      var nz = Math.max(fitZ() * 0.5, Math.min(8, V.z * f));
+      V.tx = cx - (cx - V.tx) * nz / V.z; V.ty = cy - (cy - V.ty) * nz / V.z; V.z = nz; apply();
+    };
+    // 目前畫面上影像的總位移（輸出時已套用的 ＋ 預覽中新增的）
+    var dispShift = function () {
+      if (!V.preview) return o.shift;
+      var s = bmShiftFor('pairs');
+      return (s.info ? s : o.shift);
+    };
+    var draw = function () {
+      var ds = dispShift(), dx = (ds.dE - o.shift.dE) / pl.res, dy = -(ds.dN - o.shift.dN) / pl.res;
+      img.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      var k = 1 / V.z, out = [];
+      cands.forEach(function (q) {
+        var p = toPx(q.E, q.N), on = V.sel === q;
+        out.push('<circle cx="' + p[0].toFixed(2) + '" cy="' + p[1].toFixed(2) + '" r="' + ((on ? 7 : q.job ? 4 : 3) * k).toFixed(3) + '" fill="' + (on ? '#ff3b30' : q.job ? '#ffd400' : '#d0d7de') + '" stroke="#000" stroke-width="' + (0.8 * k).toFixed(3) + '"><title>' + esc(q.label) + '</title></circle>');
+        if (V.z > 1.2 || on) out.push('<text x="' + (p[0] + 6 * k).toFixed(2) + '" y="' + (p[1] - 6 * k).toFixed(2) + '" font-size="' + (12 * k).toFixed(3) + '" fill="#fff" stroke="#000" stroke-width="' + (2.5 * k).toFixed(3) + '" paint-order="stroke" pointer-events="none">' + esc(q.label) + '</text>');
+      });
+      bmPairs().forEach(function (x) {
+        var a = toPx(x.real.E, x.real.N);
+        var ip = { E: x.img.E + ds.dE, N: x.img.N + ds.dN }, c = toPx(ip.E, ip.N); // 航照上那一點在目前畫面的位置
+        var op = x.on ? 1 : 0.35;
+        out.push('<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + c[0] + '" y2="' + c[1] + '" stroke="#fff" stroke-width="' + (1.2 * k) + '" opacity="' + op + '"/>');
+        out.push('<circle cx="' + c[0] + '" cy="' + c[1] + '" r="' + (6 * k) + '" fill="none" stroke="#19c3ff" stroke-width="' + (2 * k) + '" opacity="' + op + '"/>');
+        out.push('<circle cx="' + a[0] + '" cy="' + a[1] + '" r="' + (8 * k) + '" fill="none" stroke="#ff3b30" stroke-width="' + (2 * k) + '" opacity="' + op + '"><title>' + esc(x.real.label) + '</title></circle>');
+      });
+      svg.innerHTML = out.join('');
+    };
+    var guide = function () {
+      var g = $('bmGuide'), n = bmPairs().filter(function (x) { return x.on; }).length;
+      view.classList.toggle('picking', V.step > 0);
+      if (V.step === 1) g.innerHTML = '<b>① 點一下「實測點」</b>（黃點／灰點）。選建物角、圍牆角這種在航照上看得清楚的點。<span class="muted">滾輪放大、拖曳移動</span> <button class="btn small" id="bmCancel" type="button">取消</button>';
+      else if (V.step === 2) g.innerHTML = '<b>② 在航照上點一下「' + esc(V.sel.label) + '」真正的位置</b>（放大點準一點）。 <button class="btn small" id="bmCancel" type="button">取消</button>';
+      else g.innerHTML = n ? '已選 <b>' + n + '</b> 組套合點' + (n < 2 ? '，建議再選 1～2 組（分散在圖的不同位置）' : '') + '。確認地物對齊紅圈後，按右下角「套用並重新輸出」。' : '按「➕ 新增套合點」開始。也可以只看：滾輪放大、拖曳移動。';
+      g.className = 'bmguide' + (V.step ? ' active' : '');
+      if ($('bmCancel')) $('bmCancel').onclick = function () { V.step = 0; V.sel = null; guide(); draw(); };
+      var pv = $('bmVPairs'), sh = bmShiftFor('pairs');
+      pv.innerHTML = bmPairs().map(function (x) {
+        var dN = x.real.N - x.img.N, dE = x.real.E - x.img.E;
+        return '<span class="pchip' + (x.on ? '' : ' off') + '">' + esc(x.real.label) + '　ΔN ' + f3(dN) + '　ΔE ' + f3(dE) + (x.auto ? ' <span class="muted">D14</span>' : ' <button type="button" data-id="' + esc(x.id) + '" title="刪除">✕</button>') + '</span>';
+      }).join('') + (sh.info ? '<span class="pavg">平均位移 N ' + f3(sh.dN) + '、E ' + f3(sh.dE) + (sh.info.n > 1 ? '，最大差 ' + sh.info.maxResidual.toFixed(2) + ' m' : '') + '</span>' : '');
+      Array.prototype.forEach.call(pv.querySelectorAll('button[data-id]'), function (x) { x.onclick = function () { bmDelPair(x.getAttribute('data-id')); guide(); draw(); }; });
+      $('bmApply').disabled = !sh.info;
+    };
+    var onPick = function (x, y) {
+      if (V.step === 1) {
+        var best = null;
+        cands.forEach(function (q) { var p = toPx(q.E, q.N), d = Math.hypot(p[0] - x, p[1] - y) * V.z; if (d < 16 && (!best || d < best.d)) best = { q: q, d: d }; });
+        if (!best) { toast('請點在黃點或灰點上（可以先放大）'); return; }
+        V.sel = best.q; V.step = 2;
+      } else if (V.step === 2) {
+        var ds = dispShift(), g = toEN(x, y);
+        var arr = b.clicks[b.src] = b.clicks[b.src] || [];
+        // 同一個實測點再選一次＝更新
+        var id = 'c:' + V.sel.label;
+        b.clicks[b.src] = arr.filter(function (p) { return p.id !== id; });
+        b.clicks[b.src].push({ id: id, real: { E: V.sel.E, N: V.sel.N, label: V.sel.label }, img: { E: g.E - ds.dE, N: g.N - ds.dN, label: '航照' } });
+        b.mode = 'pairs'; V.step = 0; V.sel = null;
+      }
+      guide(); draw();
+    };
+
+    // 滑鼠：滾輪縮放、拖曳移動、點一下選點
+    var drag = null;
+    view.addEventListener('wheel', function (e) { e.preventDefault(); var rc = view.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.25 : 0.8, e.clientX - rc.left, e.clientY - rc.top); }, { passive: false });
+    view.addEventListener('pointerdown', function (e) { drag = { x: e.clientX, y: e.clientY, tx: V.tx, ty: V.ty, moved: false }; view.setPointerCapture(e.pointerId); });
+    view.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+      drag.moved = true; V.tx = drag.tx + dx; V.ty = drag.ty + dy; inner.style.transform = 'translate(' + V.tx + 'px,' + V.ty + 'px) scale(' + V.z + ')';
+    });
+    view.addEventListener('pointerup', function (e) {
+      var d = drag; drag = null;
+      if (!d || d.moved || !V.step) return;
+      var rc = view.getBoundingClientRect();
+      onPick((e.clientX - rc.left - V.tx) / V.z, (e.clientY - rc.top - V.ty) / V.z);
+    });
+    $('bmZin').onclick = function () { zoomAt(1.5, view.clientWidth / 2, view.clientHeight / 2); };
+    $('bmZout').onclick = function () { zoomAt(1 / 1.5, view.clientWidth / 2, view.clientHeight / 2); };
+    $('bmZfit').onclick = fit;
+    $('bmPrev').onchange = function () { V.preview = this.checked; draw(); };
+    $('bmAdd').onclick = function () { V.step = 1; V.sel = null; guide(); draw(); };
+    $('bmClose').onclick = function () { closeModal(); renderBasemapPanel(state.result); };
+    $('bmApply').onclick = function () {
+      b.mode = 'pairs'; closeModal();
+      var area = bmArea(state.result);
+      makeBasemap(state.result, area.bbox, bmShift());
+    };
+    fit(); guide();
   }
 
   // ═════════════ 版本、更新歷程、新版本提醒 ═════════════
