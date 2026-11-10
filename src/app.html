@@ -123,6 +123,20 @@ ul.report li.warn{background:var(--warn-soft)} ul.report li.warn .lv{background:
 ul.report li.info{background:var(--info-soft)} ul.report li.info .lv{background:var(--info);color:#fff}
 ul.report li .ln{color:var(--ink2);font-size:13px;white-space:nowrap}
 
+.fgrp{margin-top:16px}
+.fgrp h4{font-size:16px;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.fgrp h4 .tag{font-size:13px;padding:2px 10px;border-radius:999px;font-weight:700}
+.fgrp.in h4 .tag{background:var(--in-soft);color:var(--in)}.fgrp.out h4 .tag{background:var(--out-soft);color:var(--out)}.fgrp.other h4 .tag{background:var(--oth-soft);color:var(--oth)}
+.fgrp.in .ico{background:var(--in-soft);color:var(--in)}.fgrp.out .ico{background:var(--out-soft);color:var(--out)}.fgrp.other .ico{background:var(--oth-soft);color:var(--oth)}
+.fcard{margin-bottom:10px;align-items:center}
+.fcard .fbody{flex:1;min-width:0}
+.fcard .flow .extb,.fcard .fitem .extb{margin-left:3px}
+.fcard .fgo{flex:none;font-weight:700;color:var(--brand);white-space:nowrap;padding:8px 14px;border-radius:10px;background:var(--brand-soft)}
+.fcard:hover .fgo{background:var(--brand);color:#fff}
+.fcard.dis{opacity:.55}
+.fitems{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.fitem{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer;padding:2px 4px;border-radius:6px}.fitem:hover{background:#f4f7fb}
+.fitem input{width:17px;height:17px}
 .fsec.other h4 span{color:var(--oth)}
 .bmcard{margin:4px 0 0}
 .bmshort{display:flex;align-items:center;gap:14px;padding:12px 18px}
@@ -152,6 +166,7 @@ ul.report li .ln{color:var(--ink2);font-size:13px;white-space:nowrap}
 .pchip button{border:0;background:none;cursor:pointer;color:#c62828}
 .pavg{font-weight:700;padding:3px 6px}
 .bmvbtns{display:flex;gap:10px;margin-top:12px;align-items:center}.bmvbtns .grow{flex:1}
+.sdrecent{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 10px}.sdrecent .lbl{width:100%;color:var(--ink2);font-size:14px}
 .bmsavedir{margin-top:8px}
 .bmgrid{display:grid;grid-template-columns:70px 1fr;gap:8px 12px;align-items:center}
 .bmgrid>label{color:var(--ink2);font-weight:600}

@@ -1438,10 +1438,83 @@
     }).catch(function () {});
   }
   function rememberSaveDir(h) {
-    saveDir = h; renderSaveBtn();
+    saveDir = h; fileSpot = null; renderSaveBtn();
+    if (h) addKnownDir(h);
     if (state.result && !$('resultArea').classList.contains('hidden')) renderResult();
     idbStore('readwrite', function (st) { return h ? st.put(h, HERE) : st.delete(HERE); }).catch(function () {});
   }
+  /**
+   * 記住用過的資料夾（選過、拖進來過、存過的）。之後拖進來的「檔案」如果在這些資料夾裡，
+   * 就能找出它所在的資料夾，自動存回去（瀏覽器不會直接告訴網頁檔案在哪個資料夾）。
+   */
+  var KNOWN_KEY = 'known-dirs';
+  function loadKnownDirs() {
+    return idbStore('readonly', function (st) { return st.get(KNOWN_KEY); }).then(function (l) { return Array.isArray(l) ? l.filter(function (h) { return h && h.resolve; }) : []; }).catch(function () { return []; });
+  }
+  function addKnownDir(h) {
+    if (!h || !h.isSameEntry) return Promise.resolve();
+    return loadKnownDirs().then(function (list) {
+      return Promise.all(list.map(function (x) { return x.isSameEntry(h).catch(function () { return false; }); })).then(function (same) {
+        var keep = list.filter(function (x, i) { return !same[i]; });
+        keep.unshift(h);
+        return idbStore('readwrite', function (st) { return st.put(keep.slice(0, 20), KNOWN_KEY); });
+      });
+    }).catch(function () {});
+  }
+  function dirAt(root, segs) {
+    return segs.reduce(function (p, seg) { return p.then(function (d) { return d.getDirectoryHandle(seg); }); }, Promise.resolve(root));
+  }
+
+  /** 拖進來（或用選檔視窗選）的檔案：找出它所在的資料夾 */
+  var fileSpot = null; // { fh, root, path } 已知資料夾但還要按一下允許；{ fh } 不知道在哪
+  function locateFiles(fhs) {
+    var fh = (fhs || []).filter(function (h) { return h && h.kind === 'file'; })[0];
+    if (!fh) return;
+    loadKnownDirs().then(function (list) {
+      if (saveDir && saveDir.resolve) list.unshift(saveDir);
+      var i = 0;
+      var tryNext = function () {
+        if (i >= list.length) return null;
+        var d = list[i++];
+        return d.resolve(fh).then(function (path) { return path ? { root: d, path: path } : tryNext(); }, tryNext);
+      };
+      return tryNext();
+    }).then(function (hit) {
+      if (!hit) { fileSpot = { fh: fh }; refreshSaveUi(); return; }
+      var segs = hit.path.slice(0, -1);
+      // 已經就是存檔資料夾
+      if (hit.root === saveDir && !segs.length) { fileSpot = null; refreshSaveUi(); return; }
+      var q = hit.root.queryPermission ? hit.root.queryPermission({ mode: 'readwrite' }) : Promise.resolve('granted');
+      return q.then(function (perm) {
+        if (perm !== 'granted') { fileSpot = { fh: fh, root: hit.root, path: hit.path }; refreshSaveUi(); return; }
+        return dirAt(hit.root, segs).then(function (sub) { switchToFileDir(sub); });
+      });
+    }).catch(function () { fileSpot = { fh: fh }; refreshSaveUi(); });
+  }
+  function switchToFileDir(sub) {
+    fileSpot = null;
+    var changed = !saveDir || saveDir.name !== sub.name;
+    rememberSaveDir(sub);
+    if (changed) toast('下載會直接存到「' + sub.name + '」（檔案所在的資料夾）');
+  }
+  function refreshSaveUi() { renderSaveBtn(); if (state.result && !$('resultArea').classList.contains('hidden')) renderResult(); }
+  /** 一鍵：存到檔案所在的資料夾 */
+  function useFileSpot() {
+    var sp = fileSpot; if (!sp) return;
+    if (sp.root) {
+      ensurePermission(sp.root).then(function () { return dirAt(sp.root, sp.path.slice(0, -1)); })
+        .then(switchToFileDir).catch(function (e) { toast('沒辦法切換：' + (e.message || e)); });
+      return;
+    }
+    // 不知道在哪：打開選資料夾視窗，直接停在檔案所在的位置，按「選取資料夾」就好
+    window.showDirectoryPicker({ startIn: sp.fh, mode: 'readwrite' }).then(function (h) {
+      return h.resolve(sp.fh).then(function (p) {
+        switchToFileDir(h);
+        if (!p) toast('已設定存到「' + h.name + '」（注意：剛剛的檔案不在這個資料夾裡）');
+      });
+    }).catch(function (e) { if (e && e.name !== 'AbortError') toast('選資料夾失敗：' + e.message); });
+  }
+
   function ensurePermission(h) {
     var o = { mode: 'readwrite' };
     if (!h.queryPermission) return Promise.resolve(true);
@@ -1509,6 +1582,14 @@
 
   /** 下載按鈕旁邊的「存到哪裡」按鈕 */
   function makeSaveDirBtn() {
+    if (fileSpot && window.showDirectoryPicker) {
+      var w2 = el('span', { 'class': 'savedirs' });
+      var q2 = el('button', { 'class': 'btn savedir quick', type: 'button', title: '下載存到剛剛放進來的檔案所在的資料夾' },
+        '📁 存到「<b>' + esc(fileSpot.fh.name) + '</b>」所在的資料夾' + (fileSpot.root ? '' : '<span class="muted" style="font-weight:400">（第一次要確認）</span>'));
+      q2.onclick = useFileSpot;
+      w2.appendChild(q2); w2.appendChild(makeSaveDirBtnPlain());
+      return w2;
+    }
     if (pendingDir && (!saveDir || saveDir.name !== pendingDir.name)) {
       var wrap = el('span', { 'class': 'savedirs' });
       var quick = el('button', { 'class': 'btn savedir quick', type: 'button', title: '把下載存到剛剛選的資料夾' }, '📁 存到剛剛選的「<b>' + esc(pendingDir.name) + '</b>」');
@@ -1569,8 +1650,9 @@
     }
     modal('<h3>存檔位置</h3>' +
       '<p>目前：' + (saveDir ? '<b>📁 ' + esc(saveDir.name) + '</b>（按下載會直接存進去）' : '<b>瀏覽器的「下載」資料夾</b>') + '</p>' +
+      '<div class="sdrecent" id="sdRecent"></div>' +
       '<p>這份系統放在：<br><code class="mono" style="word-break:break-all">' + esc(HERE) + '</code></p>' +
-      '<p class="muted">小技巧：用「📁 選擇整個資料夾」讀檔時，<b>直接選這份系統所在的資料夾</b>（或把它拖進來），就會自動設成存檔位置，不用另外設定。</p>' +
+      '<p class="muted">小技巧：選資料夾或把資料夾拖進來，就會自動存回那個資料夾；拖進來的是檔案時，如果檔案在用過的資料夾裡，也會自動存回檔案所在的資料夾。</p>' +
       '<ol class="next"><li><div>按下面的「📁 選資料夾」，到<b>上面這個位置</b>選資料夾（要存到別的地方也可以）。</div></li>' +
       '<li><div>之後在這份系統按「⬇ 下載」都會<b>直接存進那個資料夾</b>；同名檔案已存在時會自動加上 (1)、(2)，不會蓋掉。</div></li>' +
       '<li><div>每一份複製到不同位置的系統<b>各自記住自己的資料夾</b>。重新打開時瀏覽器可能會問一次「允許編輯檔案」，按允許即可。</div></li></ol>' +
@@ -1578,6 +1660,21 @@
       (saveDir ? '<button class="btn" id="sdReset">改回瀏覽器下載資料夾</button>' : '') +
       '<button class="btn" id="sdCancel">取消</button><button class="btn primary" id="sdPick">📁 選資料夾</button></div>');
     $('sdCancel').onclick = closeModal;
+    // 用過的資料夾：一鍵切換
+    loadKnownDirs().then(function (list) {
+      if (!list.length || !$('sdRecent')) return;
+      var box = $('sdRecent');
+      box.innerHTML = '<div class="lbl">用過的資料夾（點一下就切換）：</div>';
+      list.slice(0, 10).forEach(function (h) {
+        var cur = saveDir && saveDir.name === h.name;
+        var bt = el('button', { 'class': 'btn small' + (cur ? ' primary' : ''), type: 'button' }, '📁 ' + esc(h.name));
+        bt.onclick = function () {
+          ensurePermission(h).then(function () { rememberSaveDir(h); closeModal(); toast('之後按下載會直接存到「' + h.name + '」'); })
+            .catch(function (e) { toast('沒辦法使用「' + h.name + '」：' + (e.message || e)); });
+        };
+        box.appendChild(bt);
+      });
+    });
     if ($('sdReset')) $('sdReset').onclick = function () { rememberSaveDir(null); closeModal(); toast('改回存到瀏覽器的「下載」資料夾'); };
     $('sdPick').onclick = function () {
       window.showDirectoryPicker({ id: PICK_ID, mode: 'readwrite' }).then(function (h) {
@@ -1655,83 +1752,65 @@
       loadGroups([g[k1][0]], k1, null);
       return;
     }
-    var TITLES = { l2csv: '重測資料（同案件的 L02、L14、L20 合併成一個檔）', raw2mac: '全站儀觀測檔 .RAW', csv2cntmac: 'GPS 坐標檔 .CSV', coa2csv: '複丈輸入檔（.COA 界址點 ＋ .CTL 控制點）' };
-    var h = '<h3>在「' + esc(folderName) + '」找到這些資料</h3><div class="muted">勾選要轉換的項目（可以多選），再按下面的按鈕。' + ignoredNote + '</div>';
-    kinds.forEach(function (k) {
-      if (!g[k].length) return;
-      h += '<div class="fsec" data-k="' + k + '"><h4><span>' + TITLES[k] + '</span><label class="muted" style="font-size:14px;cursor:pointer;font-weight:400"><input type="checkbox" class="selall"> 全選</label></h4>';
-      g[k].forEach(function (item, i) {
-        var det;
-        if (k === 'l2csv') {
-          det = ['L02', 'L14', 'L20'].map(function (e) {
-            return '<span class="extb' + (item.exts.indexOf(e) < 0 ? ' miss' : '') + '">' + e + '</span>';
-          }).join('') + ' ' + ['控制點', '界址/參考點', '補點'].filter(function (t, j) { return item.exts.indexOf(['L02', 'L14', 'L20'][j]) >= 0; }).join('、');
-        } else if (k === 'coa2csv') {
-          det = ['COA', 'CTL', 'BNP', 'PAR'].map(function (e) {
-            return '<span class="extb' + (item.exts.indexOf(e) < 0 ? ' miss' : '') + '">' + e + '</span>';
-          }).join('') + ' 界址點' + (item.exts.indexOf('CTL') >= 0 ? '、控制點' : '') + (item.exts.indexOf('BNP') >= 0 ? '、可依地號挑選' : '');
-        } else det = '';
-        h += '<label class="item"><input type="checkbox" data-i="' + i + '"' + (g[k].length === 1 ? ' checked' : '') + '><span><b>' + esc(item.label) + '</b>' +
-          (det ? '<div class="det">' + det + '</div>' : '') + (item.dir ? '<div class="det">📁 ' + esc(item.dir) + '</div>' : '') + '</span></label>';
+    // ── 選擇要做什麼：和首頁一樣的卡片，點一下就開始 ──
+    var GROUPS = [
+      { tag: '匯出', cls: 'out', title: '重測系統 → 外業儀器', kinds: ['l2csv', 'coa2csv'] },
+      { tag: '匯入', cls: 'in', title: '外業資料 → 重測系統', kinds: ['raw2mac', 'csv2cntmac'] },
+      { tag: '其他', cls: 'other', title: '參考圖資', kinds: ['basemap'] }
+    ];
+    var found = { basemap: bmOpt ? g.l2csv : [] };
+    kinds.forEach(function (k) { found[k] = g[k]; });
+    var homeCard = function (k) { return document.querySelector('#home .card[data-kind=' + k + ']'); };
+    var extBadges = function (item, exts) { return exts.map(function (e) { return '<span class="extb' + (item.exts.indexOf(e) < 0 ? ' miss' : '') + '">' + e + '</span>'; }).join(''); };
+    var itemText = function (k, item) {
+      if (k === 'l2csv' || k === 'basemap') return '<b>' + esc(item.label) + '</b> ' + extBadges(item, ['L02', 'L14', 'L20']);
+      if (k === 'coa2csv') return '<b>' + esc(item.label) + '</b> ' + extBadges(item, ['COA', 'CTL', 'BNP', 'PAR']);
+      return '<b>' + esc(item.label) + '</b>';
+    };
+    var hasDbf = (g.dbf || []).length > 0;
+    var EXTRA = {
+      l2csv: '控制點、界址點、補點合併成一個坐標檔，放樣用',
+      coa2csv: '界址點＋控制點，可依地號挑點',
+      raw2mac: '每個 RAW 各自產生 .mac',
+      csv2cntmac: hasDbf ? '資料夾裡有 D14、D20：可以直接寫入重測系統' : '自動整理雜點，產生 .cnt',
+      basemap: '依點位範圍抓正射影像並置中，可選套合點校正偏差'
+    };
+    var h = '<h3>在「' + esc(folderName) + '」找到這些資料，要做什麼？</h3><div class="muted">點一下卡片就開始。' + ignoredNote + '</div>';
+    GROUPS.forEach(function (G) {
+      var ks = G.kinds.filter(function (k) { return found[k] && found[k].length; });
+      if (!ks.length) return;
+      h += '<div class="fgrp ' + G.cls + '"><h4><span class="tag">' + G.tag + '</span>' + G.title + '</h4>';
+      ks.forEach(function (k) {
+        var hc = homeCard(k), list = found[k], multi = list.length > 1;
+        h += '<div class="card fcard" role="button" tabindex="0" data-k="' + k + '"><span class="ico">' + (hc ? hc.querySelector('.ico').innerHTML : '') + '</span><span class="fbody">' +
+          '<span class="t">' + esc(KINDS[k].title.replace('（JPG + JGW）', '')) + '</span>' +
+          '<span class="d">' + esc(EXTRA[k]) + '</span>' +
+          (multi ? '<span class="fitems">' + list.map(function (item, ii) {
+            return '<label class="fitem"><input type="checkbox" data-i="' + ii + '" checked><span>' + itemText(k, item) + (item.dir && item.dir !== folderName ? ' <span class="muted">📁 ' + esc(item.dir) + '</span>' : '') + '</span></label>';
+          }).join('') + '</span>'
+            : '<span class="flow">' + itemText(k, list[0]) + '</span>') +
+          '</span><span class="fgo">' + (multi ? '開始（<b class="fn">' + list.length + '</b>）' : '開始') + ' →</span></div>';
       });
-      if (k === 'l2csv') {
-        var present = ['L02', 'L14', 'L20'].filter(function (e) { return g.l2csv.some(function (it) { return it.exts.indexOf(e) >= 0; }); });
-        h += '<div class="types"><span class="lbl">要匯入的資料：</span>' + present.map(function (e) {
-          var n = g.l2csv.filter(function (it) { return it.exts.indexOf(e) >= 0; }).length;
-          return '<label class="tchk on"><input type="checkbox" class="ltype" value="' + e + '" checked><span>' + L_LABEL[e] +
-            ' <span class="extb">' + e + '</span>' + (g.l2csv.length > 1 ? '<span class="muted">（' + n + ' 個案件有）</span>' : '') + '</span></label>';
-        }).join('') + '</div>';
-      }
-      h += '<div class="acts">';
-      h += '<button class="btn primary go-btn" disabled>轉換勾選的項目 →</button>';
-      h += '</div></div>';
+      h += '</div>';
     });
-    if (bmOpt) {
-      h += '<div class="fsec other"><h4><span>其他</span></h4>' + g.l2csv.map(function (item, i) {
-        return '<button class="card bmcard" type="button" data-bi="' + i + '"><span class="ico">' + BM_ICON + '</span><span><span class="t">輸出航照圖' + (g.l2csv.length > 1 ? '：' + esc(item.label) : '') + '</span>' +
-          '<span class="d">依 ' + esc(item.label) + ' 的點位範圍，自動抓國土測繪中心正射影像並置中，可選套合點校正偏差</span>' +
-          '<span class="flow"><b>' + item.exts.filter(function (e) { return e !== 'L02'; }).concat(item.exts.length === 1 ? item.exts : []).filter(function (e, k, a) { return a.indexOf(e) === k; }).join('</b> <b>') + '</b> → <b>.jpg</b> <b>.jgw</b></span></span></button>';
-      }).join('') + '</div>';
-    }
     h += '<div style="text-align:right;margin-top:14px"><button class="btn" id="fCancel">取消</button></div>';
-    modal(h);
-    Array.prototype.forEach.call($('modalBox').querySelectorAll('.bmcard'), function (c) {
-      c.onclick = function () { loadGroups([g.l2csv[+c.getAttribute('data-bi')]], 'basemap', null); };
-    });
+    modal(h, true);
     $('fCancel').onclick = closeModal;
-    Array.prototype.forEach.call($('modalBox').querySelectorAll('.fsec:not(.other)'), function (sec) {
-      var k = sec.getAttribute('data-k');
-      var boxes = sec.querySelectorAll('input[data-i]');
-      var btns = sec.querySelectorAll('.go-btn');
-      var types = sec.querySelectorAll('input.ltype');
-      var refresh = function () {
-        var n = Array.prototype.filter.call(boxes, function (b) { return b.checked; }).length;
-        var nt = Array.prototype.filter.call(types, function (b) { return b.checked; }).length;
-        Array.prototype.forEach.call(types, function (b) { b.parentNode.classList.toggle('on', b.checked); });
-        if (types.length && !nt) n = 0; // 一種資料都沒選，不能轉
-        Array.prototype.forEach.call(btns, function (b) {
-          b.disabled = !n;
-          b.textContent = b.textContent.replace(/（\d+ 項）/, '').replace(' →', '') + (n ? '（' + n + ' 項）' : '') + ' →';
-        });
-        sec.querySelector('.selall').checked = n === boxes.length;
-      };
-      Array.prototype.forEach.call(boxes, function (b) { b.onchange = refresh; });
-      Array.prototype.forEach.call(types, function (b) { b.onchange = refresh; });
-      sec.querySelector('.selall').onchange = function () {
-        var v = this.checked;
-        Array.prototype.forEach.call(boxes, function (b) { b.checked = v; });
-        refresh();
-      };
-      Array.prototype.forEach.call(btns, function (btn) {
-        btn.onclick = function () {
-          var picked = Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return g[k][+b.getAttribute('data-i')]; });
-          var keep = Array.prototype.filter.call(types, function (b) { return b.checked; }).map(function (b) { return b.value; });
-          loadGroups(picked, k, types.length ? keep : null);
-        };
+    Array.prototype.forEach.call($('modalBox').querySelectorAll('.fcard'), function (card) {
+      var k = card.getAttribute('data-k'), list = found[k];
+      var boxes = card.querySelectorAll('input[data-i]');
+      var picked = function () { return boxes.length ? Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return list[+b.getAttribute('data-i')]; }) : [list[0]]; };
+      Array.prototype.forEach.call(boxes, function (b) {
+        b.onclick = function (e) { e.stopPropagation(); };
+        b.onchange = function () { var n = picked().length; card.querySelector('.fn').textContent = n; card.classList.toggle('dis', !n); };
       });
-      refresh();
+      Array.prototype.forEach.call(card.querySelectorAll('.fitem'), function (l) { l.onclick = function (e) { e.stopPropagation(); }; });
+      var go = function () { var pk = picked(); if (!pk.length) { toast('請至少勾一個'); return; } loadGroups(pk, k, null); };
+      card.onclick = go;
+      card.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
     });
   }
+
 
   /** 讀取勾選的項目並開始轉換 */
   var folderDbf = [];
@@ -1791,7 +1870,7 @@
       try { return it.getAsFileSystemHandle().catch(function () { return null; }); } catch (e) { return Promise.resolve(null); }
     });
     var dirEntry = entries.filter(function (e) { return e && e.isDirectory; })[0];
-    if (!dirEntry) return Promise.resolve({ files: plainFiles, folder: null });
+    if (!dirEntry) return Promise.all(handleProms).then(function (hs) { return { files: plainFiles, folder: null, fileHandles: hs }; }, function () { return { files: plainFiles, folder: null }; });
     var dirName = dirEntry.name;
 
     var dirHandle = null;
@@ -1860,7 +1939,18 @@
   function bindDrop(zone, target) {
     zone.addEventListener('click', function (e) {
       if (e.target.closest && e.target.closest('button')) return;
-      pickTarget = target; $('fileInput').value = ''; $('fileInput').click();
+      pickTarget = target;
+      if (window.showOpenFilePicker) {
+        var acc = (target === 'work' && state.kind ? KINDS[state.kind].accept : '.raw,.csv,.txt,.asc,.l02,.l14,.l20,.coa,.ctl,.bnp,.par,.d14,.d20').split(',');
+        window.showOpenFilePicker({ multiple: true, id: PICK_ID, types: [{ description: '資料檔', accept: { 'application/octet-stream': acc } }] }).then(function (hs) {
+          return Promise.all(hs.map(function (h) { return h.getFile(); })).then(function (fs) { handleFiles(fs); locateFiles(hs); });
+        }).catch(function (e) {
+          if (e && e.name === 'AbortError') return;
+          $('fileInput').value = ''; $('fileInput').click();
+        });
+        return;
+      }
+      $('fileInput').value = ''; $('fileInput').click();
     });
     zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); zone.click(); } });
   }
@@ -1894,7 +1984,7 @@
     collectDropped(e.dataTransfer).then(function (res) {
       if (res.blocked) dropBlocked(res.folder);
       else if (res.folder) { considerSaveDir(res.dirHandle, res.files); handleFolder(res.files, res.folder); }
-      else if (res.files.length) handleFiles(res.files);
+      else if (res.files.length) { handleFiles(res.files); locateFiles(res.fileHandles); }
       else toast('沒有讀到檔案，請改用「📁 選資料夾」按鈕');
     }).catch(function (err) {
       toast('讀取拖入的檔案失敗，請改用「📁 選資料夾」按鈕（' + (err && err.message || err) + '）');
