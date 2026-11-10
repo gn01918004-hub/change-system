@@ -1495,20 +1495,16 @@
   }
 
   /**
-   * 選或拖進來的資料夾：裡面就有這份系統（同名 HTML）→ 直接設成存檔資料夾；
-   * 不是的話先記下來，下載按鈕旁邊會多一個「存到剛剛選的資料夾」可以一鍵切換。
+   * 選或拖進來的資料夾：直接設成存檔資料夾（之後按下載就存回這個資料夾），
+   * 不會一直沿用上次存的資料夾。要存到別處可以按「📁 存到：…（更改）」。
    */
   var pendingDir = null;
-  var HTML_NAME = (function () { try { return decodeURIComponent(location.pathname.split('/').pop()); } catch (e) { return ''; } })();
-  function considerSaveDir(h, files) {
+  function considerSaveDir(h) {
     if (!h || !h.getFileHandle) return;
-    var hasMe = HTML_NAME && (files || []).some(function (f) { return f.path === h.name + '/' + HTML_NAME; });
-    if (hasMe) {
-      pendingDir = null;
-      if (!saveDir || saveDir.name !== h.name) { rememberSaveDir(h); toast('下載會直接存到「' + h.name + '」（這份系統所在的資料夾）'); }
-    } else if (!saveDir || saveDir.name !== h.name) {
-      pendingDir = h;
-    }
+    pendingDir = null;
+    var changed = !saveDir || saveDir.name !== h.name;
+    rememberSaveDir(h); // 同名但不同位置的資料夾也要換成這一個
+    if (changed) toast('下載會直接存到「' + h.name + '」（剛剛選的資料夾）');
   }
 
   /** 下載按鈕旁邊的「存到哪裡」按鈕 */
@@ -2109,7 +2105,7 @@
         '<div class="muted">' + esc(b.out.note) + '</div>' +
         (stale ? '<div class="warnTxt">設定改過了，請按「重新抓航照底圖」更新。</div>' : '') +
         '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn go" id="bmSave" type="button">⬇ 下載 JPG + JGW</button><button class="btn primary" id="bmPick" type="button">🎯 選套合點</button><button class="btn" id="bmView" type="button">🔍 放大檢查</button></div>' +
-        '<div class="fstat" data-key="' + esc(b.out.files[0].name) + '"></div></div></div>');
+        '<div class="bmsavedir" id="bmSaveDir"></div><div class="fstat" data-key="' + esc(b.out.files[0].name) + '"></div></div></div>');
     }
     h.push('</div></div>');
     box.innerHTML = h.join('');
@@ -2134,6 +2130,7 @@
     $('bmGo').onclick = function () { makeBasemap(r, area.bbox, sh); };
     if (b.out) {
       $('bmSave').onclick = function () { downloadAll(b.out.files); };
+      $('bmSaveDir').appendChild(makeSaveDirBtn());
       $('bmPick').onclick = function () { viewBasemap(r, true); };
       $('bmView').onclick = $('bmThumb').onclick = function () { viewBasemap(r, false); };
     }
