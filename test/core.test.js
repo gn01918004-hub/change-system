@@ -472,3 +472,61 @@ test('資料夾：略過 KC0000.L02，除非路徑裡有 KC0000 資料夾', () =
   assert.deepStrictEqual(g.ignored, ['job/KC0000.L02']);
   assert.deepStrictEqual(g.l2csv.map((x) => x.dir + '/' + x.label).sort(), ['job/KC0000/KC0000', 'job/KC0390']);
 });
+
+test('航照底圖：TWD97 TM2 正反算（對照 pyproj，誤差 < 1 cm）', () => {
+  const ref = [[121.5654, 25.033, 307056.8190, 2769551.8369], [120.2, 22.0, 167396.5974, 2433773.1357],
+    [119.6, 23.6, 107115.2371, 2611424.3883], [121.0, 24.0, 250000.0, 2655023.1250]];
+  for (const [lon, lat, E, N] of ref) {
+    const t = Core.lonLatToTwd97(lon, lat);
+    assert.ok(Math.abs(t[0] - E) < 0.01 && Math.abs(t[1] - N) < 0.01, lon + ',' + lat + ' → ' + t);
+    const g = Core.twd97ToLonLat(E, N);
+    assert.ok(Math.abs(g[0] - lon) < 1e-7 && Math.abs(g[1] - lat) < 1e-7, 'back ' + g);
+  }
+});
+
+test('航照底圖：87 航照判讀點自動配對與位移（KC1117：100.87↔5.30、101.87↔6.30）', () => {
+  const pts = [
+    { label: '100.87', ref: 87, N: 2706886.4764731, E: 221006.58421228 },
+    { label: '5.30', ref: 30, N: 2706889.5425, E: 221008.2056 },
+    { label: '101.87', ref: 87, N: 2706871.0, E: 221010.0 },
+    { label: '6.30', ref: 30, N: 2706874.164, E: 221011.465 },
+    { label: '7.00', ref: 0, N: 2706886.5, E: 221006.6 }, // 編碼 00 不配
+    { label: '102.87', ref: 87, N: 2706000, E: 221000 } // 10 m 內沒有參考點
+  ];
+  const pairs = Core.imagePairsFromPoints(pts);
+  assert.deepStrictEqual(pairs.map((x) => x.label), ['100.87 ↔ 5.30', '101.87 ↔ 6.30', '102.87']);
+  const sh = Core.shiftFromPairs(pairs.filter((x) => x.real));
+  assert.strictEqual(sh.n, 2);
+  assert.ok(Math.abs(sh.dN - 3.115) < 0.001 && Math.abs(sh.dE - 1.543) < 0.001, JSON.stringify(sh));
+  assert.ok(sh.maxResidual < 0.1);
+  assert.strictEqual(Core.shiftFromPairs([]), null);
+});
+
+test('航照底圖：範圍規劃（_3826 直接裁切、通用版轉投影）與 JGW', () => {
+  const bb = Core.pointsBBox([{ N: 2706734.036, E: 220841.069 }, { N: 2706956.157, E: 221063.232 }, { N: 0, E: 0 }], 30);
+  assert.strictEqual(bb.count, 2);
+  const sh = { dN: 3.115, dE: 1.543 };
+  const a = Core.planBasemap(bb, 'PHOTO3826', sh);
+  assert.strictEqual(a.zoom, 13);
+  assert.ok(Math.abs(a.res - 0.26458386) < 1e-6);
+  // 左上角像素中心 = 磁磚格點 + 位移，且涵蓋整個範圍
+  const gx = (a.ulE - sh.dE - 50000) / a.res - 0.5, gy = (3000000 - (a.ulN - sh.dN)) / a.res - 0.5;
+  assert.ok(Math.abs(gx - Math.round(gx)) < 1e-6 && Math.abs(gy - Math.round(gy)) < 1e-6);
+  assert.ok(a.ulE - a.res / 2 <= bb.minE && a.ulE + (a.width - 0.5) * a.res >= bb.maxE);
+  assert.ok(a.tiles.some((t) => t.col === 2524 && t.row === 4327));
+  assert.ok(/\/97\/wmts\/PHOTO3826\/default\/default028mm\/13\/\d+\/\d+$/.test(a.tiles[0].url));
+  const b = Core.planBasemap(bb, 'PHOTO2', sh);
+  assert.strictEqual(b.zoom, 20);
+  assert.ok(b.res > 0.13 && b.res < 0.14);
+  assert.strictEqual(b.ulE, bb.minE + b.res / 2);
+  // 取樣點：輸出像素 → 拼圖像素，必須落在抓到的磁磚內
+  const f = Core.basemapSampler(b, sh);
+  for (const [i, j] of [[0, 0], [b.width - 1, b.height - 1]]) {
+    const m = f(i, j);
+    assert.ok(m[0] >= 0 && m[1] >= 0 && m[0] < b.tileCols * 256 && m[1] < b.tileRows * 256);
+  }
+  // 範圍太大時自動降解析度
+  const big = Core.planBasemap({ minE: 200000, maxE: 205000, minN: 2700000, maxN: 2705000 }, 'PHOTO2');
+  assert.ok(big.reduced > 0 && !big.tooBig);
+  assert.strictEqual(Core.worldFileText(0.25, 220811.125, 2706986.5), '0.25\r\n0\r\n0\r\n-0.25\r\n220811.125\r\n2706986.5\r\n');
+});

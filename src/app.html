@@ -118,6 +118,14 @@ ul.report li.warn{background:var(--warn-soft)} ul.report li.warn .lv{background:
 ul.report li.info{background:var(--info-soft)} ul.report li.info .lv{background:var(--info);color:#fff}
 ul.report li .ln{color:var(--ink2);font-size:13px;white-space:nowrap}
 
+.bmgrid{display:grid;grid-template-columns:70px 1fr;gap:8px 12px;align-items:center}
+.bmgrid>label{color:var(--ink2);font-weight:600}
+.bmmodes{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}.bmr{cursor:pointer}.bmr.dis{opacity:.45;cursor:default}
+.bmpairs{border-collapse:collapse;margin:4px 0;font-size:14px}.bmpairs th,.bmpairs td{border-bottom:1px solid var(--line);padding:4px 10px;text-align:left}.bmpairs tr.off td{opacity:.45}
+.bmshift{margin:10px 0;padding:8px 12px;background:#f3f7fb;border-radius:8px}
+.bmact{display:flex;gap:12px;align-items:center;margin-top:6px}
+.bmout{display:flex;gap:14px;margin-top:12px;align-items:flex-start;flex-wrap:wrap}.bmout img{width:180px;border:1px solid var(--line);border-radius:6px;cursor:zoom-in}
+.warnTxt{color:#b26a00}
 details.panel>summary{cursor:pointer;font-weight:700;font-size:18px;list-style:none;display:flex;align-items:center;gap:8px}
 details.panel>summary::-webkit-details-marker{display:none}
 details.panel>summary::before{content:"▸";transition:.15s;color:var(--ink2)}
@@ -431,6 +439,11 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
         <div class="files" id="files"></div>
         <div class="saveall" id="saveAll"></div>
       </div>
+
+      <details class="panel hidden" id="bmPanel">
+        <summary>🛰 航照底圖 <span class="muted" style="font-weight:400;font-size:14px">（自動抓本次範圍的正射影像，存 JPG + JGW，可校正偏差）</span></summary>
+        <div id="bm"></div>
+      </details>
 
       <div class="panel" id="nextPanel">
         <h3>接下來在重測系統 / 儀器上這樣做</h3>

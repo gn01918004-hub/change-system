@@ -1506,6 +1506,230 @@
     return out;
   }
 
+  // ═════════════ 6. 航照底圖（國土測繪中心 WMTS）與坐標換算 ═════════════
+  //
+  // TWD97 TM2（EPSG:3826）：GRS80 橢球、中央經線 121°、k0 = 0.9999、東偏 250000 m
+  // 底圖來源：
+  //   PHOTO2     正射影像圖(通用)，Web Mercator，第 20 層約 0.14 m／像素（需轉投影）
+  //   PHOTO3826  正射影像圖(通用)_3826，TWD97 原生，第 13 層 0.2646 m／像素（不用轉投影）
+
+  var GRS80_A = 6378137, GRS80_F = 1 / 298.257222101;
+  var TM2 = { lon0: 121, k0: 0.9999, fe: 250000, fn: 0 };
+
+  function tmConsts() {
+    var a = GRS80_A, f = GRS80_F, e2 = f * (2 - f), n = f / (2 - f);
+    var A = a / (1 + n) * (1 + n * n / 4 + Math.pow(n, 4) / 64);
+    var al = [n / 2 - 2 * n * n / 3 + 5 * Math.pow(n, 3) / 16, 13 * n * n / 48 - 3 * Math.pow(n, 3) / 5, 61 * Math.pow(n, 3) / 240];
+    var be = [n / 2 - 2 * n * n / 3 + 37 * Math.pow(n, 3) / 96, n * n / 48 + Math.pow(n, 3) / 15, 17 * Math.pow(n, 3) / 480];
+    var de = [2 * n - 2 * n * n / 3 - 2 * Math.pow(n, 3), 7 * n * n / 3 - 8 * Math.pow(n, 3) / 5, 56 * Math.pow(n, 3) / 15];
+    return { e2: e2, n: n, A: A, al: al, be: be, de: de };
+  }
+  var TMC = tmConsts();
+  var D2R = Math.PI / 180;
+
+  /** 經緯度（度）→ TWD97 TM2 [E, N]（Krüger 級數，精度遠優於 1 mm） */
+  function lonLatToTwd97(lon, lat) {
+    var c = TMC, phi = lat * D2R, lam = (lon - TM2.lon0) * D2R;
+    var e = Math.sqrt(c.e2);
+    var t = Math.sinh(atanh(Math.sin(phi)) - e * atanh(e * Math.sin(phi)));
+    var xi = Math.atan2(t, Math.cos(lam)), eta = atanh(Math.sin(lam) / Math.sqrt(1 + t * t));
+    var x = xi, y = eta;
+    for (var j = 1; j <= 3; j++) { x += c.al[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta); y += c.al[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta); }
+    return [TM2.fe + TM2.k0 * c.A * y, TM2.fn + TM2.k0 * c.A * x];
+  }
+  /** TWD97 TM2 [E, N] → 經緯度（度）[lon, lat] */
+  function twd97ToLonLat(E, N) {
+    var c = TMC;
+    var xi = (N - TM2.fn) / (TM2.k0 * c.A), eta = (E - TM2.fe) / (TM2.k0 * c.A);
+    var x = xi, y = eta;
+    for (var j = 1; j <= 3; j++) { x -= c.be[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta); y -= c.be[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta); }
+    var chi = Math.asin(Math.sin(x) / Math.cosh(y));
+    var phi = chi;
+    for (j = 1; j <= 3; j++) phi += c.de[j - 1] * Math.sin(2 * j * chi);
+    var lam = Math.atan2(Math.sinh(y), Math.cos(x));
+    return [TM2.lon0 + lam / D2R, phi / D2R];
+  }
+  function atanh(x) { return 0.5 * Math.log((1 + x) / (1 - x)); }
+
+  /** 經緯度 → Web Mercator 全域像素（第 z 層，256 像素磁磚） */
+  function lonLatToMercPx(lon, lat, z) {
+    var n = 256 * Math.pow(2, z), s = Math.sin(lat * D2R);
+    return [(lon + 180) / 360 * n, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n];
+  }
+
+  var BASEMAP_SOURCES = {
+    PHOTO2: { label: '正射影像圖(通用)・約 0.14 m', kind: 'merc', zoom: 20,
+      url: 'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{row}/{col}' },
+    PHOTO3826: { label: '正射影像圖(通用)_3826・0.26 m（TWD97 原生）', kind: 'tm2', zoom: 13, res: 944.9423660750896 * 0.00028,
+      originE: 50000, originN: 3000000,
+      url: 'https://wmts.nlsc.gov.tw/97/wmts/PHOTO3826/default/default028mm/{z}/{row}/{col}' }
+  };
+
+  /** 點位的範圍（N、E），外擴 margin 公尺 */
+  function pointsBBox(points, margin) {
+    var m = margin == null ? 30 : margin;
+    var b = { minE: Infinity, maxE: -Infinity, minN: Infinity, maxN: -Infinity, count: 0 };
+    points.forEach(function (p) {
+      var E = Number(p.E), N = Number(p.N);
+      if (!isFinite(E) || !isFinite(N) || !isYVal(N) || !isXVal(E)) return;
+      b.minE = Math.min(b.minE, E); b.maxE = Math.max(b.maxE, E); b.minN = Math.min(b.minN, N); b.maxN = Math.max(b.maxN, N); b.count++;
+    });
+    if (!b.count) return null;
+    b.minE -= m; b.maxE += m; b.minN -= m; b.maxN += m;
+    return b;
+  }
+
+  /**
+   * 航照偏差：配對「航照上讀到的位置」與「實測位置」，位移 = 實測 − 航照（取平均）。
+   * pairs：[{ img: {N, E}, real: {N, E}, label }] → { dN, dE, n, residuals: [mm…], maxResidual }
+   */
+  function shiftFromPairs(pairs) {
+    var ok = (pairs || []).filter(function (p) { return p && p.img && p.real; });
+    if (!ok.length) return null;
+    var dN = 0, dE = 0;
+    ok.forEach(function (p) { dN += p.real.N - p.img.N; dE += p.real.E - p.img.E; });
+    dN /= ok.length; dE /= ok.length;
+    var res = ok.map(function (p) { return Math.hypot(p.real.N - p.img.N - dN, p.real.E - p.img.E - dE); });
+    return { dN: dN, dE: dE, n: ok.length, dist: Math.hypot(dN, dE), residuals: res, maxResidual: Math.max.apply(null, res) };
+  }
+
+  /**
+   * 從 D14 自動找航照判讀點：編碼 imgRef（預設 87）的點，配對最近的其他參考點（編碼不是 00、也不是 imgRef），
+   * 距離 maxDist（預設 10 m）以內才配。
+   */
+  function suggestImagePairs(d14, imgRef, maxDist) {
+    var pts = [];
+    (d14 ? d14.records : []).forEach(function (r) {
+      if (r.deleted) return;
+      var num = parseInt(r.values.COT_NUMBER, 10), ref = parseInt(r.values.COT_REF, 10) || 0;
+      pts.push({ num: num, ref: ref, label: num + '.' + pad(ref, 2), N: parseFloat(r.values.COT_Y), E: parseFloat(r.values.COT_X) });
+    });
+    return imagePairsFromPoints(pts, imgRef, maxDist);
+  }
+  /** points：[{ label, ref（編碼）, N, E }] */
+  function imagePairsFromPoints(points, imgRef, maxDist) {
+    imgRef = imgRef == null ? 87 : imgRef; maxDist = maxDist || 10;
+    var img = [], real = [];
+    points.forEach(function (P) {
+      if (!isFinite(P.N) || !isFinite(P.E)) return;
+      if (P.ref === imgRef) img.push(P); else if (P.ref !== 0 && P.ref != null) real.push(P);
+    });
+    return img.map(function (p) {
+      var best = null;
+      real.forEach(function (q) { var d = Math.hypot(q.N - p.N, q.E - p.E); if (d <= maxDist && (!best || d < best.d)) best = { q: q, d: d }; });
+      return { img: p, real: best ? best.q : null, dist: best ? best.d : null, label: p.label + (best ? ' ↔ ' + best.q.label : '') };
+    });
+  }
+
+  /**
+   * 規劃要抓的範圍：bbox 是「實測坐標」，影像要往回移 shift 才對得上。
+   * 回傳 { width, height, res, ulE, ulN（左上像素中心，已含校正）, tiles:[{z,row,col,url}], source }
+   */
+  function planBasemap(bbox, sourceKey, shift, maxPixels) {
+    var src = BASEMAP_SOURCES[sourceKey] || BASEMAP_SOURCES.PHOTO2;
+    var plan;
+    // 範圍太大時自動降一層（解析度減半），最多降 4 層
+    for (var z = src.zoom; z >= src.zoom - 4; z--) {
+      plan = planAt(bbox, sourceKey, src, z, shift, maxPixels);
+      if (!plan.tooBig) break;
+    }
+    plan.reduced = src.zoom - plan.zoom;
+    return plan;
+  }
+  function planAt(bbox, sourceKey, src, zoom, shift, maxPixels) {
+    var sh = shift || { dN: 0, dE: 0 };
+    var limit = maxPixels || 25e6;
+    var tiles = [], plan = { source: sourceKey, kind: src.kind, zoom: zoom };
+    if (src.kind === 'tm2') {
+      // 影像坐標 = 實測 − shift；直接沿用磁磚的像素格，不用重新取樣
+      var r = src.res * Math.pow(2, src.zoom - zoom), span = 256 * r;
+      var iMinE = bbox.minE - sh.dE, iMaxE = bbox.maxE - sh.dE, iMinN = bbox.minN - sh.dN, iMaxN = bbox.maxN - sh.dN;
+      var c0 = Math.floor((iMinE - src.originE) / span), c1 = Math.floor((iMaxE - src.originE) / span);
+      var r0 = Math.floor((src.originN - iMaxN) / span), r1 = Math.floor((src.originN - iMinN) / span);
+      var px0 = Math.floor((iMinE - src.originE) / r), px1 = Math.ceil((iMaxE - src.originE) / r);
+      var py0 = Math.floor((src.originN - iMaxN) / r), py1 = Math.ceil((src.originN - iMinN) / r);
+      plan.res = r; plan.width = px1 - px0; plan.height = py1 - py0;
+      plan.cropX = px0 - c0 * 256; plan.cropY = py0 - r0 * 256;
+      plan.tileCols = c1 - c0 + 1; plan.tileRows = r1 - r0 + 1;
+      plan.ulE = src.originE + (px0 + 0.5) * r + sh.dE;
+      plan.ulN = src.originN - (py0 + 0.5) * r + sh.dN;
+      for (var row = r0; row <= r1; row++) for (var col = c0; col <= c1; col++) {
+        tiles.push({ z: zoom, row: row, col: col, dx: (col - c0) * 256, dy: (row - r0) * 256, url: src.url.replace('{z}', zoom).replace('{row}', row).replace('{col}', col) });
+      }
+    } else {
+      // Web Mercator：輸出用 TWD97 格網（像素大小取磁磚在當地的地面解析度），每個像素反算回磁磚取樣
+      var z = zoom;
+      var ll = twd97ToLonLat((bbox.minE + bbox.maxE) / 2, (bbox.minN + bbox.maxN) / 2);
+      var res = 2 * Math.PI * GRS80_A / (256 * Math.pow(2, z)) * Math.cos(ll[1] * D2R);
+      res = Math.round(res * 1e4) / 1e4;
+      plan.res = res;
+      plan.width = Math.ceil((bbox.maxE - bbox.minE) / res);
+      plan.height = Math.ceil((bbox.maxN - bbox.minN) / res);
+      plan.ulE = bbox.minE + res / 2; plan.ulN = bbox.maxN - res / 2;
+      // 需要的磁磚：影像坐標（實測 − shift）四角與邊上取點轉成墨卡托像素
+      var mx0 = Infinity, mx1 = -Infinity, my0 = Infinity, my1 = -Infinity;
+      for (var i = 0; i <= 8; i++) for (var k = 0; k <= 8; k++) {
+        var E = bbox.minE + (bbox.maxE - bbox.minE) * i / 8 - sh.dE, N = bbox.minN + (bbox.maxN - bbox.minN) * k / 8 - sh.dN;
+        var g = twd97ToLonLat(E, N), m = lonLatToMercPx(g[0], g[1], z);
+        mx0 = Math.min(mx0, m[0]); mx1 = Math.max(mx1, m[0]); my0 = Math.min(my0, m[1]); my1 = Math.max(my1, m[1]);
+      }
+      var tc0 = Math.floor(mx0 / 256) , tc1 = Math.floor(mx1 / 256), tr0 = Math.floor(my0 / 256), tr1 = Math.floor(my1 / 256);
+      plan.tileCols = tc1 - tc0 + 1; plan.tileRows = tr1 - tr0 + 1;
+      plan.mercOriginX = tc0 * 256; plan.mercOriginY = tr0 * 256;
+      for (var rr = tr0; rr <= tr1; rr++) for (var cc = tc0; cc <= tc1; cc++) {
+        tiles.push({ z: z, row: rr, col: cc, dx: (cc - tc0) * 256, dy: (rr - tr0) * 256, url: src.url.replace('{z}', z).replace('{row}', rr).replace('{col}', cc) });
+      }
+    }
+    plan.tiles = tiles;
+    plan.tooBig = plan.width * plan.height > limit || tiles.length > 2500;
+    plan.areaM = [(bbox.maxE - bbox.minE), (bbox.maxN - bbox.minN)];
+    return plan;
+  }
+
+  /**
+   * 輸出像素 (i, j) → 磁磚拼圖上的像素位置（Web Mercator 來源用）。已含校正：實測坐標 − shift = 影像坐標。
+   */
+  function basemapSampler(plan, shift) {
+    var sh = shift || { dN: 0, dE: 0 };
+    return function (i, j) {
+      var E = plan.ulE + i * plan.res - sh.dE, N = plan.ulN - j * plan.res - sh.dN;
+      var g = twd97ToLonLat(E, N), m = lonLatToMercPx(g[0], g[1], plan.zoom);
+      return [m[0] - plan.mercOriginX - 0.5, m[1] - plan.mercOriginY - 0.5];
+    };
+  }
+
+  /**
+   * Web Mercator 拼圖 → TWD97 格網（雙線性內插）。src：RGBA 陣列（拼圖），回傳 RGBA（plan.width × plan.height）。
+   * 坐標換算每 16 像素算一次精確值、中間線性內插（誤差遠小於 1 mm）。拼不到的地方填白色。
+   */
+  function resampleMercToTm2(src, srcW, srcH, plan, shift) {
+    var W = plan.width, H = plan.height, out = new Uint8ClampedArray(W * H * 4);
+    var f = basemapSampler(plan, shift), STEP = 16;
+    var gw = Math.ceil(W / STEP) + 1, gh = Math.ceil(H / STEP) + 1, gx = new Float64Array(gw * gh), gy = new Float64Array(gw * gh);
+    for (var b = 0; b < gh; b++) for (var a = 0; a < gw; a++) { var m = f(a * STEP, b * STEP); gx[b * gw + a] = m[0]; gy[b * gw + a] = m[1]; }
+    for (var j = 0; j < H; j++) {
+      var bj = Math.floor(j / STEP), tj = (j - bj * STEP) / STEP;
+      for (var i = 0; i < W; i++) {
+        var ai = Math.floor(i / STEP), ti = (i - ai * STEP) / STEP, k = bj * gw + ai;
+        var x = (gx[k] * (1 - ti) + gx[k + 1] * ti) * (1 - tj) + (gx[k + gw] * (1 - ti) + gx[k + gw + 1] * ti) * tj;
+        var y = (gy[k] * (1 - ti) + gy[k + 1] * ti) * (1 - tj) + (gy[k + gw] * (1 - ti) + gy[k + gw + 1] * ti) * tj;
+        var o = (j * W + i) * 4;
+        var x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+        if (x0 < 0 || y0 < 0 || x0 + 1 >= srcW || y0 + 1 >= srcH) { out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 255; continue; }
+        var p00 = (y0 * srcW + x0) * 4, p10 = p00 + 4, p01 = p00 + srcW * 4, p11 = p01 + 4;
+        for (var c = 0; c < 3; c++) out[o + c] = (src[p00 + c] * (1 - fx) + src[p10 + c] * fx) * (1 - fy) + (src[p01 + c] * (1 - fx) + src[p11 + c] * fx) * fy;
+        out[o + 3] = 255;
+      }
+    }
+    return out;
+  }
+
+  /** 世界檔（.jgw）：像素大小、0、0、−像素大小、左上像素中心 E、N（CRLF，同範例） */
+  function worldFileText(res, ulE, ulN) {
+    var f = function (v) { return Number(v).toFixed(14).replace(/0+$/, '').replace(/\.$/, ''); };
+    return [f(res), '0', '0', f(-res), f(ulE), f(ulN)].join('\r\n') + '\r\n';
+  }
+
   // ───────────────────────── 資料夾掃描 ─────────────────────────
 
   /** 同一個案件的 L02/L14/L20 視為一組：同資料夾、同主檔名（例如 KC0390.L02 + KC0390.L14）。 */
@@ -1609,6 +1833,18 @@
     isXVal: isXVal,
     coaToCsv: coaToCsv,
     writePoints: writePoints,
+    lonLatToTwd97: lonLatToTwd97,
+    twd97ToLonLat: twd97ToLonLat,
+    lonLatToMercPx: lonLatToMercPx,
+    BASEMAP_SOURCES: BASEMAP_SOURCES,
+    pointsBBox: pointsBBox,
+    shiftFromPairs: shiftFromPairs,
+    suggestImagePairs: suggestImagePairs,
+    imagePairsFromPoints: imagePairsFromPoints,
+    planBasemap: planBasemap,
+    basemapSampler: basemapSampler,
+    worldFileText: worldFileText,
+    resampleMercToTm2: resampleMercToTm2,
     parseDbf: parseDbf,
     appendDbf: appendDbf,
     planDbfWrite: planDbfWrite,

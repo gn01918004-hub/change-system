@@ -105,12 +105,13 @@
   function showHome() {
     $('toast').classList.add('hidden');
     state.kind = null; state.inputs = []; state.result = null; state.decisions = {};
+    bmD14 = null;
     $('home').classList.remove('hidden'); $('work').classList.add('hidden');
     window.scrollTo(0, 0);
   }
   function openKind(kind) {
     state.kind = kind;
-    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null; state.showOldFiles = false; state.fileRenames = {};
+    state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null; state.showOldFiles = false; state.fileRenames = {}; state.bm = null;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
     window.scrollTo(0, 0);
@@ -330,6 +331,7 @@
     renderReview(r);
     renderCoaPanel(r);
     renderDbfPanel(r);
+    renderBasemapPanel(r);
 
     // 副檔名選擇（重測資料匯出時顯示在存檔區最上面）
     var db = $('deviceBar'); db.innerHTML = '';
@@ -1286,7 +1288,7 @@
   }
 
   // ─────────── 存檔 ───────────
-  function blobOf(f) { return new Blob([f.content], { type: 'text/plain' }); }
+  function blobOf(f) { return f.content instanceof Blob ? f.content : new Blob([f.content], { type: 'text/plain' }); }
   /** 下載：有設定存檔資料夾就直接存進去，否則交給瀏覽器（「下載」資料夾） */
   /**
    * 下載：有設定存檔資料夾就直接存進去（存完會回頭檢查），否則交給瀏覽器。
@@ -1703,9 +1705,10 @@
         .map(function (f) { return { file: f.file, path: f.path }; });
     }));
     // GPS／全站儀：資料夾裡有 D14、D20 時一起讀進來（優先同一個資料夾）
-    if (DBF_KINDS[kind] && folderDbf.length) {
+    // 其他轉換：只帶 D14（航照底圖用 87 航照判讀點校正偏差）
+    if (folderDbf.length) {
       var dir = groups.length ? groups[0].dir : '';
-      ['D14', 'D20'].forEach(function (e) {
+      (DBF_KINDS[kind] ? ['D14', 'D20'] : ['D14']).forEach(function (e) {
         var cands = folderDbf.filter(function (d) { return d.ext === e; });
         var pick = cands.filter(function (d) { return d.dir === dir; })[0] || (cands.length === 1 ? cands[0] : null);
         if (pick) files.push({ file: pick.files[0].file, path: pick.files[0].path });
@@ -1714,6 +1717,7 @@
     readFiles(files).then(function (inputs) {
       closeModal();
       if (state.kind !== kind) openKind(kind);
+      bmD14 = null;
       mergeInputs(inputs);
       run();
     });
@@ -1725,6 +1729,7 @@
     files = files.filter(function (f) {
       var ext = Core.extName(f.name);
       if ((ext === 'D14' || ext === 'D20') && DBF_KINDS[state.kind]) { attachDbf(f); return false; }
+      if (ext === 'D14' || ext === 'D20') { if (ext === 'D14') stashBmD14(f); return false; }
       return true;
     });
     files.forEach(function (f) {
@@ -1907,6 +1912,7 @@
         return;
       }
       if (dbfs.length && ks.length) kinds[ks[0]] = kinds[ks[0]].concat(dbfs.filter(function () { return DBF_KINDS[ks[0]]; }));
+      dbfs.forEach(function (f) { if (Core.extName(f.name) === 'D14') stashBmD14(f); });
       if (!ks.length) {
         modal('<h3>認不出這個檔案</h3><p>' + esc(unknown.join('、')) + '</p><p>請直接在首頁點選要做的轉換，再放入檔案。</p><div style="text-align:right"><button class="btn primary" id="ok1">好</button></div>');
         $('ok1').onclick = closeModal;
@@ -1918,6 +1924,200 @@
       mergeInputs(kinds[k]);
       run();
     });
+  }
+
+  // ═════════════ 航照底圖（國土測繪中心 WMTS）＋ 偏差校正 ═════════════
+
+  var bmD14 = null; // 航照判讀點（87）用的 D14：{ name, db }
+  function stashBmD14(f) {
+    try { var db = Core.parseDbf(f.bytes); if (db.fields.some(function (x) { return x.name === 'COT_NUMBER'; })) bmD14 = { name: f.name, db: db }; } catch (e) {}
+  }
+  function loadBm() { try { return JSON.parse(localStorage.getItem('chsys-bm') || '{}'); } catch (e) { return {}; } }
+  function saveBm(o) { try { localStorage.setItem('chsys-bm', JSON.stringify(o)); } catch (e) {} }
+  function bmState() {
+    if (!state.bm) {
+      var m = loadBm();
+      state.bm = { src: m.src || 'PHOTO3826', margin: m.margin != null ? m.margin : 30, mode: null, manual: m.manual || {}, off: {}, out: null, busy: false };
+    }
+    return state.bm;
+  }
+  function bmD14Now() { return (state.dbf && state.dbf.D14 && { name: state.dbf.D14.name, db: state.dbf.D14.db }) || bmD14; }
+
+  /** 本次作業的點（決定底圖範圍）：剔除的點不算；重測資料有界址點時，控制點不算（控制點常分散很遠） */
+  function bmJobPoints(r) {
+    var pts = [];
+    r.parts.forEach(function (p) { var d = plotData(r, p, false); pts = pts.concat(d.bbox.filter(function (q) { return q.cls !== 'off'; })); });
+    var nonCtl = pts.filter(function (q) { return q.cls !== 'ctl'; });
+    return nonCtl.length ? nonCtl : pts;
+  }
+  function bmPairs() {
+    var d = bmD14Now();
+    return d ? Core.suggestImagePairs(d.db).filter(function (x) { return x.real; }) : [];
+  }
+  function bmShift() {
+    var b = bmState(), pairs = bmPairs();
+    var mode = b.mode || (pairs.length ? 'auto' : (b.manual[b.src] ? 'manual' : 'none'));
+    if (mode === 'auto') {
+      var sh = Core.shiftFromPairs(pairs.filter(function (x) { return !b.off[x.label]; }));
+      return sh ? { dN: sh.dN, dE: sh.dE, mode: mode, info: sh } : { dN: 0, dE: 0, mode: mode };
+    }
+    if (mode === 'manual') { var m = b.manual[b.src] || {}; return { dN: +m.dN || 0, dE: +m.dE || 0, mode: mode }; }
+    return { dN: 0, dE: 0, mode: 'none' };
+  }
+
+  function renderBasemapPanel(r) {
+    var panel = $('bmPanel'), box = $('bm');
+    var b = bmState();
+    var pts = bmJobPoints(r);
+    var bbox = Core.pointsBBox(pts, b.margin);
+    panel.classList.toggle('hidden', !bbox);
+    if (!bbox) return;
+    var sh = bmShift(), pairs = bmPairs(), d14 = bmD14Now();
+    var plan = Core.planBasemap(bbox, b.src, sh);
+    var srcOpts = Object.keys(Core.BASEMAP_SOURCES).map(function (k) { return '<option value="' + k + '"' + (k === b.src ? ' selected' : '') + '>' + esc(Core.BASEMAP_SOURCES[k].label) + '</option>'; }).join('');
+    var f2 = function (v) { return (v >= 0 ? '+' : '') + v.toFixed(3); };
+    var h = [];
+    h.push('<p class="muted" style="margin-top:0">依本次的 ' + pts.length + ' 個點自動決定範圍，從國土測繪中心抓正射影像，存成 <b>JPG + JGW</b>（TWD97 坐標，CAD／GIS 直接疊圖）。需要網路。</p>');
+    h.push('<div class="bmgrid">');
+    h.push('<label>範圍</label><div>約 ' + Math.round(plan.areaM[0]) + ' × ' + Math.round(plan.areaM[1]) + ' m（點位外擴 <input id="bmMargin" type="number" min="0" max="500" step="10" value="' + b.margin + '" style="width:70px"> m）</div>');
+    h.push('<label>圖源</label><div><select id="bmSrc">' + srcOpts + '</select>' +
+      (b.src === 'PHOTO2' ? '<div class="muted">較新、較清楚，但和 _3826 不是同一年的航照，偏差可能不同；87 點若是在 _3826 上讀的，建議改用「手動」並放大檢查。</div>' : '') + '</div>');
+    h.push('<label>解析度</label><div>' + plan.res.toFixed(3) + ' m／像素，' + plan.width + ' × ' + plan.height + ' 像素（' + plan.tiles.length + ' 張圖磚）' +
+      (plan.reduced ? '<span class="warnTxt">　範圍較大，已自動降低解析度</span>' : '') + (plan.tooBig ? '<span class="warnTxt">　範圍太大，請縮小外擴距離</span>' : '') + '</div>');
+    h.push('</div>');
+
+    // 偏差校正
+    h.push('<h4 style="margin:14px 0 6px">偏差校正 <span class="muted">（航照位置 → 實測位置）</span></h4>');
+    var radio = function (v, t, dis) { return '<label class="bmr' + (dis ? ' dis' : '') + '"><input type="radio" name="bmMode" value="' + v + '"' + (sh.mode === v ? ' checked' : '') + (dis ? ' disabled' : '') + '> ' + t + '</label>'; };
+    h.push('<div class="bmmodes">' + radio('auto', '自動（D14 的 87 航照判讀點）', !pairs.length) + radio('manual', '手動輸入') + radio('none', '不校正') + '</div>');
+    if (sh.mode === 'auto') {
+      h.push('<table class="bmpairs"><thead><tr><th>用</th><th>航照上讀的點</th><th>實測點</th><th>ΔN</th><th>ΔE</th><th>距離</th><th>和平均差</th></tr></thead><tbody>');
+      pairs.forEach(function (x) {
+        var dN = x.real.N - x.img.N, dE = x.real.E - x.img.E, on = !b.off[x.label];
+        var resid = on && sh.info ? Math.hypot(dN - sh.dN, dE - sh.dE) : null;
+        h.push('<tr' + (on ? '' : ' class="off"') + '><td><input type="checkbox" class="bmUse" data-l="' + esc(x.label) + '"' + (on ? ' checked' : '') + '></td><td>' + esc(x.img.label) + '</td><td>' + esc(x.real.label) + '</td><td>' + f2(dN) + '</td><td>' + f2(dE) + '</td><td>' + Math.hypot(dN, dE).toFixed(2) + ' m</td><td' + (resid > 0.5 ? ' class="warnTxt"' : '') + '>' + (resid == null ? '—' : resid.toFixed(2) + ' m') + '</td></tr>');
+      });
+      h.push('</tbody></table><div class="muted">來源：' + esc(d14.name) + '。自動配對：87 點找 10 m 內最近的參考點。和平均差超過 0.5 m 的配對可能配錯，可取消勾選。</div>');
+    } else if (sh.mode === 'manual') {
+      var m = b.manual[b.src] || {};
+      h.push('<div>N 方向 <input id="bmDN" type="number" step="0.001" value="' + (m.dN != null ? m.dN : '') + '" placeholder="0" style="width:100px"> m　E 方向 <input id="bmDE" type="number" step="0.001" value="' + (m.dE != null ? m.dE : '') + '" placeholder="0" style="width:100px"> m　<span class="muted">（實測 − 航照，例：航照偏西南就填正值；會記住，下次同圖源自動帶入）</span></div>');
+    }
+    if (!pairs.length) h.push('<div class="muted" style="margin-top:6px">' + (d14 ? esc(d14.name) + ' 裡沒有 87 編碼的航照判讀點。' : '想自動校正？') + '<button class="btn small" id="bmPickD14" type="button">選 D14 檔讀 87 點</button></div>');
+    h.push('<div class="bmshift">套用位移：<b>N ' + f2(sh.dN) + ' m、E ' + f2(sh.dE) + ' m</b>（共 ' + Math.hypot(sh.dN, sh.dE).toFixed(2) + ' m）</div>');
+
+    h.push('<div class="bmact"><button class="btn primary" id="bmGo" type="button"' + (plan.tooBig || b.busy ? ' disabled' : '') + '>' + (b.busy ? '下載中…' : '🛰 抓航照底圖') + '</button><span id="bmProg" class="muted"></span></div>');
+    if (b.out) {
+      h.push('<div class="bmout"><img id="bmThumb" src="' + b.out.url + '" alt="航照底圖" title="點一下放大檢查"><div><div><b>' + esc(b.out.files[0].name) + '</b>＋<b>' + esc(b.out.files[1].name) + '</b>　' + b.out.w + ' × ' + b.out.h + '，' + fmtSize(b.out.files[0].content.size) + '</div>' +
+        '<div class="muted">' + esc(b.out.note) + '</div>' +
+        '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn go" id="bmSave" type="button">⬇ 下載 JPG + JGW</button><button class="btn" id="bmView" type="button">🔍 放大檢查（疊點位）</button></div></div></div>');
+    }
+    box.innerHTML = h.join('');
+
+    var rerender = function () { renderBasemapPanel(state.result); };
+    var persist = function () { saveBm({ src: b.src, margin: b.margin, manual: b.manual }); };
+    $('bmMargin').onchange = function () { b.margin = Math.max(0, Math.min(500, +this.value || 0)); persist(); rerender(); };
+    $('bmSrc').onchange = function () { b.src = this.value; persist(); rerender(); };
+    Array.prototype.forEach.call(box.querySelectorAll('input[name=bmMode]'), function (x) { x.onchange = function () { b.mode = x.value; rerender(); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('.bmUse'), function (x) { x.onchange = function () { b.off[x.getAttribute('data-l')] = !x.checked; rerender(); }; });
+    if ($('bmDN')) [$('bmDN'), $('bmDE')].forEach(function (x) {
+      x.onchange = function () { var v = $('bmDN').value, w = $('bmDE').value; b.manual[b.src] = { dN: v === '' ? 0 : +v, dE: w === '' ? 0 : +w }; persist(); rerender(); };
+    });
+    if ($('bmPickD14')) $('bmPickD14').onclick = function () {
+      var inp = el('input', { type: 'file', accept: '.D14,.d14' });
+      inp.onchange = function () { if (!inp.files[0]) return; readFiles([inp.files[0]]).then(function (l) { stashBmD14(l[0]); if (!bmD14) toast('讀不懂這個 D14'); b.mode = null; rerender(); }); };
+      inp.click();
+    };
+    $('bmGo').onclick = function () { makeBasemap(r, bbox, sh); };
+    if (b.out) {
+      $('bmSave').onclick = function () { downloadAll(b.out.files); };
+      $('bmView').onclick = $('bmThumb').onclick = function () { viewBasemap(r); };
+    }
+  }
+
+  /** 依序抓磁磚（同時 6 張），拼成一張圖 */
+  function fetchTiles(plan, onProgress) {
+    var W = plan.tileCols * 256, H = plan.tileRows * 256;
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+    var i = 0, done = 0, failed = 0, lastErr = '';
+    function next() {
+      if (i >= plan.tiles.length) return Promise.resolve();
+      var t = plan.tiles[i++];
+      return fetch(t.url).then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+      }).then(function (bl) { return createImageBitmap(bl); }).then(function (im) { g.drawImage(im, t.dx, t.dy); if (im.close) im.close(); })
+        .catch(function (e) { failed++; lastErr = e.message || String(e); })
+        .then(function () { done++; onProgress(done, plan.tiles.length); return next(); });
+    }
+    var workers = []; for (var k = 0; k < 6; k++) workers.push(next());
+    return Promise.all(workers).then(function () { return { canvas: cv, failed: failed, lastErr: lastErr }; });
+  }
+
+  function makeBasemap(r, bbox, sh) {
+    var b = bmState();
+    var plan = Core.planBasemap(bbox, b.src, sh);
+    if (plan.tooBig) return;
+    b.busy = true; b.out = null; renderBasemapPanel(r);
+    var prog = function (d, n) { var e = $('bmProg'); if (e) e.textContent = '下載圖磚 ' + d + ' / ' + n; };
+    fetchTiles(plan, prog).then(function (m) {
+      if (m.failed === plan.tiles.length) throw new Error('連不上國土測繪中心的圖資服務（' + m.lastErr + '）。請確認電腦有連上網路，或稍後再試。');
+      var e = $('bmProg'); if (e) e.textContent = '組合影像中…';
+      return new Promise(function (ok) { setTimeout(ok, 30); }).then(function () {
+        var out = document.createElement('canvas'); out.width = plan.width; out.height = plan.height;
+        var og = out.getContext('2d');
+        if (plan.kind === 'merc') {
+          var src = m.canvas.getContext('2d').getImageData(0, 0, m.canvas.width, m.canvas.height);
+          var px = Core.resampleMercToTm2(src.data, src.width, src.height, plan, sh);
+          og.putImageData(new ImageData(px, plan.width, plan.height), 0, 0);
+        } else {
+          og.drawImage(m.canvas, plan.cropX, plan.cropY, plan.width, plan.height, 0, 0, plan.width, plan.height);
+        }
+        return new Promise(function (ok, bad) { out.toBlob(function (bl) { bl ? ok({ blob: bl, failed: m.failed, canvas: out }) : bad(new Error('影像太大，瀏覽器無法存成 JPG，請縮小範圍')); }, 'image/jpeg', 0.9); });
+      });
+    }).then(function (x) {
+      var base = bmBaseName();
+      var note = (b.src === 'PHOTO2' ? '正射影像圖(通用)' : '正射影像圖(通用)_3826') + '，' + plan.res.toFixed(3) + ' m／像素；' +
+        (sh.mode === 'none' ? '未校正偏差' : '已校正 N ' + (sh.dN >= 0 ? '+' : '') + sh.dN.toFixed(3) + '、E ' + (sh.dE >= 0 ? '+' : '') + sh.dE.toFixed(3) + ' m') +
+        (x.failed ? '；有 ' + x.failed + ' 張圖磚沒抓到（白色區塊）' : '');
+      if (b.out && b.out.url) URL.revokeObjectURL(b.out.url);
+      b.out = { url: URL.createObjectURL(x.blob), w: plan.width, h: plan.height, plan: plan, shift: sh, note: note,
+        files: [{ name: base + '_航照.jpg', content: x.blob }, { name: base + '_航照.jgw', content: Core.worldFileText(plan.res, plan.ulE, plan.ulN) }] };
+      b.busy = false; renderBasemapPanel(r);
+      toast('航照底圖好了，按「下載 JPG + JGW」存檔');
+    }).catch(function (e) {
+      b.busy = false; renderBasemapPanel(r);
+      modal('<h3>❌ 航照底圖沒有抓成功</h3><p>' + esc(e.message || e) + '</p><div style="text-align:right;margin-top:12px"><button class="btn primary" id="bmErrOk">知道了</button></div>');
+      $('bmErrOk').onclick = closeModal;
+    });
+  }
+
+  function bmBaseName() {
+    var n = (state.opts.outName || (state.inputs[0] && state.inputs[0].name) || '航照').replace(/\.[^.]*$/, '');
+    return n || '航照';
+  }
+
+  /** 放大檢查：影像上疊本次點位與 87 配對（紅＝實測、藍＝航照判讀） */
+  function viewBasemap(r) {
+    var b = bmState(), o = b.out; if (!o) return;
+    var W = 900, H = Math.round(900 * o.h / o.w);
+    if (H > 640) { H = 640; W = Math.round(640 * o.w / o.h); }
+    var s = W / o.w, pl = o.plan;
+    var X = function (E) { return ((E - pl.ulE) / pl.res + 0.5) * s; }, Y = function (N) { return ((pl.ulN - N) / pl.res + 0.5) * s; };
+    var svg = ['<svg viewBox="0 0 ' + W + ' ' + H + '" style="position:absolute;left:0;top:0;width:100%;height:100%">'];
+    bmJobPoints(r).forEach(function (q) { svg.push('<circle cx="' + X(q.E).toFixed(1) + '" cy="' + Y(q.N).toFixed(1) + '" r="3" fill="#ffd400" stroke="#000" stroke-width=".8"><title>' + esc(q.name) + '</title></circle>'); });
+    bmPairs().forEach(function (x) {
+      svg.push('<line x1="' + X(x.img.E).toFixed(1) + '" y1="' + Y(x.img.N).toFixed(1) + '" x2="' + X(x.real.E).toFixed(1) + '" y2="' + Y(x.real.N).toFixed(1) + '" stroke="#fff" stroke-width="1"/>');
+      svg.push('<circle cx="' + X(x.img.E).toFixed(1) + '" cy="' + Y(x.img.N).toFixed(1) + '" r="5" fill="none" stroke="#19c3ff" stroke-width="2"><title>' + esc(x.img.label) + '（航照判讀）</title></circle>');
+      svg.push('<circle cx="' + X(x.real.E).toFixed(1) + '" cy="' + Y(x.real.N).toFixed(1) + '" r="5" fill="none" stroke="#ff3b30" stroke-width="2"><title>' + esc(x.real.label) + '（實測）</title></circle>');
+    });
+    svg.push('</svg>');
+    modal('<h3>航照底圖檢查 <span class="muted">' + esc(o.note) + '</span></h3>' +
+      '<div class="legend"><span><i style="background:#ffd400"></i>本次點位</span><span><i style="border:2px solid #ff3b30"></i>實測點</span><span><i style="border:2px solid #19c3ff"></i>87 航照判讀點</span></div>' +
+      '<div style="position:relative;width:' + W + 'px;max-width:100%;margin:8px auto 0"><img src="' + o.url + '" style="display:block;width:100%">' + svg.join('') + '</div>' +
+      '<p class="muted">校正後，建物角、圍牆等地物應該對到<b>紅圈（實測）</b>。滑鼠移到點上可看點名。</p>' +
+      '<div style="text-align:right;margin-top:8px"><button class="btn primary" id="bmClose">關閉</button></div>', true);
+    $('bmClose').onclick = closeModal;
   }
 
   // ═════════════ 版本、更新歷程、新版本提醒 ═════════════
