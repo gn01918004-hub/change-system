@@ -1565,6 +1565,28 @@
       url: 'https://wmts.nlsc.gov.tw/97/wmts/PHOTO3826/default/default028mm/{z}/{row}/{col}' }
   };
 
+  // ─── TWD67 段 ───
+  // 苗栗地所以 TWD67 為主的段（同「地籍共作平台」的段名表紅字）
+  var SECTIONS_67 = ('0346 0347 0348 0349 0350 0351 0352 0353 0357 0358 0359 0360 0361 0362 0363 0364 0365 ' +
+    '0367 0370 0375 0376 0377 0378 0379 0380').split(' ').map(function (x) { return 'KC' + x; });
+  var SECTION_NAMES = {"KC0300": "苑裡段北勢小段", "KC0306": "苑裡坑段水柳坡小段", "KC0308": "貓盂段貓盂小段", "KC0309": "田寮段", "KC0310": "舊社段", "KC0314": "芎蕉坑段", "KC0317": "南勢林段", "KC0319": "社苓段社苓小段", "KC0320": "山柑段山柑小段", "KC0321": "山柑段山柑尾小段", "KC0322": "房裡段", "KC0324": "內湖島段", "KC0325": "新埔段", "KC0327": "北勢窩段", "KC0328": "烏眉坑段", "KC0329": "楓樹窩段", "KC0331": "圳頭段", "KC0336": "土城段", "KC0337": "南和段", "KC0338": "福興段", "KC0339": "大坪頂段", "KC0341": "五里牌段隘口寮小段", "KC0343": "五里牌段五里牌小段", "KC0344": "五里牌段羊寮小段", "KC0345": "五里牌段五福小段", "KC0346": "通東段", "KC0347": "通西段", "KC0348": "通南段", "KC0349": "通北段", "KC0350": "竹林段", "KC0351": "平元段", "KC0352": "海濱段", "KC0353": "南華段", "KC0354": "苑港段", "KC0355": "西海段", "KC0356": "房南段", "KC0357": "苑東段", "KC0358": "苑西段", "KC0359": "苑南段", "KC0360": "苑北段", "KC0361": "苑中段", "KC0362": "新興段", "KC0363": "福田段", "KC0364": "中正段", "KC0365": "房北段", "KC0366": "泰田段", "KC0367": "社柑段", "KC0368": "田中段", "KC0369": "田心段", "KC0370": "鎮安段", "KC0375": "玉山段", "KC0376": "玉豐段", "KC0377": "文山段", "KC0378": "新復北段", "KC0379": "新復南段", "KC0380": "新復東段", "KC0381": "白沙段", "KC0382": "白東段", "KC0383": "內島段", "KC0384": "雲天段", "KC0385": "通灣段", "KC0386": "通平段", "KC0387": "啟心段", "KC0388": "上舘段", "KC0389": "火炎山段", "KC0390": "慈護段", "KC0391": "致民段", "KC0392": "十股段", "KC0393": "蕉埔段", "KC0394": "保安林段", "KC0395": "內湖東段", "KC0396": "內湖西段", "KC0397": "藍田段", "KC0398": "北梅段", "KC0399": "興隆段", "KC1100": "苑坑段", "KC1101": "中溝段", "KC1102": "南山段", "KC1103": "順天段", "KC1104": "中山段", "KC1105": "五南段", "KC1106": "梅南東段", "KC1107": "梅南西段", "KC1108": "大埔北段", "KC1109": "大浦南段", "KC1110": "石頭坑段", "KC1111": "南勢林坑段", "KC1112": "湖內段", "KC1113": "下坪段", "KC1114": "水尾段", "KC1115": "上坪段", "KC1116": "城南溪南段", "KC1117": "城北段", "KC1118": "城南段", "KC1119": "大南窩段"};
+  /** 從檔名／路徑找段號：KC0367.L14、0367、367 → KC0367 */
+  function sectionCode(name) {
+    var m = /(?:^|[^A-Za-z0-9])([A-Za-z]{2})(\d{4})(?![0-9])/.exec('/' + String(name || ''));
+    return m ? m[1].toUpperCase() + m[2] : null;
+  }
+  function sectionDatum(code) { return code && SECTIONS_67.indexOf(code) >= 0 ? 'TWD67' : 'TWD97'; }
+  /** TWD67 → TWD97 近似公式（誤差約 1～2 m；同地籍共作平台） */
+  function twd67to97(N, E) {
+    var A = 0.00001549, B = 0.000006521;
+    return [N - 248.6 + A * N + B * E, E + 807.8 + A * E + B * N];
+  }
+  function twd97to67(N, E) {
+    var g = [N + 248.6, E - 807.8];
+    for (var k = 0; k < 4; k++) { var q = twd67to97(g[0], g[1]); g = [g[0] + N - q[0], g[1] + E - q[1]]; }
+    return g;
+  }
+
   /** 點位的範圍（N、E），外擴 margin 公尺 */
   function pointsBBox(points, margin) {
     var m = margin == null ? 30 : margin;
@@ -1668,7 +1690,16 @@
    * 規劃要抓的範圍：bbox 是「實測坐標」，影像要往回移 shift 才對得上。
    * 回傳 { width, height, res, ulE, ulN（左上像素中心，已含校正）, tiles:[{z,row,col,url}], source }
    */
-  function planBasemap(bbox, sourceKey, shift, maxPixels) {
+  function planBasemap(bbox, sourceKey, shift, maxPixels, datum) {
+    if (datum === 'TWD67') {
+      // 67 段：在範圍內 67→97 幾乎就是平移（縮放、旋轉在 2 km 內 < 2 cm），用中心點的差當平移量
+      var cN = (bbox.minN + bbox.maxN) / 2, cE = (bbox.minE + bbox.maxE) / 2, q = twd67to97(cN, cE);
+      var dN = q[0] - cN, dE = q[1] - cE;
+      var p97 = planBasemap({ minE: bbox.minE + dE, maxE: bbox.maxE + dE, minN: bbox.minN + dN, maxN: bbox.maxN + dN }, sourceKey, shift, maxPixels);
+      p97.datum = 'TWD67'; p97.datumOffset = { dN: dN, dE: dE };
+      p97.ulE -= dE; p97.ulN -= dN;
+      return p97;
+    }
     var src = BASEMAP_SOURCES[sourceKey] || BASEMAP_SOURCES.PHOTO2;
     var plan;
     // 範圍太大時自動降一層（解析度減半），最多降 4 層
@@ -1734,8 +1765,9 @@
    */
   function basemapSampler(plan, shift) {
     var sh = shift || { dN: 0, dE: 0 };
+    var off = plan.datumOffset || { dN: 0, dE: 0 };
     return function (i, j) {
-      var E = plan.ulE + i * plan.res - sh.dE, N = plan.ulN - j * plan.res - sh.dN;
+      var E = plan.ulE + off.dE + i * plan.res - sh.dE, N = plan.ulN + off.dN - j * plan.res - sh.dN;
       var g = twd97ToLonLat(E, N), m = lonLatToMercPx(g[0], g[1], plan.zoom);
       return [m[0] - plan.mercOriginX - 0.5, m[1] - plan.mercOriginY - 0.5];
     };
@@ -1889,6 +1921,12 @@
     planBasemap: planBasemap,
     basemapSampler: basemapSampler,
     worldFileText: worldFileText,
+    SECTIONS_67: SECTIONS_67,
+    SECTION_NAMES: SECTION_NAMES,
+    sectionCode: sectionCode,
+    sectionDatum: sectionDatum,
+    twd67to97: twd67to97,
+    twd97to67: twd97to67,
     resampleMercToTm2: resampleMercToTm2,
     parseDbf: parseDbf,
     appendDbf: appendDbf,

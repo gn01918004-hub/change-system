@@ -547,3 +547,26 @@ test('航照底圖：範圍以主要點群為中心，排除遠方零星點（KC
   assert.ok(all.bbox.minE < 216330);
   assert.strictEqual(Core.splitClusters(pts, 150).length, 2);
 });
+
+test('航照底圖：TWD67 段自動判斷與 67 坐標輸出', () => {
+  assert.strictEqual(Core.sectionCode('job/KC0367/KC0367.L14'), 'KC0367');
+  assert.strictEqual(Core.sectionCode('abc.L14'), null);
+  assert.strictEqual(Core.sectionDatum('KC0367'), 'TWD67');
+  assert.strictEqual(Core.sectionDatum('KC1101'), 'TWD97');
+  assert.strictEqual(Core.SECTION_NAMES.KC0367, '社柑段');
+  // 近似公式（同地籍共作平台）：約 E +828、N −205；反算回來一致
+  const q = Core.twd67to97(2707050, 220123);
+  assert.ok(Math.abs(q[1] - 220123 - 828.86) < 0.05 && Math.abs(q[0] - 2707050 + 205.2) < 0.05, String(q));
+  const back = Core.twd97to67(q[0], q[1]);
+  assert.ok(Math.abs(back[0] - 2707050) < 1e-6 && Math.abs(back[1] - 220123) < 1e-6);
+  // 67 範圍：JGW 是 67 坐標，換回 97 後落在 _3826 圖磚的格點上（< 1 cm）
+  const bb = { minE: 219982, maxE: 220264, minN: 2706909, maxN: 2707191 };
+  const p = Core.planBasemap(bb, 'PHOTO3826', null, null, 'TWD67');
+  assert.strictEqual(p.datum, 'TWD67');
+  assert.ok(p.ulE > 219900 && p.ulE < 220000, String(p.ulE));
+  const u = Core.twd67to97(p.ulN, p.ulE), fx = (u[1] - 50000) / p.res - 0.5, fy = (3000000 - u[0]) / p.res - 0.5;
+  assert.ok(Math.abs(fx - Math.round(fx)) * p.res < 0.01 && Math.abs(fy - Math.round(fy)) * p.res < 0.01);
+  // Web Mercator 來源：取樣點要落在抓到的圖磚裡
+  const m = Core.planBasemap(bb, 'PHOTO2', null, null, 'TWD67'), f = Core.basemapSampler(m);
+  for (const [i, j] of [[0, 0], [m.width - 1, m.height - 1]]) { const s = f(i, j); assert.ok(s[0] >= 0 && s[1] >= 0 && s[0] < m.tileCols * 256 && s[1] < m.tileRows * 256); }
+});

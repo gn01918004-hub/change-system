@@ -488,7 +488,7 @@
     var area = bmArea(r), st = $('status');
     if (area) {
       st.className = 'status ok';
-      st.innerHTML = '<div class="si">🛰</div><div><div class="st">讀到 ' + bmAllPoints(r).length + ' 個點，可以抓航照了</div><div class="ss">範圍以 ' + area.main.length + ' 個點為中心，約 ' + Math.round(area.size[0]) + ' × ' + Math.round(area.size[1]) + ' m。照下面 1～4 步做。</div></div>';
+      st.innerHTML = '<div class="si">🛰</div><div><div class="st">讀到 ' + bmAllPoints(r).length + ' 個點，可以抓航照了</div><div class="ss">' + esc(bmDatumText()) + '範圍以 ' + area.main.length + ' 個點為中心，約 ' + Math.round(area.size[0]) + ' × ' + Math.round(area.size[1]) + ' m。照下面 1～4 步做。</div></div>';
     }
     setSteps(bmState().out ? 3 : 2);
     renderBasemapPanel(r);
@@ -2133,12 +2133,19 @@
     var area = bmArea(r);
     if (!area) { box.innerHTML = '<div class="blocked">讀不到坐標，請確認放的是 .L14／.L20（或 .L02）。</div>'; return; }
     var sh = bmShift(), pairs = bmPairs(), d14 = bmD14Now();
-    var plan = Core.planBasemap(area.bbox, b.src, sh);
+    var dt = bmDatum(), plan = Core.planBasemap(area.bbox, b.src, sh, null, dt.datum);
     var h = [];
 
     // ① 範圍
     h.push('<div class="bmsec"><div class="bmnum">1</div><div class="bmbody"><h4>範圍 <span class="muted">（以點位為中心）</span></h4>');
     h.push('<div class="bmgrid">');
+    var dtxt = dt.codes.length ? dt.codes.map(function (c) { return secLabel(c) + '（' + (Core.sectionDatum(c) === 'TWD67' ? '67 段' : '97 段') + '）'; }).join('、') : '檔名看不出段號';
+    h.push('<label>坐標</label><div class="bmdat"><span class="seg">' + ['', 'TWD97', 'TWD67'].map(function (v) {
+      var on = v ? (dt.forced && dt.datum === v) : !dt.forced;
+      return '<button type="button" class="bmDt' + (on ? ' on' : '') + '" data-v="' + v + '">' + (v ? v : '自動（' + dt.auto + '）') + '</button>';
+    }).join('') + '</span> <span class="muted">' + esc(dtxt) + '</span>' +
+      (dt.datum === 'TWD67' ? '<div class="bmnote" style="margin-top:6px">這是 <b>TWD67</b> 的段：航照會自動換算成 67 坐標輸出（JGW 也是 67），可以直接和這個段的資料疊圖。67→97 用近似公式（誤差約 1～2 m），剩下的偏差用下面的套合點校正。</div>' : '') +
+      (dt.mixed ? '<div class="warnTxt">⚠ 放進來的檔案有 67 段也有 97 段，請一次只放同一個坐標系統的段，或在上面指定。</div>' : '') + '</div>');
     h.push('<label>中心</label><div>' + area.main.length + ' 個點的中心（N ' + area.center.N.toFixed(1) + '、E ' + area.center.E.toFixed(1) + '）</div>');
     h.push('<label>大小</label><div>' + Math.round(area.size[0]) + ' × ' + Math.round(area.size[1]) + ' m　點位外擴 <input id="bmMargin" type="number" min="0" max="500" step="10" value="' + b.margin + '" style="width:64px"> m，最小 <input id="bmMin" type="number" min="50" max="2000" step="50" value="' + b.minSize + '" style="width:72px"> m</div>');
     h.push('</div>');
@@ -2201,6 +2208,7 @@
     box.innerHTML = h.join('');
 
     var rerender = function () { renderBasemapPanel(state.result); };
+    Array.prototype.forEach.call(box.querySelectorAll('.bmDt'), function (x) { x.onclick = function () { b.datum = x.getAttribute('data-v') || null; b.out = null; rerender(); }; });
     $('bmMargin').onchange = function () { b.margin = Math.max(0, Math.min(500, +this.value || 0)); bmPersist(); rerender(); };
     $('bmMin').onchange = function () { b.minSize = Math.max(50, Math.min(2000, +this.value || 200)); bmPersist(); rerender(); };
     if ($('bmIncAll')) $('bmIncAll').onchange = function () { b.incAll = this.checked; rerender(); };
@@ -2225,6 +2233,16 @@
       $('bmView').onclick = $('bmThumb').onclick = function () { viewBasemap(r, false); };
     }
   }
+  /** 這個案件是 TWD67 還是 TWD97：看檔名的段號（67 段清單同地籍共作平台），也可以手動指定 */
+  function bmDatum() {
+    var b = bmState(), codes = [];
+    state.inputs.forEach(function (f) { var c = Core.sectionCode(inputKey(f)); if (c && codes.indexOf(c) < 0) codes.push(c); });
+    var autoD = codes.some(function (c) { return Core.sectionDatum(c) === 'TWD67'; }) ? 'TWD67' : 'TWD97';
+    var mixed = codes.length > 1 && codes.some(function (c) { return Core.sectionDatum(c) !== autoD; });
+    return { datum: b.datum || autoD, auto: autoD, forced: !!b.datum, codes: codes, mixed: mixed };
+  }
+  function bmDatumText() { var d = bmDatum(); return (d.codes.length ? d.codes.map(secLabel).join('、') + '，' : '') + d.datum + ' 坐標。'; }
+  function secLabel(c) { return c + (Core.SECTION_NAMES[c] ? ' ' + Core.SECTION_NAMES[c] : ''); }
   function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m'; }
   function bmDelPair(id) {
     var b = bmState();
@@ -2253,7 +2271,7 @@
 
   function makeBasemap(r, bbox, sh) {
     var b = bmState();
-    var plan = Core.planBasemap(bbox, b.src, sh);
+    var dt = bmDatum(), plan = Core.planBasemap(bbox, b.src, sh, null, dt.datum);
     if (plan.tooBig) return;
     b.busy = true; renderBasemapPanel(r);
     var prog = function (d, n) { var e = $('bmProg'); if (e) e.textContent = '下載圖磚 ' + d + ' / ' + n; };
@@ -2274,12 +2292,12 @@
       });
     }).then(function (x) {
       var base = bmBaseName();
-      var note = (b.src === 'PHOTO2' ? '正射影像圖(通用)' : '正射影像圖(通用)_3826') + '，' + plan.res.toFixed(3) + ' m／像素；' +
+      var note = (b.src === 'PHOTO2' ? '正射影像圖(通用)' : '正射影像圖(通用)_3826') + '，' + dt.datum + ' 坐標，' + plan.res.toFixed(3) + ' m／像素；' +
         (sh.mode === 'none' || (!sh.dN && !sh.dE) ? '未校正偏差' : '已校正 N ' + f3(sh.dN) + '、E ' + f3(sh.dE) + ' m') +
         (x.failed ? '；有 ' + x.failed + ' 張圖磚沒抓到（白色區塊）' : '');
       if (b.out && b.out.url) URL.revokeObjectURL(b.out.url);
       b.out = { url: URL.createObjectURL(x.blob), w: plan.width, h: plan.height, plan: plan, shift: { dN: sh.dN, dE: sh.dE }, note: note,
-        files: [{ name: base + '_航照.jpg', content: x.blob }, { name: base + '_航照.jgw', content: Core.worldFileText(plan.res, plan.ulE, plan.ulN) }] };
+        files: [{ name: base + '_航照' + (dt.datum === 'TWD67' ? '_TWD67' : '') + '.jpg', content: x.blob }, { name: base + '_航照' + (dt.datum === 'TWD67' ? '_TWD67' : '') + '.jgw', content: Core.worldFileText(plan.res, plan.ulE, plan.ulN) }] };
       b.busy = false; renderBasemapPanel(r); setSteps(3);
       toast('航照底圖好了！可以先「選套合點」校正，或直接下載');
     }).catch(function (e) {
