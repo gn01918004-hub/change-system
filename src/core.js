@@ -1557,13 +1557,45 @@
     return [(lon + 180) / 360 * n, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n];
   }
 
+  var NLSC_MERC = 'https://wmts.nlsc.gov.tw/wmts/{layer}/default/GoogleMapsCompatible/{z}/{row}/{col}';
   var BASEMAP_SOURCES = {
-    PHOTO2: { label: '正射影像圖(通用)・約 0.14 m', kind: 'merc', zoom: 20,
-      url: 'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{row}/{col}' },
+    PHOTO2: { label: '最新正射影像（通用）', kind: 'merc', zoom: 20, url: NLSC_MERC.replace('{layer}', 'PHOTO2') },
     PHOTO3826: { label: '正射影像圖(通用)_3826・0.26 m（TWD97 原生）', kind: 'tm2', zoom: 13, res: 944.9423660750896 * 0.00028,
       originE: 50000, originN: 3000000,
       url: 'https://wmts.nlsc.gov.tw/97/wmts/PHOTO3826/default/default028mm/{z}/{row}/{col}' }
   };
+
+  // 各年度正射影像（國土測繪中心）：每年的圖層是「到那一年為止最新」的拼接，沒有重拍的地方會和前一年一樣
+  var PHOTO_YEARS = [];
+  for (var py = 2025; py >= 2014; py--) PHOTO_YEARS.push('PHOTO' + py);
+  PHOTO_YEARS.push('PHOTO1');
+  PHOTO_YEARS.forEach(function (k) {
+    var y = k === 'PHOTO1' ? null : +k.slice(5);
+    BASEMAP_SOURCES[k] = { label: y ? (y - 1911) + ' 年正射影像' : '92～94 年正射影像', year: y ? y - 1911 : 92, kind: 'merc', zoom: 20, url: NLSC_MERC.replace('{layer}', k) };
+  });
+  /** 範圍中心那一張圖磚（用來比對各年度是不是同一張航照） */
+  function probeTileUrl(sourceKey, N, E) {
+    var src = BASEMAP_SOURCES[sourceKey], g = twd97ToLonLat(E, N), m = lonLatToMercPx(g[0], g[1], src.zoom);
+    return src.url.replace('{z}', src.zoom).replace('{row}', Math.floor(m[1] / 256)).replace('{col}', Math.floor(m[0] / 256));
+  }
+  /**
+   * 各年度分組：同一張航照（圖磚內容一樣）的連續年份併成一組，以最早那年當「拍攝年份」。
+   * probes：{ PHOTO2: hash, PHOTO2025: hash, …, PHOTO1: hash }（空白圖磚給 null）
+   * 回傳 { groups:[{ key, year, years:[…], latest }], latestYear }
+   */
+  function groupPhotoYears(probes) {
+    var groups = [];
+    PHOTO_YEARS.forEach(function (k) {
+      var hsh = probes[k];
+      if (hsh == null) return;
+      var last = groups[groups.length - 1];
+      if (last && last.hash === hsh && k !== 'PHOTO1') { last.years.push(BASEMAP_SOURCES[k].year); last.key = k; last.year = BASEMAP_SOURCES[k].year; return; }
+      groups.push({ hash: hsh, key: k, year: BASEMAP_SOURCES[k].year, years: [BASEMAP_SOURCES[k].year] });
+    });
+    groups.forEach(function (g) { g.latest = probes.PHOTO2 != null && g.hash === probes.PHOTO2; g.years.sort(function (a, b) { return a - b; }); });
+    var lg = groups.filter(function (g) { return g.latest; })[0];
+    return { groups: groups, latestYear: lg ? lg.year : null };
+  }
 
   // ─── TWD67 段 ───
   // 苗栗地所以 TWD67 為主的段（同「地籍共作平台」的段名表紅字）
@@ -1922,6 +1954,9 @@
     basemapSampler: basemapSampler,
     worldFileText: worldFileText,
     SECTIONS_67: SECTIONS_67,
+    PHOTO_YEARS: PHOTO_YEARS,
+    probeTileUrl: probeTileUrl,
+    groupPhotoYears: groupPhotoYears,
     SECTION_NAMES: SECTION_NAMES,
     sectionCode: sectionCode,
     sectionDatum: sectionDatum,

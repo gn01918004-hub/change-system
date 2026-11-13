@@ -570,3 +570,15 @@ test('航照底圖：TWD67 段自動判斷與 67 坐標輸出', () => {
   const m = Core.planBasemap(bb, 'PHOTO2', null, null, 'TWD67'), f = Core.basemapSampler(m);
   for (const [i, j] of [[0, 0], [m.width - 1, m.height - 1]]) { const s = f(i, j); assert.ok(s[0] >= 0 && s[1] >= 0 && s[0] < m.tileCols * 256 && s[1] < m.tileRows * 256); }
 });
+
+test('航照底圖：各年度正射影像依內容分組（KC1117 實測）', () => {
+  const h = { PHOTO2: 'a', PHOTO2025: 'a', PHOTO2024: 'b', PHOTO2023: 'b', PHOTO2022: 'b', PHOTO2021: 'c', PHOTO2020: 'd', PHOTO2019: 'd',
+    PHOTO2018: 'e', PHOTO2017: 'f', PHOTO2016: 'g', PHOTO2015: 'g', PHOTO2014: null, PHOTO1: 'i' };
+  const r = Core.groupPhotoYears(h);
+  assert.strictEqual(r.latestYear, 114);
+  assert.deepStrictEqual(r.groups.map((g) => g.key + ':' + g.years.join('/')),
+    ['PHOTO2025:114', 'PHOTO2022:111/112/113', 'PHOTO2021:110', 'PHOTO2019:108/109', 'PHOTO2018:107', 'PHOTO2017:106', 'PHOTO2015:104/105', 'PHOTO1:92']);
+  assert.ok(r.groups[0].latest && !r.groups[1].latest);
+  assert.strictEqual(Core.probeTileUrl('PHOTO2025', 2706889.5, 221008.2), 'https://wmts.nlsc.gov.tw/wmts/PHOTO2025/default/GoogleMapsCompatible/20/450749/875893');
+  assert.strictEqual(Core.BASEMAP_SOURCES.PHOTO2022.label, '111 年正射影像');
+});

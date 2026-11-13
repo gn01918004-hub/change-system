@@ -2063,12 +2063,12 @@
   function bmState() {
     if (!state.bm) {
       var m = loadBm();
-      state.bm = { src: m.src || 'PHOTO3826', margin: m.margin != null ? m.margin : 30, minSize: m.minSize != null ? m.minSize : 200,
+      state.bm = { src: 'PHOTO2', years: null, margin: m.margin != null ? m.margin : 30, minSize: m.minSize != null ? m.minSize : 200,
         code: m.code != null ? m.code : 87, mode: null, manual: m.manual || {}, clicks: {}, off: {}, incAll: false, out: null, busy: false };
     }
     return state.bm;
   }
-  function bmPersist() { var b = bmState(); saveBm({ src: b.src, margin: b.margin, minSize: b.minSize, code: b.code, manual: b.manual }); }
+  function bmPersist() { var b = bmState(); saveBm({ margin: b.margin, minSize: b.minSize, code: b.code, manual: b.manual }); }
   function bmD14Now() { return (state.dbf && state.dbf.D14 && { name: state.dbf.D14.name, db: state.dbf.D14.db }) || bmD14; }
 
   /** 本次作業的所有點（含控制點），給套合選點用 */
@@ -2156,16 +2156,22 @@
     }
     h.push('</div></div>');
 
-    // ② 圖源
-    var srcCards = ['PHOTO3826', 'PHOTO2'].map(function (k) {
-      var S = Core.BASEMAP_SOURCES[k];
-      var t = k === 'PHOTO3826' ? ['正射影像圖(通用)_3826', 'TWD97 原生，0.26 m／像素（建議）'] : ['正射影像圖(通用)', '較新、較清楚，約 0.14 m／像素（自動轉投影）'];
-      return '<label class="bmsrc' + (k === b.src ? ' on' : '') + '"><input type="radio" name="bmSrc" value="' + k + '"' + (k === b.src ? ' checked' : '') + '><b>' + t[0] + '</b><span>' + t[1] + '</span></label>';
-    }).join('');
-    h.push('<div class="bmsec"><div class="bmnum">2</div><div class="bmbody"><h4>圖源 <span class="muted">（國土測繪中心，需要網路）</span></h4><div class="bmsrcs">' + srcCards + '</div>' +
+    // ② 圖源：預設最新；可以指定年份（同一張航照的年份併在一起），或用 TWD97 原生的 _3826
+    var yr = bmYears(area), S0 = Core.BASEMAP_SOURCES[b.src] || {};
+    var isYear = Core.PHOTO_YEARS.indexOf(b.src) >= 0;
+    var latestTxt = yr && yr.status === 'done' ? (yr.latestYear ? '這裡目前最新是 <b>' + yr.latestYear + ' 年</b>拍的' : '最新的航照') : (yr && yr.status === 'fail' ? '查不到拍攝年份（網路？）' : '查詢拍攝年份中…');
+    var yearOpts = yr && yr.status === 'done' ? yr.groups.map(function (g) {
+      var t = (g.key === 'PHOTO1' ? '92～94 年' : g.year + ' 年') + (g.years.length > 1 ? '（' + g.years[0] + '～' + g.years[g.years.length - 1] + ' 年圖層都是這張）' : '') + (g.latest ? '＝最新' : '');
+      return '<option value="' + g.key + '"' + (g.key === b.src ? ' selected' : '') + '>' + t + '</option>';
+    }).join('') : (isYear ? '<option value="' + b.src + '" selected>' + esc(S0.label) + '</option>' : '<option value="">查詢中…</option>');
+    h.push('<div class="bmsec"><div class="bmnum">2</div><div class="bmbody"><h4>圖源 <span class="muted">（國土測繪中心，需要網路）</span></h4><div class="bmsrcs">' +
+      '<label class="bmsrc' + (b.src === 'PHOTO2' ? ' on' : '') + '"><input type="radio" name="bmSrc" value="PHOTO2"' + (b.src === 'PHOTO2' ? ' checked' : '') + '><b>最新（預設）</b><span>' + latestTxt + '，約 0.14 m／像素</span></label>' +
+      '<div class="bmsrc' + (isYear ? ' on' : '') + '" id="bmYearCard"><b>指定年份</b><span>看舊地物、或最新那張被樹擋住時換一張</span><select id="bmYear">' + (isYear ? '' : '<option value="" selected>選年份…</option>') + yearOpts + '</select></div>' +
+      '<label class="bmsrc' + (b.src === 'PHOTO3826' ? ' on' : '') + '"><input type="radio" name="bmSrc" value="PHOTO3826"' + (b.src === 'PHOTO3826' ? ' checked' : '') + '><b>通用_3826（TWD97 原生）</b><span>0.26 m／像素，不用轉投影；年份可能比最新舊</span></label>' +
+      '</div>' +
       '<div class="muted">輸出 ' + plan.width + ' × ' + plan.height + ' 像素（' + plan.res.toFixed(3) + ' m／像素，' + plan.tiles.length + ' 張圖磚）' +
       (plan.reduced ? '<span class="warnTxt">　範圍較大，已自動降低解析度</span>' : '') + (plan.tooBig ? '<span class="warnTxt">　範圍太大，請縮小</span>' : '') +
-      (b.src === 'PHOTO2' ? '<br>兩個圖源是不同年份的航照，偏差可能不一樣，換圖源要重新選套合點。' : '') + '</div></div></div>');
+      '<br>不同年份的航照偏差可能不一樣，換圖源後要重新選套合點。</div></div></div>');
 
     // ③ 偏差校正
     var radio = function (v, t) { return '<label class="bmr"><input type="radio" name="bmMode" value="' + v + '"' + (sh.mode === v ? ' checked' : '') + '> ' + t + '</label>'; };
@@ -2212,7 +2218,15 @@
     $('bmMargin').onchange = function () { b.margin = Math.max(0, Math.min(500, +this.value || 0)); bmPersist(); rerender(); };
     $('bmMin').onchange = function () { b.minSize = Math.max(50, Math.min(2000, +this.value || 200)); bmPersist(); rerender(); };
     if ($('bmIncAll')) $('bmIncAll').onchange = function () { b.incAll = this.checked; rerender(); };
-    Array.prototype.forEach.call(box.querySelectorAll('input[name=bmSrc]'), function (x) { x.onchange = function () { b.src = x.value; bmPersist(); rerender(); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('input[name=bmSrc]'), function (x) { x.onchange = function () { b.src = x.value; rerender(); }; });
+    $('bmYear').onchange = function () { if (this.value) { b.src = this.value; rerender(); } };
+    $('bmYearCard').onclick = function (e) {
+      if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+      if (isYear) return;
+      var o = Array.prototype.filter.call($('bmYear').options, function (x) { return x.value; });
+      var pick = o.filter(function (x) { return !/＝最新/.test(x.textContent); })[0] || o[0];
+      if (pick) { b.src = pick.value; rerender(); } else $('bmYear').focus();
+    };
     Array.prototype.forEach.call(box.querySelectorAll('input[name=bmMode]'), function (x) { x.onchange = function () { b.mode = x.value; rerender(); }; });
     Array.prototype.forEach.call(box.querySelectorAll('.bmUse'), function (x) { x.onchange = function () { b.off[x.getAttribute('data-id')] = !x.checked; rerender(); }; });
     Array.prototype.forEach.call(box.querySelectorAll('.bmDel'), function (x) { x.onclick = function () { bmDelPair(x.getAttribute('data-id')); rerender(); }; });
@@ -2243,6 +2257,43 @@
   }
   function bmDatumText() { var d = bmDatum(); return (d.codes.length ? d.codes.map(secLabel).join('、') + '，' : '') + d.datum + ' 坐標。'; }
   function secLabel(c) { return c + (Core.SECTION_NAMES[c] ? ' ' + Core.SECTION_NAMES[c] : ''); }
+  /**
+   * 查各年度在範圍中心是哪一張航照（抓中心那張圖磚比對內容），結果記在 b.years，查完重畫。
+   */
+  function bmYears(area) {
+    var b = bmState(), c = area.center, d = bmDatum();
+    var N = c.N, E = c.E;
+    if (d.datum === 'TWD67') { var q = Core.twd67to97(N, E); N = q[0]; E = q[1]; }
+    var key = Core.probeTileUrl('PHOTO2', N, E);
+    if (b.years && b.years.key === key) return b.years;
+    var yr = b.years = { key: key, status: 'loading' };
+    var layers = ['PHOTO2'].concat(Core.PHOTO_YEARS), probes = {};
+    Promise.all(layers.map(function (k) {
+      return fetch(Core.probeTileUrl(k, N, E)).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .then(function (buf) { return tileHash(buf).then(function (hh) { probes[k] = hh; }); })
+        .catch(function () { probes[k] = null; });
+    })).then(function () {
+      if (b.years !== yr) return;
+      if (probes.PHOTO2 == null) { yr.status = 'fail'; }
+      else { var g = Core.groupPhotoYears(probes); yr.groups = g.groups; yr.latestYear = g.latestYear; yr.status = 'done'; }
+      if (state.result && state.result.kind === 'basemap' && state.bm === b) renderResult();
+    });
+    return yr;
+  }
+  /** 圖磚內容指紋；整張同一個顏色（沒有影像）回傳 null */
+  function tileHash(buf) {
+    var u = new Uint8Array(buf), h1 = 2166136261;
+    for (var i = 0; i < u.length; i++) { h1 ^= u[i]; h1 = Math.imul(h1, 16777619); }
+    var hash = (h1 >>> 0).toString(16) + ':' + u.length;
+    if (u.length > 3000 || !window.createImageBitmap) return Promise.resolve(hash);
+    return createImageBitmap(new Blob([u])).then(function (im) {
+      var cv = document.createElement('canvas'); cv.width = 16; cv.height = 16;
+      var g = cv.getContext('2d'); g.drawImage(im, 0, 0, 16, 16);
+      var px = g.getImageData(0, 0, 16, 16).data, mn = 255, mx = 0;
+      for (var k = 0; k < px.length; k += 4) { var v = px[k] + px[k + 1] + px[k + 2]; mn = Math.min(mn, v); mx = Math.max(mx, v); }
+      return mx - mn < 12 ? null : hash;
+    }, function () { return hash; });
+  }
   function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m'; }
   function bmDelPair(id) {
     var b = bmState();
@@ -2292,7 +2343,9 @@
       });
     }).then(function (x) {
       var base = bmBaseName();
-      var note = (b.src === 'PHOTO2' ? '正射影像圖(通用)' : '正射影像圖(通用)_3826') + '，' + dt.datum + ' 坐標，' + plan.res.toFixed(3) + ' m／像素；' +
+      var yy = b.years && b.years.status === 'done' ? b.years : null;
+      var srcName = b.src === 'PHOTO2' ? '最新正射影像' + (yy && yy.latestYear ? '（' + yy.latestYear + ' 年）' : '') : b.src === 'PHOTO3826' ? '正射影像圖(通用)_3826' : Core.BASEMAP_SOURCES[b.src].label;
+      var note = srcName + '，' + dt.datum + ' 坐標，' + plan.res.toFixed(3) + ' m／像素；' +
         (sh.mode === 'none' || (!sh.dN && !sh.dE) ? '未校正偏差' : '已校正 N ' + f3(sh.dN) + '、E ' + f3(sh.dE) + ' m') +
         (x.failed ? '；有 ' + x.failed + ' 張圖磚沒抓到（白色區塊）' : '');
       if (b.out && b.out.url) URL.revokeObjectURL(b.out.url);
