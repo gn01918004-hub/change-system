@@ -2087,22 +2087,24 @@
     return Core.basemapArea(bmAreaPoints(r).map(function (q) { return { N: q.N, E: q.E, name: q.name }; }), { margin: b.margin, minSize: b.minSize, includeAll: b.incAll });
   }
   /** 套合點：D14 的航照判讀點（自動）＋ 使用者在航照上點的 */
-  function bmPairs() {
+  function bmPairs(src) {
     var b = bmState(), d = bmD14Now(), list = [];
+    src = src || b.src;
     if (d && b.code !== '' && b.code != null) Core.suggestImagePairs(d.db, +b.code).forEach(function (x) {
       if (x.real) list.push({ id: 'a:' + x.img.label, auto: true, real: x.real, img: x.img });
     });
-    (b.clicks[b.src] || []).forEach(function (x) { list.push(x); });
+    (b.clicks[src] || []).forEach(function (x) { list.push(x); });
     list.forEach(function (x) { x.on = !b.off[x.id]; });
     return list;
   }
-  function bmShiftFor(mode) {
+  function bmShiftFor(mode, src) {
     var b = bmState();
+    src = src || b.src;
     if (mode === 'pairs') {
-      var sh = Core.shiftFromPairs(bmPairs().filter(function (x) { return x.on; }));
+      var sh = Core.shiftFromPairs(bmPairs(src).filter(function (x) { return x.on; }));
       return sh ? { dN: sh.dN, dE: sh.dE, mode: mode, info: sh } : { dN: 0, dE: 0, mode: mode };
     }
-    if (mode === 'manual') { var m = b.manual[b.src] || {}; return { dN: +m.dN || 0, dE: +m.dE || 0, mode: mode }; }
+    if (mode === 'manual') { var m = b.manual[src] || {}; return { dN: +m.dN || 0, dE: +m.dE || 0, mode: mode }; }
     return { dN: 0, dE: 0, mode: 'none' };
   }
   function bmShift() {
@@ -2159,9 +2161,9 @@
     // ② 圖源：預設最新；可以指定年份（同一張航照的年份併在一起），或用 TWD97 原生的 _3826
     var yr = bmYears(area), S0 = Core.BASEMAP_SOURCES[b.src] || {};
     var isYear = Core.PHOTO_YEARS.indexOf(b.src) >= 0;
-    var latestTxt = yr && yr.status === 'done' ? (yr.latestYear ? '這裡目前最新是 <b>' + yr.latestYear + ' 年</b>拍的' : '最新的航照') : (yr && yr.status === 'fail' ? '查不到拍攝年份（網路？）' : '查詢拍攝年份中…');
+    var latestTxt = yr && yr.status === 'done' ? (yr.latestYear ? '這裡最新的是 <b>' + yr.latestYear + ' 年圖層</b>' : '最新的航照') : (yr && yr.status === 'fail' ? '查不到拍攝年份（網路？）' : '查詢拍攝年份中…');
     var yearOpts = yr && yr.status === 'done' ? yr.groups.map(function (g) {
-      var t = (g.key === 'PHOTO1' ? '92～94 年' : g.year + ' 年') + (g.years.length > 1 ? '（' + g.years[0] + '～' + g.years[g.years.length - 1] + ' 年圖層都是這張）' : '') + (g.latest ? '＝最新' : '');
+      var t = (g.key === 'PHOTO1' ? '92～94 年' : g.year + ' 年') + '圖層' + (g.years.length > 1 ? '（' + g.years[0] + '～' + g.years[g.years.length - 1] + ' 年都是這張）' : '') + (g.latest ? '＝最新' : '');
       return '<option value="' + g.key + '"' + (g.key === b.src ? ' selected' : '') + '>' + t + '</option>';
     }).join('') : (isYear ? '<option value="' + b.src + '" selected>' + esc(S0.label) + '</option>' : '<option value="">查詢中…</option>');
     h.push('<div class="bmsec"><div class="bmnum">2</div><div class="bmbody"><h4>圖源 <span class="muted">（國土測繪中心，需要網路）</span></h4><div class="bmsrcs">' +
@@ -2344,7 +2346,7 @@
     }).then(function (x) {
       var base = bmBaseName();
       var yy = b.years && b.years.status === 'done' ? b.years : null;
-      var srcName = b.src === 'PHOTO2' ? '最新正射影像' + (yy && yy.latestYear ? '（' + yy.latestYear + ' 年）' : '') : b.src === 'PHOTO3826' ? '正射影像圖(通用)_3826' : Core.BASEMAP_SOURCES[b.src].label;
+      var srcName = b.src === 'PHOTO2' ? '最新正射影像' + (yy && yy.latestYear ? '（' + yy.latestYear + ' 年圖層）' : '') : b.src === 'PHOTO3826' ? '正射影像圖(通用)_3826' : Core.BASEMAP_SOURCES[b.src].label;
       var note = srcName + '，' + dt.datum + ' 坐標，' + plan.res.toFixed(3) + ' m／像素；' +
         (sh.mode === 'none' || (!sh.dN && !sh.dE) ? '未校正偏差' : '已校正 N ' + f3(sh.dN) + '、E ' + f3(sh.dE) + ' m') +
         (x.failed ? '；有 ' + x.failed + ' 張圖磚沒抓到（白色區塊）' : '');
@@ -2393,8 +2395,9 @@
 
     modal('<div class="bmvhead"><h3>' + (pickMode ? '🎯 選套合點' : '🔍 放大檢查') + ' <span class="muted">' + esc(o.note) + '</span></h3></div>' +
       '<div class="bmguide" id="bmGuide"></div>' +
-      '<div class="bmview" id="bmViewer"><div class="bmin" id="bmIn"><img src="' + o.url + '" id="bmImg" draggable="false"><svg id="bmSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
-      '<div class="bmzoom"><button type="button" id="bmZin" title="放大">＋</button><button type="button" id="bmZout" title="縮小">－</button><button type="button" id="bmZfit" title="看全圖">⤢</button></div></div>' +
+      '<div class="bmview" id="bmViewer"><div class="bmin" id="bmIn"><img src="' + o.url + '" id="bmImg" draggable="false"><canvas id="bmYearCv" class="ylayer hidden"></canvas><svg id="bmSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
+      '<div class="bmzoom"><button type="button" id="bmZin" title="放大">＋</button><button type="button" id="bmZout" title="縮小">－</button><button type="button" id="bmZfit" title="看全圖">⤢</button></div><div class="yload hidden" id="bmYLoad"></div></div>' +
+      '<div class="ybar" id="bmYBar"></div>' +
       '<div class="bmvfoot"><div class="legend"><span><i style="background:#ffd400"></i>本次點位</span>' + (d14 ? '<span><i style="background:#d0d7de"></i>D14 參考點</span>' : '') + '<span><i style="border:2px solid #ff3b30"></i>套合：實測</span><span><i style="border:2px solid #19c3ff"></i>套合：航照位置</span></div>' +
       '<label class="muted" style="cursor:pointer"><input type="checkbox" id="bmPrev" checked> 預覽校正後的樣子</label></div>' +
       '<div id="bmVPairs" class="bmvpairs"></div>' +
@@ -2440,6 +2443,7 @@
       view.classList.toggle('picking', V.step > 0);
       if (V.step === 1) g.innerHTML = '<b>① 點一下「實測點」</b>（黃點／灰點）。選建物角、圍牆角這種在航照上看得清楚的點。<span class="muted">滾輪放大、拖曳移動</span> <button class="btn small" id="bmCancel" type="button">取消</button>';
       else if (V.step === 2) g.innerHTML = '<b>② 在航照上點一下「' + esc(V.sel.label) + '」真正的位置</b>（放大點準一點）。 <button class="btn small" id="bmCancel" type="button">取消</button>';
+      else if (Y.shown !== Y.base) g.innerHTML = '正在看 <b>' + esc((Y.groups[Y.shown] || {}).label || '') + '</b> 的航照（點位不動，只換影像）。實際拍攝年份看影像上的浮水印（例「nlsc.gov.tw 2016」）。要用這一張就按「用這一年輸出」。';
       else g.innerHTML = n ? '已選 <b>' + n + '</b> 組套合點' + (n < 2 ? '，建議再選 1～2 組（分散在圖的不同位置）' : '') + '。確認地物對齊紅圈後，按右下角「套用並重新輸出」。' : '按「➕ 新增套合點」開始。也可以只看：滾輪放大、拖曳移動。';
       g.className = 'bmguide' + (V.step ? ' active' : '');
       if ($('bmCancel')) $('bmCancel').onclick = function () { V.step = 0; V.sel = null; guide(); draw(); };
@@ -2452,6 +2456,7 @@
       $('bmApply').disabled = !sh.info;
     };
     var onPick = function (x, y) {
+      if (Y.shown !== Y.base) { toast('現在顯示的是別的年份；要用這一年選套合點，請先按「用這一年輸出」'); return; }
       if (V.step === 1) {
         var best = null;
         cands.forEach(function (q) { var p = toPx(q.E, q.N), d = Math.hypot(p[0] - x, p[1] - y) * V.z; if (d < 16 && (!best || d < best.d)) best = { q: q, d: d }; });
@@ -2489,8 +2494,123 @@
     $('bmZout').onclick = function () { zoomAt(1 / 1.5, view.clientWidth / 2, view.clientHeight / 2); };
     $('bmZfit').onclick = fit;
     $('bmPrev').onchange = function () { V.preview = this.checked; draw(); };
-    $('bmAdd').onclick = function () { V.step = 1; V.sel = null; guide(); draw(); };
+    $('bmAdd').onclick = function () {
+      if (Y.shown !== Y.base) { toast('請先切回輸出的那一年，或按「用這一年輸出」'); return; }
+      V.step = 1; V.sel = null; guide(); draw();
+    };
     $('bmClose').onclick = function () { closeModal(); renderBasemapPanel(state.result); };
+
+    // ── 年份軸：拖拉切換各年度航照（先低解析度預覽，停下來再補高解析度） ──
+    var Y = { base: -1, shown: -1, groups: [], token: 0, timer: null };
+    var ext = { minE: pl.ulE - pl.res / 2, maxN: pl.ulN + pl.res / 2 };
+    ext.maxE = ext.minE + o.w * pl.res; ext.minN = ext.maxN - o.h * pl.res;
+    var cache = b.yearCache && b.yearCache.url === o.url ? b.yearCache : (b.yearCache = { url: o.url, lo: {}, hi: {}, hiOrder: [] });
+    var layer = $('bmYearCv');
+    var renderSrc = function (key, zoom) {
+      var mode = b.mode || 'pairs', sh = bmShiftFor(mode, key);
+      var p2 = Core.planBasemap(ext, key, sh, null, pl.datum, zoom);
+      return fetchTiles(p2, function () {}).then(function (m) {
+        if (m.failed === p2.tiles.length) throw new Error('連不上國土測繪中心');
+        var cv = document.createElement('canvas'); cv.width = p2.width; cv.height = p2.height;
+        var src = m.canvas.getContext('2d').getImageData(0, 0, m.canvas.width, m.canvas.height);
+        cv.getContext('2d').putImageData(new ImageData(Core.resampleMercToTm2(src.data, src.width, src.height, p2, sh), p2.width, p2.height), 0, 0);
+        return { canvas: cv, plan: p2 };
+      });
+    };
+    var paint = function (it) {
+      var g = layer.getContext('2d');
+      layer.width = it.canvas.width; layer.height = it.canvas.height;
+      g.drawImage(it.canvas, 0, 0);
+      // 和輸出影像同一個範圍：左上角對齊，寬高換算成輸出影像的像素
+      layer.style.left = ((it.plan.ulE - it.plan.res / 2 - ext.minE) / pl.res) + 'px';
+      layer.style.top = ((ext.maxN - (it.plan.ulN + it.plan.res / 2)) / pl.res) + 'px';
+      layer.style.width = (it.plan.width * it.plan.res / pl.res) + 'px';
+      layer.style.height = (it.plan.height * it.plan.res / pl.res) + 'px';
+    };
+    var loadMsg = function (t) { var e = $('bmYLoad'); if (!e) return; e.textContent = t || ''; e.classList.toggle('hidden', !t); };
+    var showYear = function (i) {
+      if (i < 0 || i >= Y.groups.length) return;
+      Y.shown = i; clearTimeout(Y.timer); var tok = ++Y.token;
+      barUi();
+      if (i === Y.base) { layer.classList.add('hidden'); img.style.visibility = ''; loadMsg(''); guide(); return; }
+      var key = Y.groups[i].key;
+      var show = function (it) { if (tok !== Y.token) return; paint(it); layer.classList.remove('hidden'); img.style.visibility = 'hidden'; };
+      var hiReady = cache.hi[key];
+      if (hiReady) { show(hiReady); loadMsg(''); guide(); return; }
+      (cache.lo[key] ? Promise.resolve(cache.lo[key]) : (loadMsg('載入 ' + Y.groups[i].label + ' …'), renderSrc(key, 18).then(function (it) { cache.lo[key] = it; return it; })))
+        .then(function (it) {
+          show(it); if (tok !== Y.token) return;
+          loadMsg('');
+          // 停在這一年 0.7 秒 → 補抓高解析度
+          Y.timer = setTimeout(function () {
+            if (tok !== Y.token) return;
+            loadMsg('載入清楚的版本…');
+            renderSrc(key, null).then(function (hi) {
+              cache.hi[key] = hi; cache.hiOrder.push(key);
+              while (cache.hiOrder.length > 3) delete cache.hi[cache.hiOrder.shift()];
+              if (tok === Y.token) { show(hi); loadMsg(''); }
+            }, function () { if (tok === Y.token) loadMsg(''); });
+          }, 700);
+        }, function (e) { if (tok === Y.token) loadMsg('載入失敗：' + (e.message || e)); });
+      guide();
+    };
+    var barUi = function () {
+      var bar = $('bmYBar'); if (!bar || !Y.groups.length) return;
+      var n = Y.groups.length, g = Y.groups[Y.shown] || {};
+      $('bmYRange').value = Y.shown;
+      Array.prototype.forEach.call(bar.querySelectorAll('.ytick'), function (t, k) { t.classList.toggle('on', k === Y.shown); t.classList.toggle('base', k === Y.base); });
+      $('bmYNow').innerHTML = '顯示：<b>' + esc(g.label || '') + '</b>' + (g.span ? '<span class="muted">（' + esc(g.span) + '）</span>' : '') +
+        (Y.shown === Y.base ? ' <span class="ybadge">輸出的這張</span>' : '');
+      $('bmYUse').disabled = Y.shown === Y.base;
+    };
+    var buildBar = function () {
+      var yr = b.years, bar = $('bmYBar'); if (!bar) return;
+      if (!yr || yr.status !== 'done' || !yr.groups.length) { bar.innerHTML = '<div class="muted">' + (yr && yr.status === 'fail' ? '查不到各年度航照' : '查詢各年度航照中…') + '</div>'; return; }
+      var gs = yr.groups.slice().reverse().map(function (g) {
+        var label = g.key === 'PHOTO1' ? '92～94 年' : g.year + ' 年';
+        return { key: g.key, latest: g.latest, label: label + '圖層' + (g.latest ? '（最新）' : ''), tick: g.key === 'PHOTO1' ? '92' : String(g.year),
+          span: g.years.length > 1 ? g.years[0] + '～' + g.years[g.years.length - 1] + ' 年都是這張' : '' };
+      });
+      Y.groups = gs;
+      var src = pl.source;
+      Y.base = gs.findIndex(function (g) { return src === 'PHOTO2' ? g.latest : g.key === src; });
+      if (src === 'PHOTO3826') {
+        // _3826 不在年份軸上：多一格放在最右邊
+        gs.push({ key: 'PHOTO3826', label: '通用_3826', tick: '3826', span: 'TWD97 原生' });
+        Y.base = gs.length - 1;
+      }
+      var n = gs.length;
+      bar.innerHTML = '<div class="yhead"><span class="ytitle">🕰 各年度航照</span><span id="bmYNow"></span><span class="grow"></span>' +
+        '<button class="btn small" id="bmYPrev" type="button" title="上一年（←）">◀</button><button class="btn small" id="bmYNext" type="button" title="下一年（→）">▶</button>' +
+        '<button class="btn small primary" id="bmYUse" type="button">用這一年輸出</button></div>' +
+        '<div class="ytrack"><input type="range" id="bmYRange" min="0" max="' + (n - 1) + '" step="1" value="' + Y.base + '">' +
+        '<div class="yticks">' + gs.map(function (g, k) { return '<button type="button" class="ytick" data-i="' + k + '" style="left:' + (n > 1 ? k / (n - 1) * 100 : 50) + '%">' + esc(g.tick) + '</button>'; }).join('') + '</div></div>';
+      Y.shown = Y.base;
+      $('bmYRange').oninput = function () { showYear(+this.value); };
+      Array.prototype.forEach.call(bar.querySelectorAll('.ytick'), function (t) { t.onclick = function () { showYear(+t.getAttribute('data-i')); }; });
+      $('bmYPrev').onclick = function () { showYear(Math.max(0, Y.shown - 1)); };
+      $('bmYNext').onclick = function () { showYear(Math.min(n - 1, Y.shown + 1)); };
+      $('bmYUse').onclick = function () {
+        var g = Y.groups[Y.shown]; if (!g) return;
+        b.src = g.latest ? 'PHOTO2' : g.key; closeModal();
+        var area = bmArea(state.result);
+        makeBasemap(state.result, area.bbox, bmShift());
+      };
+      barUi();
+    };
+    var keyNav = function (e) {
+      if ($('modal').classList.contains('hidden') || !$('bmYBar')) { document.removeEventListener('keydown', keyNav); return; }
+      if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.id !== 'bmYRange') return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); showYear(Math.max(0, Math.min(Y.groups.length - 1, Y.shown + (e.key === 'ArrowLeft' ? -1 : 1)))); }
+    };
+    document.addEventListener('keydown', keyNav);
+    buildBar();
+    if (!b.years || b.years.status === 'loading') {
+      var waitN = 0, wait = setInterval(function () {
+        if (!$('bmYBar') || ++waitN > 60) { clearInterval(wait); return; }
+        if (b.years && b.years.status !== 'loading') { clearInterval(wait); buildBar(); }
+      }, 500);
+    }
     $('bmApply').onclick = function () {
       b.mode = 'pairs'; closeModal();
       var area = bmArea(state.result);

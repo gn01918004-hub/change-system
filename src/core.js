@@ -1571,7 +1571,7 @@
   PHOTO_YEARS.push('PHOTO1');
   PHOTO_YEARS.forEach(function (k) {
     var y = k === 'PHOTO1' ? null : +k.slice(5);
-    BASEMAP_SOURCES[k] = { label: y ? (y - 1911) + ' 年正射影像' : '92～94 年正射影像', year: y ? y - 1911 : 92, kind: 'merc', zoom: 20, url: NLSC_MERC.replace('{layer}', k) };
+    BASEMAP_SOURCES[k] = { label: y ? (y - 1911) + ' 年圖層正射影像' : '92～94 年正射影像', year: y ? y - 1911 : 92, kind: 'merc', zoom: 20, url: NLSC_MERC.replace('{layer}', k) };
   });
   /** 範圍中心那一張圖磚（用來比對各年度是不是同一張航照） */
   function probeTileUrl(sourceKey, N, E) {
@@ -1722,12 +1722,12 @@
    * 規劃要抓的範圍：bbox 是「實測坐標」，影像要往回移 shift 才對得上。
    * 回傳 { width, height, res, ulE, ulN（左上像素中心，已含校正）, tiles:[{z,row,col,url}], source }
    */
-  function planBasemap(bbox, sourceKey, shift, maxPixels, datum) {
+  function planBasemap(bbox, sourceKey, shift, maxPixels, datum, zoom) {
     if (datum === 'TWD67') {
       // 67 段：在範圍內 67→97 幾乎就是平移（縮放、旋轉在 2 km 內 < 2 cm），用中心點的差當平移量
       var cN = (bbox.minN + bbox.maxN) / 2, cE = (bbox.minE + bbox.maxE) / 2, q = twd67to97(cN, cE);
       var dN = q[0] - cN, dE = q[1] - cE;
-      var p97 = planBasemap({ minE: bbox.minE + dE, maxE: bbox.maxE + dE, minN: bbox.minN + dN, maxN: bbox.maxN + dN }, sourceKey, shift, maxPixels);
+      var p97 = planBasemap({ minE: bbox.minE + dE, maxE: bbox.maxE + dE, minN: bbox.minN + dN, maxN: bbox.maxN + dN }, sourceKey, shift, maxPixels, null, zoom);
       p97.datum = 'TWD67'; p97.datumOffset = { dN: dN, dE: dE };
       p97.ulE -= dE; p97.ulN -= dN;
       return p97;
@@ -1735,7 +1735,9 @@
     var src = BASEMAP_SOURCES[sourceKey] || BASEMAP_SOURCES.PHOTO2;
     var plan;
     // 範圍太大時自動降一層（解析度減半），最多降 4 層
-    for (var z = src.zoom; z >= src.zoom - 4; z--) {
+    // zoom：指定層級（例如預覽用低解析度）；沒指定就從最高層開始
+    var z0 = zoom ? Math.min(zoom, src.zoom) : src.zoom;
+    for (var z = z0; z >= src.zoom - 4; z--) {
       plan = planAt(bbox, sourceKey, src, z, shift, maxPixels);
       if (!plan.tooBig) break;
     }

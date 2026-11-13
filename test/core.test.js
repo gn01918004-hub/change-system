@@ -580,5 +580,5 @@ test('航照底圖：各年度正射影像依內容分組（KC1117 實測）', (
     ['PHOTO2025:114', 'PHOTO2022:111/112/113', 'PHOTO2021:110', 'PHOTO2019:108/109', 'PHOTO2018:107', 'PHOTO2017:106', 'PHOTO2015:104/105', 'PHOTO1:92']);
   assert.ok(r.groups[0].latest && !r.groups[1].latest);
   assert.strictEqual(Core.probeTileUrl('PHOTO2025', 2706889.5, 221008.2), 'https://wmts.nlsc.gov.tw/wmts/PHOTO2025/default/GoogleMapsCompatible/20/450749/875893');
-  assert.strictEqual(Core.BASEMAP_SOURCES.PHOTO2022.label, '111 年正射影像');
+  assert.strictEqual(Core.BASEMAP_SOURCES.PHOTO2022.label, '111 年圖層正射影像');
 });

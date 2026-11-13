@@ -158,6 +158,18 @@ ul.report li .ln{color:var(--ink2);font-size:13px;white-space:nowrap}
 .bmin{position:absolute;left:0;top:0;transform-origin:0 0}
 .bmin img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 .bmin svg{position:absolute;left:0;top:0;overflow:visible}
+.ylayer{position:absolute;left:0;top:0;pointer-events:none;image-rendering:auto}
+.yload{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.65);color:#fff;padding:5px 10px;border-radius:8px;font-size:14px}
+.ybar{margin-top:10px;padding:10px 14px 6px;border:1px solid var(--line);border-radius:10px;background:#fafbfd}
+.yhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ytitle{font-weight:800;color:var(--oth)}
+.ybadge{font-size:12px;background:var(--oth-soft);color:var(--oth);border-radius:999px;padding:1px 8px;margin-left:4px}
+.ytrack{position:relative;margin:10px 10px 4px;padding-bottom:26px}
+.ytrack input[type=range]{width:100%;margin:0;accent-color:var(--oth);cursor:pointer}
+.yticks{position:absolute;left:0;right:0;top:24px;height:22px}
+.ytick{position:absolute;transform:translateX(-50%);border:none;background:none;font-size:13px;color:var(--ink2);cursor:pointer;padding:0 2px;white-space:nowrap}
+.ytick.base{color:var(--oth);font-weight:700}
+.ytick.on{color:#fff;background:var(--oth);border-radius:6px;padding:0 6px;font-weight:700}
 .bmzoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px}
 .bmzoom button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:18px;cursor:pointer}
 .bmvfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
@@ -545,7 +557,7 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
 <div class="toast hidden" id="toast"></div>
 
 <script>
-window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","date":"2026-11-13","repo":"gn01918004-hub/change-system","file":"dist/土地重測資料轉換系統.html","changelog":[{"version":"3.4.0","date":"2026-11-13","items":["輸出航照圖預設改成抓「最新」的正射影像（國土測繪中心通用版，約 0.14 m），畫面會顯示這裡最新是哪一年拍的；每次都從最新開始，不會沿用上次選的圖源","新增「指定年份」：列出 92～94 年、103～114 年的正射影像，同一張航照的年份會併在一起（例「111 年（111～113 年圖層都是這張）」），不用一年一年試","原本的「通用_3826（TWD97 原生，0.26 m）」保留為選項；它的拍攝年份可能比最新舊"]},{"version":"3.3.0","date":"2026-11-10","items":["輸出航照圖會自己判斷 67 段／97 段：看檔名的段號（例 KC0367 社柑段），67 段清單和「地籍共作平台」相同（0346～0353、0357～0365、0367、0370、0375～0380）","67 段自動把航照換算成 TWD67 坐標輸出（JPG + JGW 都是 67，檔名加 _TWD67），可以直接和該段資料疊圖；67→97 用近似公式（誤差約 1～2 m），剩下的偏差用套合點校正","也可以手動指定 TWD97／TWD67；畫面會顯示段名"]},{"version":"3.2.0","date":"2026-11-10","items":["拖進來（或點一下選）的是「檔案」時，也會自動存回檔案所在的資料夾：系統會記住用過的資料夾，檔案在這些資料夾（含子資料夾）裡就自動切換","檔案來自沒用過的位置時，存檔區會出現一鍵按鈕「📁 存到「檔名」所在的資料夾」，選資料夾視窗會直接停在那個位置，按「選取資料夾」就好","「存檔位置」視窗列出用過的資料夾，點一下就切換","選資料夾後的選單改成和首頁一樣的卡片：每張寫清楚做什麼、找到哪些檔案，點一下就開始；同類有多個時可以勾選要哪幾個"]},{"version":"3.1.1","date":"2026-11-10","items":["選資料夾或把資料夾拖進來時，存檔位置自動換成那個資料夾（所有功能一樣），不再一直沿用上次存的資料夾","輸出航照圖的下載按鈕下方也會顯示「📁 存到：…」，可以確認或更改"]},{"version":"3.1.0","date":"2026-11-10","items":["「輸出航照圖」獨立成一個功能：首頁多一個「其他」分類；選資料夾讀到 L02／L14／L20 時，清單下方也多一個「其他：輸出航照圖」","航照圖會以案件點位為中心：離其他點很遠的零星點（例如單獨一點的補點）自動排除，不再把圖拉偏；也可以勾「全部算進去」。可設最小範圍（預設 200 m）","自選套合點：先輸出一次，按「🎯 選套合點」→ 點實測點（本次點位或 D14 參考點）→ 再點航照上它真正的位置；滾輪放大、拖曳移動，選完即時預覽校正後的樣子，按「套用並重新輸出」","D14 航照判讀點的編碼可以自己設（預設 87，不用就清空）","重測資料、複丈輸入檔的結果頁有「輸出航照圖 →」捷徑"]},{"version":"3.0.0","date":"2026-11-10","items":["新功能「🛰 航照底圖」：依本次作業的點位範圍，自動到國土測繪中心（NLSC）抓正射影像，存成 JPG + JGW（TWD97 坐標，CAD／GIS 直接疊圖）","圖源可選「正射影像圖(通用)_3826」（/97/ 服務，TWD97 原生 0.26 m）或「正射影像圖(通用)」（較新、約 0.14 m，自動轉投影到 TWD97）","偏差校正：自動讀 D14 裡編碼 87 的航照判讀點，配對 10 m 內最近的實測參考點算出平均位移（例：100.87↔5.30、101.87↔6.30 約 3.5 m），可逐組取消；也可手動輸入 N／E 位移（會記住）","「放大檢查」：在航照上疊出本次點位、實測點與 87 點，確認地物有對齊","範圍太大時自動降低解析度；網路連不上會跳出原因"]},{"version":"2.9.0","date":"2026-11-05","items":["存進資料夾後會重新讀一次檔案確認真的存好，檔案下方顯示「✓ 已存好：資料夾裡的檔名（大小）」","存檔失敗會跳出提示窗，用白話說明原因（找不到資料夾、要再按一次允許、檔案被 Excel 開著、磁碟空間不足…），並可以「再試一次」「改存到瀏覽器的下載」「重新選資料夾」","修正：存不進資料夾時以前會悄悄改用瀏覽器下載，有時被瀏覽器擋掉而變成沒有檔案；現在一定會讓你知道","全部下載改成一個接一個存，最後統一回報成功與失敗"]},{"version":"2.8.0","date":"2026-11-05","items":["用「選擇整個資料夾」或把資料夾拖進來時，如果資料夾裡就有這份系統，會自動設成存檔位置，之後按下載直接存進去","選到別的資料夾時，下載按鈕旁會多一個「存到剛剛選的資料夾」，按一下就切換","Chrome / Edge 的「選擇整個資料夾」改用新的資料夾選擇方式（讀檔和存檔權限一次取得）"]},{"version":"2.7.0","date":"2026-11-04","items":["存檔區的檔名可以直接點來改（沒打副檔名會自動補上），下載時用新檔名","「選擇存檔資料夾」按鈕移到下載按鈕旁邊（重測系統寫入區也有），選好後顯示「📁 存到：資料夾名稱」"]},{"version":"2.6.0","date":"2026-11-04","items":["輸出排序一律：界址點／參考點 → 補點 → 控制點（重測資料匯出、複丈輸入檔、GPS 的 CNT 都一樣）；複丈輸入檔的排序選項拿掉","新增「存檔位置」（右上角）：選一次資料夾（建議選系統所在的資料夾），之後按下載都直接存進去；每份複製到不同位置的系統各自記住自己的資料夾，同名檔案自動加 (1)、(2) 不會蓋掉","手機等窄螢幕時標題列自動換行"]},{"version":"2.5.0","date":"2026-11-03","items":["Y、X 判斷改用位數：Y 整數部分一定 7 位、X 一定 6 位；L 檔與 GPS CSV 都用這個規則判斷順序，GPS 點位數不對時會標出來提醒","「複丈輸入檔 → 全站儀 / GPS 控制器」移到首頁「匯出」區，成為正式的卡片","選資料夾時自動略過系統預設檔 KC0000.L02，除非路徑裡有名為 KC0000 的資料夾"]},{"version":"2.4.0","date":"2026-11-03","items":["全站儀 MAC 預設改成 Excel 版格式，和 Excel 轉檔工具存出來的逐字相同（Tab 分隔、去尾 0、數字點號後加空白、Q 點照原名）；進階設定可改回空白分隔","寫入 D14：新的參考點點號只要和 D14 裡任何參考點（X.XX，不含計算的 X.00）重複，就改成參考點最大號＋1；改號也會套用到 MAC／CNT（例如 1～14 → 26～39）","同點號或同補點名稱、坐標相差 6 cm 內：視為重測，預設不寫入並列出差值；打勾可改寫成新的參考點（X.XX，補點預設編碼 11）","全站儀照準 D14／D20 裡已有的點，也會列出差值（用 6 cm 規則判斷）"]},{"version":"2.3.0","date":"2026-11-03","items":["GPS CSV 改成只輸出 CNT（點號.編碼,Y,X），重測系統直接讀入就好；舊的虛擬測站 CNT＋MAC 收起來，需要時按「展開」","CNT 不能有 Q 點：編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點自動編成這批最大點號＋1 的參考點（QGGC32 → 42.11），都列在編碼對照表；直接寫入 D20 時仍用補點原名稱"]},{"version":"2.2.0","date":"2026-11-03","items":["有放 D14、D20 時，「直接寫入重測系統」成為第 3 步主力；舊的 CNT＋MAC 檔收起來（照原本規則、不含 Q 補點），需要時按「展開」","沒有放 D14、D20 時跟以前一樣只做 CNT＋MAC","「接下來這樣做」改成寫入的步驟（先關重測系統 → 寫入 → 檢查，可用 .bak 還原）"]},{"version":"2.1.2","date":"2026-11-03","items":["修正：CNT＋MAC 照原本的規則，不能有 Q 點——編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點（QGGC32）不放進 MAC 並提醒；補點規則只用在「直接寫入 D20」","編碼對照表分成「MAC 點號」和「補點名稱（D20）」兩欄"]},{"version":"2.1.1","date":"2026-11-03","items":["修正補點名稱：數字點號的編碼寫 Q 開頭時，編碼本身就是補點名稱（13,…,q11 → 補點 Q11）；編碼只有字母時才接上點號（12,…,QW → QW12）"]},{"version":"2.1.0","date":"2026-11-03","items":["GPS CSV 補點判斷：點名 Q 開頭且有高程（例如 QGGC32）是補點，寫入時進 D20；Q 開頭但沒有高程（例如 QW1）是系統原有點，照舊剔除","數字點號、編碼寫 Q 開頭時（例如 12,…,QW），把編碼移到點號上（QW12）當補點，並列入編碼對照表","修正：高程欄寫成「0」（不是 0.000）時認不出高程欄，導致現場核對點被當成要問編碼的點"]},{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
+window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.5.0","date":"2026-11-13","repo":"gn01918004-hub/change-system","file":"dist/土地重測資料轉換系統.html","changelog":[{"version":"3.5.0","date":"2026-11-13","items":["放大檢查視窗多一條「🕰 各年度航照」時間軸：拖拉（或按 ← →、點年份）就換成那一年的航照，點位不動，可以看出這裡怎麼變化","切換時先用低解析度秒開，停在某一年約 1 秒再自動換成清楚的版本","看到合適的那張，按「用這一年輸出」就直接輸出那一年的 JPG + JGW（67 段一樣輸出 67 坐標）","用詞修正：年份是國土測繪中心的「圖層年份」，實際拍攝年份請看影像上的浮水印"]},{"version":"3.4.0","date":"2026-11-13","items":["輸出航照圖預設改成抓「最新」的正射影像（國土測繪中心通用版，約 0.14 m），畫面會顯示這裡最新是哪一年拍的；每次都從最新開始，不會沿用上次選的圖源","新增「指定年份」：列出 92～94 年、103～114 年的正射影像，同一張航照的年份會併在一起（例「111 年（111～113 年圖層都是這張）」），不用一年一年試","原本的「通用_3826（TWD97 原生，0.26 m）」保留為選項；它的拍攝年份可能比最新舊"]},{"version":"3.3.0","date":"2026-11-10","items":["輸出航照圖會自己判斷 67 段／97 段：看檔名的段號（例 KC0367 社柑段），67 段清單和「地籍共作平台」相同（0346～0353、0357～0365、0367、0370、0375～0380）","67 段自動把航照換算成 TWD67 坐標輸出（JPG + JGW 都是 67，檔名加 _TWD67），可以直接和該段資料疊圖；67→97 用近似公式（誤差約 1～2 m），剩下的偏差用套合點校正","也可以手動指定 TWD97／TWD67；畫面會顯示段名"]},{"version":"3.2.0","date":"2026-11-10","items":["拖進來（或點一下選）的是「檔案」時，也會自動存回檔案所在的資料夾：系統會記住用過的資料夾，檔案在這些資料夾（含子資料夾）裡就自動切換","檔案來自沒用過的位置時，存檔區會出現一鍵按鈕「📁 存到「檔名」所在的資料夾」，選資料夾視窗會直接停在那個位置，按「選取資料夾」就好","「存檔位置」視窗列出用過的資料夾，點一下就切換","選資料夾後的選單改成和首頁一樣的卡片：每張寫清楚做什麼、找到哪些檔案，點一下就開始；同類有多個時可以勾選要哪幾個"]},{"version":"3.1.1","date":"2026-11-10","items":["選資料夾或把資料夾拖進來時，存檔位置自動換成那個資料夾（所有功能一樣），不再一直沿用上次存的資料夾","輸出航照圖的下載按鈕下方也會顯示「📁 存到：…」，可以確認或更改"]},{"version":"3.1.0","date":"2026-11-10","items":["「輸出航照圖」獨立成一個功能：首頁多一個「其他」分類；選資料夾讀到 L02／L14／L20 時，清單下方也多一個「其他：輸出航照圖」","航照圖會以案件點位為中心：離其他點很遠的零星點（例如單獨一點的補點）自動排除，不再把圖拉偏；也可以勾「全部算進去」。可設最小範圍（預設 200 m）","自選套合點：先輸出一次，按「🎯 選套合點」→ 點實測點（本次點位或 D14 參考點）→ 再點航照上它真正的位置；滾輪放大、拖曳移動，選完即時預覽校正後的樣子，按「套用並重新輸出」","D14 航照判讀點的編碼可以自己設（預設 87，不用就清空）","重測資料、複丈輸入檔的結果頁有「輸出航照圖 →」捷徑"]},{"version":"3.0.0","date":"2026-11-10","items":["新功能「🛰 航照底圖」：依本次作業的點位範圍，自動到國土測繪中心（NLSC）抓正射影像，存成 JPG + JGW（TWD97 坐標，CAD／GIS 直接疊圖）","圖源可選「正射影像圖(通用)_3826」（/97/ 服務，TWD97 原生 0.26 m）或「正射影像圖(通用)」（較新、約 0.14 m，自動轉投影到 TWD97）","偏差校正：自動讀 D14 裡編碼 87 的航照判讀點，配對 10 m 內最近的實測參考點算出平均位移（例：100.87↔5.30、101.87↔6.30 約 3.5 m），可逐組取消；也可手動輸入 N／E 位移（會記住）","「放大檢查」：在航照上疊出本次點位、實測點與 87 點，確認地物有對齊","範圍太大時自動降低解析度；網路連不上會跳出原因"]},{"version":"2.9.0","date":"2026-11-05","items":["存進資料夾後會重新讀一次檔案確認真的存好，檔案下方顯示「✓ 已存好：資料夾裡的檔名（大小）」","存檔失敗會跳出提示窗，用白話說明原因（找不到資料夾、要再按一次允許、檔案被 Excel 開著、磁碟空間不足…），並可以「再試一次」「改存到瀏覽器的下載」「重新選資料夾」","修正：存不進資料夾時以前會悄悄改用瀏覽器下載，有時被瀏覽器擋掉而變成沒有檔案；現在一定會讓你知道","全部下載改成一個接一個存，最後統一回報成功與失敗"]},{"version":"2.8.0","date":"2026-11-05","items":["用「選擇整個資料夾」或把資料夾拖進來時，如果資料夾裡就有這份系統，會自動設成存檔位置，之後按下載直接存進去","選到別的資料夾時，下載按鈕旁會多一個「存到剛剛選的資料夾」，按一下就切換","Chrome / Edge 的「選擇整個資料夾」改用新的資料夾選擇方式（讀檔和存檔權限一次取得）"]},{"version":"2.7.0","date":"2026-11-04","items":["存檔區的檔名可以直接點來改（沒打副檔名會自動補上），下載時用新檔名","「選擇存檔資料夾」按鈕移到下載按鈕旁邊（重測系統寫入區也有），選好後顯示「📁 存到：資料夾名稱」"]},{"version":"2.6.0","date":"2026-11-04","items":["輸出排序一律：界址點／參考點 → 補點 → 控制點（重測資料匯出、複丈輸入檔、GPS 的 CNT 都一樣）；複丈輸入檔的排序選項拿掉","新增「存檔位置」（右上角）：選一次資料夾（建議選系統所在的資料夾），之後按下載都直接存進去；每份複製到不同位置的系統各自記住自己的資料夾，同名檔案自動加 (1)、(2) 不會蓋掉","手機等窄螢幕時標題列自動換行"]},{"version":"2.5.0","date":"2026-11-03","items":["Y、X 判斷改用位數：Y 整數部分一定 7 位、X 一定 6 位；L 檔與 GPS CSV 都用這個規則判斷順序，GPS 點位數不對時會標出來提醒","「複丈輸入檔 → 全站儀 / GPS 控制器」移到首頁「匯出」區，成為正式的卡片","選資料夾時自動略過系統預設檔 KC0000.L02，除非路徑裡有名為 KC0000 的資料夾"]},{"version":"2.4.0","date":"2026-11-03","items":["全站儀 MAC 預設改成 Excel 版格式，和 Excel 轉檔工具存出來的逐字相同（Tab 分隔、去尾 0、數字點號後加空白、Q 點照原名）；進階設定可改回空白分隔","寫入 D14：新的參考點點號只要和 D14 裡任何參考點（X.XX，不含計算的 X.00）重複，就改成參考點最大號＋1；改號也會套用到 MAC／CNT（例如 1～14 → 26～39）","同點號或同補點名稱、坐標相差 6 cm 內：視為重測，預設不寫入並列出差值；打勾可改寫成新的參考點（X.XX，補點預設編碼 11）","全站儀照準 D14／D20 裡已有的點，也會列出差值（用 6 cm 規則判斷）"]},{"version":"2.3.0","date":"2026-11-03","items":["GPS CSV 改成只輸出 CNT（點號.編碼,Y,X），重測系統直接讀入就好；舊的虛擬測站 CNT＋MAC 收起來，需要時按「展開」","CNT 不能有 Q 點：編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點自動編成這批最大點號＋1 的參考點（QGGC32 → 42.11），都列在編碼對照表；直接寫入 D20 時仍用補點原名稱"]},{"version":"2.2.0","date":"2026-11-03","items":["有放 D14、D20 時，「直接寫入重測系統」成為第 3 步主力；舊的 CNT＋MAC 檔收起來（照原本規則、不含 Q 補點），需要時按「展開」","沒有放 D14、D20 時跟以前一樣只做 CNT＋MAC","「接下來這樣做」改成寫入的步驟（先關重測系統 → 寫入 → 檢查，可用 .bak 還原）"]},{"version":"2.1.2","date":"2026-11-03","items":["修正：CNT＋MAC 照原本的規則，不能有 Q 點——編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點（QGGC32）不放進 MAC 並提醒；補點規則只用在「直接寫入 D20」","編碼對照表分成「MAC 點號」和「補點名稱（D20）」兩欄"]},{"version":"2.1.1","date":"2026-11-03","items":["修正補點名稱：數字點號的編碼寫 Q 開頭時，編碼本身就是補點名稱（13,…,q11 → 補點 Q11）；編碼只有字母時才接上點號（12,…,QW → QW12）"]},{"version":"2.1.0","date":"2026-11-03","items":["GPS CSV 補點判斷：點名 Q 開頭且有高程（例如 QGGC32）是補點，寫入時進 D20；Q 開頭但沒有高程（例如 QW1）是系統原有點，照舊剔除","數字點號、編碼寫 Q 開頭時（例如 12,…,QW），把編碼移到點號上（QW12）當補點，並列入編碼對照表","修正：高程欄寫成「0」（不是 0.000）時認不出高程欄，導致現場核對點被當成要問編碼的點"]},{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
 /*
  * 土地重測資料轉換系統 — 轉換核心
  *
@@ -2119,7 +2131,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
   PHOTO_YEARS.push('PHOTO1');
   PHOTO_YEARS.forEach(function (k) {
     var y = k === 'PHOTO1' ? null : +k.slice(5);
-    BASEMAP_SOURCES[k] = { label: y ? (y - 1911) + ' 年正射影像' : '92～94 年正射影像', year: y ? y - 1911 : 92, kind: 'merc', zoom: 20, url: NLSC_MERC.replace('{layer}', k) };
+    BASEMAP_SOURCES[k] = { label: y ? (y - 1911) + ' 年圖層正射影像' : '92～94 年正射影像', year: y ? y - 1911 : 92, kind: 'merc', zoom: 20, url: NLSC_MERC.replace('{layer}', k) };
   });
   /** 範圍中心那一張圖磚（用來比對各年度是不是同一張航照） */
   function probeTileUrl(sourceKey, N, E) {
@@ -2270,12 +2282,12 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
    * 規劃要抓的範圍：bbox 是「實測坐標」，影像要往回移 shift 才對得上。
    * 回傳 { width, height, res, ulE, ulN（左上像素中心，已含校正）, tiles:[{z,row,col,url}], source }
    */
-  function planBasemap(bbox, sourceKey, shift, maxPixels, datum) {
+  function planBasemap(bbox, sourceKey, shift, maxPixels, datum, zoom) {
     if (datum === 'TWD67') {
       // 67 段：在範圍內 67→97 幾乎就是平移（縮放、旋轉在 2 km 內 < 2 cm），用中心點的差當平移量
       var cN = (bbox.minN + bbox.maxN) / 2, cE = (bbox.minE + bbox.maxE) / 2, q = twd67to97(cN, cE);
       var dN = q[0] - cN, dE = q[1] - cE;
-      var p97 = planBasemap({ minE: bbox.minE + dE, maxE: bbox.maxE + dE, minN: bbox.minN + dN, maxN: bbox.maxN + dN }, sourceKey, shift, maxPixels);
+      var p97 = planBasemap({ minE: bbox.minE + dE, maxE: bbox.maxE + dE, minN: bbox.minN + dN, maxN: bbox.maxN + dN }, sourceKey, shift, maxPixels, null, zoom);
       p97.datum = 'TWD67'; p97.datumOffset = { dN: dN, dE: dE };
       p97.ulE -= dE; p97.ulN -= dN;
       return p97;
@@ -2283,7 +2295,9 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
     var src = BASEMAP_SOURCES[sourceKey] || BASEMAP_SOURCES.PHOTO2;
     var plan;
     // 範圍太大時自動降一層（解析度減半），最多降 4 層
-    for (var z = src.zoom; z >= src.zoom - 4; z--) {
+    // zoom：指定層級（例如預覽用低解析度）；沒指定就從最高層開始
+    var z0 = zoom ? Math.min(zoom, src.zoom) : src.zoom;
+    for (var z = z0; z >= src.zoom - 4; z--) {
       plan = planAt(bbox, sourceKey, src, z, shift, maxPixels);
       if (!plan.tooBig) break;
     }
@@ -4612,22 +4626,24 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
     return Core.basemapArea(bmAreaPoints(r).map(function (q) { return { N: q.N, E: q.E, name: q.name }; }), { margin: b.margin, minSize: b.minSize, includeAll: b.incAll });
   }
   /** 套合點：D14 的航照判讀點（自動）＋ 使用者在航照上點的 */
-  function bmPairs() {
+  function bmPairs(src) {
     var b = bmState(), d = bmD14Now(), list = [];
+    src = src || b.src;
     if (d && b.code !== '' && b.code != null) Core.suggestImagePairs(d.db, +b.code).forEach(function (x) {
       if (x.real) list.push({ id: 'a:' + x.img.label, auto: true, real: x.real, img: x.img });
     });
-    (b.clicks[b.src] || []).forEach(function (x) { list.push(x); });
+    (b.clicks[src] || []).forEach(function (x) { list.push(x); });
     list.forEach(function (x) { x.on = !b.off[x.id]; });
     return list;
   }
-  function bmShiftFor(mode) {
+  function bmShiftFor(mode, src) {
     var b = bmState();
+    src = src || b.src;
     if (mode === 'pairs') {
-      var sh = Core.shiftFromPairs(bmPairs().filter(function (x) { return x.on; }));
+      var sh = Core.shiftFromPairs(bmPairs(src).filter(function (x) { return x.on; }));
       return sh ? { dN: sh.dN, dE: sh.dE, mode: mode, info: sh } : { dN: 0, dE: 0, mode: mode };
     }
-    if (mode === 'manual') { var m = b.manual[b.src] || {}; return { dN: +m.dN || 0, dE: +m.dE || 0, mode: mode }; }
+    if (mode === 'manual') { var m = b.manual[src] || {}; return { dN: +m.dN || 0, dE: +m.dE || 0, mode: mode }; }
     return { dN: 0, dE: 0, mode: 'none' };
   }
   function bmShift() {
@@ -4684,9 +4700,9 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
     // ② 圖源：預設最新；可以指定年份（同一張航照的年份併在一起），或用 TWD97 原生的 _3826
     var yr = bmYears(area), S0 = Core.BASEMAP_SOURCES[b.src] || {};
     var isYear = Core.PHOTO_YEARS.indexOf(b.src) >= 0;
-    var latestTxt = yr && yr.status === 'done' ? (yr.latestYear ? '這裡目前最新是 <b>' + yr.latestYear + ' 年</b>拍的' : '最新的航照') : (yr && yr.status === 'fail' ? '查不到拍攝年份（網路？）' : '查詢拍攝年份中…');
+    var latestTxt = yr && yr.status === 'done' ? (yr.latestYear ? '這裡最新的是 <b>' + yr.latestYear + ' 年圖層</b>' : '最新的航照') : (yr && yr.status === 'fail' ? '查不到拍攝年份（網路？）' : '查詢拍攝年份中…');
     var yearOpts = yr && yr.status === 'done' ? yr.groups.map(function (g) {
-      var t = (g.key === 'PHOTO1' ? '92～94 年' : g.year + ' 年') + (g.years.length > 1 ? '（' + g.years[0] + '～' + g.years[g.years.length - 1] + ' 年圖層都是這張）' : '') + (g.latest ? '＝最新' : '');
+      var t = (g.key === 'PHOTO1' ? '92～94 年' : g.year + ' 年') + '圖層' + (g.years.length > 1 ? '（' + g.years[0] + '～' + g.years[g.years.length - 1] + ' 年都是這張）' : '') + (g.latest ? '＝最新' : '');
       return '<option value="' + g.key + '"' + (g.key === b.src ? ' selected' : '') + '>' + t + '</option>';
     }).join('') : (isYear ? '<option value="' + b.src + '" selected>' + esc(S0.label) + '</option>' : '<option value="">查詢中…</option>');
     h.push('<div class="bmsec"><div class="bmnum">2</div><div class="bmbody"><h4>圖源 <span class="muted">（國土測繪中心，需要網路）</span></h4><div class="bmsrcs">' +
@@ -4869,7 +4885,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
     }).then(function (x) {
       var base = bmBaseName();
       var yy = b.years && b.years.status === 'done' ? b.years : null;
-      var srcName = b.src === 'PHOTO2' ? '最新正射影像' + (yy && yy.latestYear ? '（' + yy.latestYear + ' 年）' : '') : b.src === 'PHOTO3826' ? '正射影像圖(通用)_3826' : Core.BASEMAP_SOURCES[b.src].label;
+      var srcName = b.src === 'PHOTO2' ? '最新正射影像' + (yy && yy.latestYear ? '（' + yy.latestYear + ' 年圖層）' : '') : b.src === 'PHOTO3826' ? '正射影像圖(通用)_3826' : Core.BASEMAP_SOURCES[b.src].label;
       var note = srcName + '，' + dt.datum + ' 坐標，' + plan.res.toFixed(3) + ' m／像素；' +
         (sh.mode === 'none' || (!sh.dN && !sh.dE) ? '未校正偏差' : '已校正 N ' + f3(sh.dN) + '、E ' + f3(sh.dE) + ' m') +
         (x.failed ? '；有 ' + x.failed + ' 張圖磚沒抓到（白色區塊）' : '');
@@ -4918,8 +4934,9 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
 
     modal('<div class="bmvhead"><h3>' + (pickMode ? '🎯 選套合點' : '🔍 放大檢查') + ' <span class="muted">' + esc(o.note) + '</span></h3></div>' +
       '<div class="bmguide" id="bmGuide"></div>' +
-      '<div class="bmview" id="bmViewer"><div class="bmin" id="bmIn"><img src="' + o.url + '" id="bmImg" draggable="false"><svg id="bmSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
-      '<div class="bmzoom"><button type="button" id="bmZin" title="放大">＋</button><button type="button" id="bmZout" title="縮小">－</button><button type="button" id="bmZfit" title="看全圖">⤢</button></div></div>' +
+      '<div class="bmview" id="bmViewer"><div class="bmin" id="bmIn"><img src="' + o.url + '" id="bmImg" draggable="false"><canvas id="bmYearCv" class="ylayer hidden"></canvas><svg id="bmSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>' +
+      '<div class="bmzoom"><button type="button" id="bmZin" title="放大">＋</button><button type="button" id="bmZout" title="縮小">－</button><button type="button" id="bmZfit" title="看全圖">⤢</button></div><div class="yload hidden" id="bmYLoad"></div></div>' +
+      '<div class="ybar" id="bmYBar"></div>' +
       '<div class="bmvfoot"><div class="legend"><span><i style="background:#ffd400"></i>本次點位</span>' + (d14 ? '<span><i style="background:#d0d7de"></i>D14 參考點</span>' : '') + '<span><i style="border:2px solid #ff3b30"></i>套合：實測</span><span><i style="border:2px solid #19c3ff"></i>套合：航照位置</span></div>' +
       '<label class="muted" style="cursor:pointer"><input type="checkbox" id="bmPrev" checked> 預覽校正後的樣子</label></div>' +
       '<div id="bmVPairs" class="bmvpairs"></div>' +
@@ -4965,6 +4982,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
       view.classList.toggle('picking', V.step > 0);
       if (V.step === 1) g.innerHTML = '<b>① 點一下「實測點」</b>（黃點／灰點）。選建物角、圍牆角這種在航照上看得清楚的點。<span class="muted">滾輪放大、拖曳移動</span> <button class="btn small" id="bmCancel" type="button">取消</button>';
       else if (V.step === 2) g.innerHTML = '<b>② 在航照上點一下「' + esc(V.sel.label) + '」真正的位置</b>（放大點準一點）。 <button class="btn small" id="bmCancel" type="button">取消</button>';
+      else if (Y.shown !== Y.base) g.innerHTML = '正在看 <b>' + esc((Y.groups[Y.shown] || {}).label || '') + '</b> 的航照（點位不動，只換影像）。實際拍攝年份看影像上的浮水印（例「nlsc.gov.tw 2016」）。要用這一張就按「用這一年輸出」。';
       else g.innerHTML = n ? '已選 <b>' + n + '</b> 組套合點' + (n < 2 ? '，建議再選 1～2 組（分散在圖的不同位置）' : '') + '。確認地物對齊紅圈後，按右下角「套用並重新輸出」。' : '按「➕ 新增套合點」開始。也可以只看：滾輪放大、拖曳移動。';
       g.className = 'bmguide' + (V.step ? ' active' : '');
       if ($('bmCancel')) $('bmCancel').onclick = function () { V.step = 0; V.sel = null; guide(); draw(); };
@@ -4977,6 +4995,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
       $('bmApply').disabled = !sh.info;
     };
     var onPick = function (x, y) {
+      if (Y.shown !== Y.base) { toast('現在顯示的是別的年份；要用這一年選套合點，請先按「用這一年輸出」'); return; }
       if (V.step === 1) {
         var best = null;
         cands.forEach(function (q) { var p = toPx(q.E, q.N), d = Math.hypot(p[0] - x, p[1] - y) * V.z; if (d < 16 && (!best || d < best.d)) best = { q: q, d: d }; });
@@ -5014,8 +5033,123 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.4.0","da
     $('bmZout').onclick = function () { zoomAt(1 / 1.5, view.clientWidth / 2, view.clientHeight / 2); };
     $('bmZfit').onclick = fit;
     $('bmPrev').onchange = function () { V.preview = this.checked; draw(); };
-    $('bmAdd').onclick = function () { V.step = 1; V.sel = null; guide(); draw(); };
+    $('bmAdd').onclick = function () {
+      if (Y.shown !== Y.base) { toast('請先切回輸出的那一年，或按「用這一年輸出」'); return; }
+      V.step = 1; V.sel = null; guide(); draw();
+    };
     $('bmClose').onclick = function () { closeModal(); renderBasemapPanel(state.result); };
+
+    // ── 年份軸：拖拉切換各年度航照（先低解析度預覽，停下來再補高解析度） ──
+    var Y = { base: -1, shown: -1, groups: [], token: 0, timer: null };
+    var ext = { minE: pl.ulE - pl.res / 2, maxN: pl.ulN + pl.res / 2 };
+    ext.maxE = ext.minE + o.w * pl.res; ext.minN = ext.maxN - o.h * pl.res;
+    var cache = b.yearCache && b.yearCache.url === o.url ? b.yearCache : (b.yearCache = { url: o.url, lo: {}, hi: {}, hiOrder: [] });
+    var layer = $('bmYearCv');
+    var renderSrc = function (key, zoom) {
+      var mode = b.mode || 'pairs', sh = bmShiftFor(mode, key);
+      var p2 = Core.planBasemap(ext, key, sh, null, pl.datum, zoom);
+      return fetchTiles(p2, function () {}).then(function (m) {
+        if (m.failed === p2.tiles.length) throw new Error('連不上國土測繪中心');
+        var cv = document.createElement('canvas'); cv.width = p2.width; cv.height = p2.height;
+        var src = m.canvas.getContext('2d').getImageData(0, 0, m.canvas.width, m.canvas.height);
+        cv.getContext('2d').putImageData(new ImageData(Core.resampleMercToTm2(src.data, src.width, src.height, p2, sh), p2.width, p2.height), 0, 0);
+        return { canvas: cv, plan: p2 };
+      });
+    };
+    var paint = function (it) {
+      var g = layer.getContext('2d');
+      layer.width = it.canvas.width; layer.height = it.canvas.height;
+      g.drawImage(it.canvas, 0, 0);
+      // 和輸出影像同一個範圍：左上角對齊，寬高換算成輸出影像的像素
+      layer.style.left = ((it.plan.ulE - it.plan.res / 2 - ext.minE) / pl.res) + 'px';
+      layer.style.top = ((ext.maxN - (it.plan.ulN + it.plan.res / 2)) / pl.res) + 'px';
+      layer.style.width = (it.plan.width * it.plan.res / pl.res) + 'px';
+      layer.style.height = (it.plan.height * it.plan.res / pl.res) + 'px';
+    };
+    var loadMsg = function (t) { var e = $('bmYLoad'); if (!e) return; e.textContent = t || ''; e.classList.toggle('hidden', !t); };
+    var showYear = function (i) {
+      if (i < 0 || i >= Y.groups.length) return;
+      Y.shown = i; clearTimeout(Y.timer); var tok = ++Y.token;
+      barUi();
+      if (i === Y.base) { layer.classList.add('hidden'); img.style.visibility = ''; loadMsg(''); guide(); return; }
+      var key = Y.groups[i].key;
+      var show = function (it) { if (tok !== Y.token) return; paint(it); layer.classList.remove('hidden'); img.style.visibility = 'hidden'; };
+      var hiReady = cache.hi[key];
+      if (hiReady) { show(hiReady); loadMsg(''); guide(); return; }
+      (cache.lo[key] ? Promise.resolve(cache.lo[key]) : (loadMsg('載入 ' + Y.groups[i].label + ' …'), renderSrc(key, 18).then(function (it) { cache.lo[key] = it; return it; })))
+        .then(function (it) {
+          show(it); if (tok !== Y.token) return;
+          loadMsg('');
+          // 停在這一年 0.7 秒 → 補抓高解析度
+          Y.timer = setTimeout(function () {
+            if (tok !== Y.token) return;
+            loadMsg('載入清楚的版本…');
+            renderSrc(key, null).then(function (hi) {
+              cache.hi[key] = hi; cache.hiOrder.push(key);
+              while (cache.hiOrder.length > 3) delete cache.hi[cache.hiOrder.shift()];
+              if (tok === Y.token) { show(hi); loadMsg(''); }
+            }, function () { if (tok === Y.token) loadMsg(''); });
+          }, 700);
+        }, function (e) { if (tok === Y.token) loadMsg('載入失敗：' + (e.message || e)); });
+      guide();
+    };
+    var barUi = function () {
+      var bar = $('bmYBar'); if (!bar || !Y.groups.length) return;
+      var n = Y.groups.length, g = Y.groups[Y.shown] || {};
+      $('bmYRange').value = Y.shown;
+      Array.prototype.forEach.call(bar.querySelectorAll('.ytick'), function (t, k) { t.classList.toggle('on', k === Y.shown); t.classList.toggle('base', k === Y.base); });
+      $('bmYNow').innerHTML = '顯示：<b>' + esc(g.label || '') + '</b>' + (g.span ? '<span class="muted">（' + esc(g.span) + '）</span>' : '') +
+        (Y.shown === Y.base ? ' <span class="ybadge">輸出的這張</span>' : '');
+      $('bmYUse').disabled = Y.shown === Y.base;
+    };
+    var buildBar = function () {
+      var yr = b.years, bar = $('bmYBar'); if (!bar) return;
+      if (!yr || yr.status !== 'done' || !yr.groups.length) { bar.innerHTML = '<div class="muted">' + (yr && yr.status === 'fail' ? '查不到各年度航照' : '查詢各年度航照中…') + '</div>'; return; }
+      var gs = yr.groups.slice().reverse().map(function (g) {
+        var label = g.key === 'PHOTO1' ? '92～94 年' : g.year + ' 年';
+        return { key: g.key, latest: g.latest, label: label + '圖層' + (g.latest ? '（最新）' : ''), tick: g.key === 'PHOTO1' ? '92' : String(g.year),
+          span: g.years.length > 1 ? g.years[0] + '～' + g.years[g.years.length - 1] + ' 年都是這張' : '' };
+      });
+      Y.groups = gs;
+      var src = pl.source;
+      Y.base = gs.findIndex(function (g) { return src === 'PHOTO2' ? g.latest : g.key === src; });
+      if (src === 'PHOTO3826') {
+        // _3826 不在年份軸上：多一格放在最右邊
+        gs.push({ key: 'PHOTO3826', label: '通用_3826', tick: '3826', span: 'TWD97 原生' });
+        Y.base = gs.length - 1;
+      }
+      var n = gs.length;
+      bar.innerHTML = '<div class="yhead"><span class="ytitle">🕰 各年度航照</span><span id="bmYNow"></span><span class="grow"></span>' +
+        '<button class="btn small" id="bmYPrev" type="button" title="上一年（←）">◀</button><button class="btn small" id="bmYNext" type="button" title="下一年（→）">▶</button>' +
+        '<button class="btn small primary" id="bmYUse" type="button">用這一年輸出</button></div>' +
+        '<div class="ytrack"><input type="range" id="bmYRange" min="0" max="' + (n - 1) + '" step="1" value="' + Y.base + '">' +
+        '<div class="yticks">' + gs.map(function (g, k) { return '<button type="button" class="ytick" data-i="' + k + '" style="left:' + (n > 1 ? k / (n - 1) * 100 : 50) + '%">' + esc(g.tick) + '</button>'; }).join('') + '</div></div>';
+      Y.shown = Y.base;
+      $('bmYRange').oninput = function () { showYear(+this.value); };
+      Array.prototype.forEach.call(bar.querySelectorAll('.ytick'), function (t) { t.onclick = function () { showYear(+t.getAttribute('data-i')); }; });
+      $('bmYPrev').onclick = function () { showYear(Math.max(0, Y.shown - 1)); };
+      $('bmYNext').onclick = function () { showYear(Math.min(n - 1, Y.shown + 1)); };
+      $('bmYUse').onclick = function () {
+        var g = Y.groups[Y.shown]; if (!g) return;
+        b.src = g.latest ? 'PHOTO2' : g.key; closeModal();
+        var area = bmArea(state.result);
+        makeBasemap(state.result, area.bbox, bmShift());
+      };
+      barUi();
+    };
+    var keyNav = function (e) {
+      if ($('modal').classList.contains('hidden') || !$('bmYBar')) { document.removeEventListener('keydown', keyNav); return; }
+      if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.id !== 'bmYRange') return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); showYear(Math.max(0, Math.min(Y.groups.length - 1, Y.shown + (e.key === 'ArrowLeft' ? -1 : 1)))); }
+    };
+    document.addEventListener('keydown', keyNav);
+    buildBar();
+    if (!b.years || b.years.status === 'loading') {
+      var waitN = 0, wait = setInterval(function () {
+        if (!$('bmYBar') || ++waitN > 60) { clearInterval(wait); return; }
+        if (b.years && b.years.status !== 'loading') { clearInterval(wait); buildBar(); }
+      }, 500);
+    }
     $('bmApply').onclick = function () {
       b.mode = 'pairs'; closeModal();
       var area = bmArea(state.result);
