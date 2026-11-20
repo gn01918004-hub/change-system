@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 把 src/core.js、src/app.js 嵌入 src/app.html，產生單一檔案 dist/土地重測資料轉換系統.html
+// 把 src/core.js、src/app.js 嵌入 src/app.html，產生單一檔案 dist/<asset>（version.json 的 asset，固定英文檔名、不含版本號）
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -15,11 +15,14 @@ const favicon = 'data:image/svg+xml;base64,' + Buffer.from(read('favicon.svg')).
 if (!html.includes('@@FAVICON@@')) throw new Error('app.html 缺少標記 @@FAVICON@@');
 html = html.replace('@@FAVICON@@', favicon);
 const info = JSON.parse(fs.readFileSync(path.join(root, 'version.json'), 'utf8'));
+if (!/^[A-Za-z0-9._-]+\.html$/.test(info.asset || '')) throw new Error('version.json 的 asset 要是英文檔名（例 change-system.html）');
 html = html.replace('/*@@INFO@@*/', () => 'window.APP_INFO = ' + safe(JSON.stringify(info)) + ';');
 html = html.replace('/*@@CORE@@*/', () => safe(read('core.js')));
 html = html.replace('<script src="app.js"></script>', () => '<script>\n' + safe(read('app.js')) + '</script>');
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
-const target = path.join(root, 'dist', '土地重測資料轉換系統.html');
+const target = path.join(root, 'dist', info.asset);
+// 舊檔名（中文）不再產生
+for (const f of fs.readdirSync(path.join(root, 'dist'))) if (f !== info.asset && /\.html$/i.test(f)) fs.unlinkSync(path.join(root, 'dist', f));
 fs.writeFileSync(target, html);
 // CHANGELOG.md 由 version.json 產生，兩者保持一致
 const md = ['# 更新歷程', '', '版本號與更新內容都寫在 `version.json`，執行 `npm run build` 會自動更新本檔與網頁。', '']

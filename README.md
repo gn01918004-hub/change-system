@@ -6,7 +6,8 @@
 
 ## 怎麼用（三步驟）
 
-1. 用 Chrome 或 Edge 打開 **`dist/土地重測資料轉換系統.html`**（雙擊就可以，不用安裝、不用網路）。
+1. 從 [GitHub Releases](https://github.com/gn01918004-hub/change-system/releases/latest) 下載 **`change-system.html`**，用 Chrome 或 Edge 打開（雙擊就可以，不用安裝、不用網路）。
+   固定下載網址（永遠是最新版）：<https://github.com/gn01918004-hub/change-system/releases/latest/download/change-system.html>
 2. 把檔案拖進畫面，系統會自己認出是哪一種檔案；也可以按 **📁 選擇整個資料夾**（或直接把資料夾拖進來），系統會自動找出裡面可以轉換的檔案讓你勾選。
 3. 看**點位縮圖**和紅色、黃色的提醒，然後按綠色的 **⬇ 下載**。要改檔名就直接點檔名。
 
@@ -162,23 +163,28 @@
 
 ## 版本與更新提醒
 
-* 右上角的版本號（例如 `v1.3.0`）點一下可以看**更新歷程**，也可以手動「檢查有沒有新版本」。
-* 每次打開網頁時，會到 GitHub 讀取這個專案的 `version.json`。有新版本時，畫面上方會出現提醒，按「⬇ 下載新版」就會下載新的 HTML，用它取代舊檔即可。
+* 發布方式：**GitHub Releases**。附件檔名固定為 **`change-system.html`**（英文、不含版本號）；版本號只寫在 Release 標題（例「土地重測資料轉換系統 v3.6.0」）、tag（`v3.6.0`）和程式內。
+* 固定下載網址，永遠是最新版：<https://github.com/gn01918004-hub/change-system/releases/latest/download/change-system.html>
+* 右上角的版本號點一下可以看**更新歷程**，也可以手動「檢查有沒有新版本」。
+* 每次打開網頁時會問 GitHub 最新的 Release（GitHub 一小時有查詢次數限制，被擋時改讀預設分支的 `version.json`）。有新版本時畫面上方會出現提醒，按「⬇ 下載新版」會從上面的固定網址下載，用它取代舊檔即可。
 * 沒有網路時會安靜略過，不影響使用。按「這版先不要」，同一個版本就不會再提醒。
 
 ### 發布新版本的步驟（給維護的人）
 
 1. 修改 `version.json`：把 `version` 加一（修錯誤改第三碼，加功能改第二碼），並在 `changelog` 最上面加一筆更新內容。
-2. 執行 `npm run build`，網頁和 `CHANGELOG.md` 會一起更新。
-3. commit 並 push 到 GitHub 的預設分支，大家下次打開舊版時就會看到提醒。
+2. 執行 `npm run build`、`npm test`，網頁和 `CHANGELOG.md` 會一起更新。
+3. commit 並 push 到 `main`。GitHub Actions（`.github/workflows/release.yml`）會自動測試、建置，建立 tag `vX.Y.Z` 和 Release，附上 `change-system.html`。這個版本已經發布過就會略過，所以一般的 push 不會重複發布。
+4. 也可以在 GitHub 的 Actions 頁面手動執行「Release」。
+
+`dist/change-system.html` 也留在 repo 裡，給 v3.5.0 以前的舊版自動更新用（舊版是從預設分支下載）。
 
 ## 開發
 
 ```bash
 npm test        # 測試轉換核心
-npm run build   # src/core.js + src/app.html → dist/土地重測資料轉換系統.html
+npm run build   # src/core.js + src/app.html → dist/change-system.html
 ```
 
 * `src/core.js`：轉換邏輯，瀏覽器和 Node 都能用
 * `src/app.html`：介面
-* `dist/`：打包好的單一 HTML 檔，直接發給大家用就好
+* `dist/`：打包好的單一 HTML 檔（發布用的是 GitHub Releases 上的同一個檔）

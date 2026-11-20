@@ -1,0 +1,77 @@
+# 發布：version.json 的版本號沒有對應的 Release 時，自動建置並建立 Release
+#   標題：土地重測資料轉換系統 vX.Y.Z（版本號只在標題、tag 和程式內）
+#   附件：固定英文檔名（version.json 的 asset，例 change-system.html），不含版本號
+#   固定下載網址：https://github.com/<owner>/<repo>/releases/latest/download/<asset>
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 測試與建置
+        run: |
+          node --test test/core.test.js
+          node build.js
+
+      - name: 讀版本號
+        id: v
+        run: |
+          echo "version=$(node -p "require('./version.json').version")" >> "$GITHUB_OUTPUT"
+          echo "asset=$(node -p "require('./version.json').asset")" >> "$GITHUB_OUTPUT"
+          echo "name=$(node -p "require('./version.json').name")" >> "$GITHUB_OUTPUT"
+
+      - name: 這個版本已經發布過就略過
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "v${{ steps.v.outputs.version }} 已經有 Release，略過"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 產生 Release 說明
+        if: steps.exists.outputs.skip == 'false'
+        run: |
+          node -e "
+            const v = require('./version.json');
+            const c = v.changelog.find((x) => x.version === v.version) || { items: [] };
+            const url = 'https://github.com/' + process.env.GITHUB_REPOSITORY + '/releases/latest/download/' + v.asset;
+            const lines = ['## 更新內容', '', ...c.items.map((i) => '* ' + i), '', '## 下載', '',
+              '下載附件 **' + v.asset + '**，用 Chrome 或 Edge 打開即可。', '',
+              '固定下載網址（永遠是最新版）：' + url];
+            require('fs').writeFileSync('release-notes.md', lines.join('\n') + '\n');
+          "
+          cat release-notes.md
+
+      - name: 建立 Release
+        if: steps.exists.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.v.outputs.version }}" \
+            "dist/${{ steps.v.outputs.asset }}" \
+            --title "${{ steps.v.outputs.name }} v${{ steps.v.outputs.version }}" \
+            --notes-file release-notes.md \
+            --target "${{ github.sha }}" \
+            --latest

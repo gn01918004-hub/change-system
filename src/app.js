@@ -2663,10 +2663,32 @@
     });
   }
 
+  /**
+   * 最新版資訊：先問 GitHub Releases（最新 Release 的標題／tag 就是版本號），
+   * 再讀那個版本的 version.json 拿更新內容；GitHub API 一小時有次數限制，被擋時改讀預設分支的 version.json。
+   */
+  var ASSET = INFO.asset || 'change-system.html';
+  var LATEST_URL = 'https://github.com/' + INFO.repo + '/releases/latest/download/' + ASSET;
+  var RELEASES_PAGE = 'https://github.com/' + INFO.repo + '/releases/latest';
+  function fetchLatestInfo() {
+    return fetchWithTimeout('https://api.github.com/repos/' + INFO.repo + '/releases/latest', 8000).then(function (r) { return r.json(); }).then(function (rel) {
+      var m = /(\d+\.\d+\.\d+)/.exec(rel.tag_name || '') || /(\d+\.\d+\.\d+)/.exec(rel.name || '');
+      if (!m) throw new Error('Release 沒有版本號');
+      var ver = m[1];
+      var hasAsset = (rel.assets || []).some(function (a) { return a.name === ASSET; });
+      return fetchWithTimeout('https://raw.githubusercontent.com/' + INFO.repo + '/' + encodeURIComponent(rel.tag_name) + '/version.json', 8000)
+        .then(function (r) { return r.json(); }, function () { return { changelog: [] }; })
+        .then(function (vj) { return { version: ver, changelog: vj.changelog || [], hasAsset: hasAsset }; });
+    }).catch(function () {
+      return fetchWithTimeout(RAW_BASE + 'version.json?t=' + Date.now(), 8000).then(function (r) { return r.json(); })
+        .then(function (vj) { return { version: vj.version, changelog: vj.changelog || [], hasAsset: true }; });
+    });
+  }
+
   function checkUpdate(manual) {
     if (!INFO.repo || !window.fetch) return;
-    fetchWithTimeout(RAW_BASE + 'version.json?t=' + Date.now(), 8000).then(function (r) { return r.json(); }).then(function (remote) {
-      if (cmpVer(remote.version, INFO.version) > 0) {
+    fetchLatestInfo().then(function (remote) {
+      if (cmpVer(remote.version, INFO.version) > 0 && remote.hasAsset) {
         var skipped = null;
         try { skipped = localStorage.getItem('chsys-skip-version'); } catch (e) {}
         if (manual || skipped !== remote.version) showUpdate(remote);
@@ -2702,27 +2724,18 @@
     };
   }
 
+  /** 下載新版：直接開 Release 的固定網址（永遠是最新版），由瀏覽器存到「下載」資料夾 */
   function downloadUpdate(remote) {
-    var file = remote.file || INFO.file;
-    var name = file.replace(/^.*\//, '');
-    var page = 'https://github.com/' + INFO.repo + '/blob/HEAD/' + file.split('/').map(encodeURIComponent).join('/');
-    toast('下載中…');
-    fetchWithTimeout(RAW_BASE + file.split('/').map(encodeURIComponent).join('/') + '?t=' + Date.now(), 30000)
-      .then(function (r) { return r.text(); })
-      .then(function (html) {
-        download({ name: name, content: html }, true, true);
-        modal('<h3>新版 v' + esc(remote.version) + ' 已下載</h3>' +
-          '<ol class="next"><li><div>到瀏覽器的「下載」資料夾找到 <b>' + esc(name) + '</b>。</div></li>' +
-          '<li><div>用它<b>取代</b>你原本放的舊檔（或直接改用新檔）。</div></li>' +
-          '<li><div>關掉這個頁面，打開新檔就是新版了。</div></li></ol>' +
-          '<div style="text-align:right;margin-top:14px"><button class="btn primary" id="okUp">知道了</button></div>');
-        $('okUp').onclick = closeModal;
-      })
-      .catch(function () {
-        modal('<h3>自動下載失敗</h3><p>請到 GitHub 頁面手動下載新版：</p><p><a href="' + esc(page) + '" target="_blank" rel="noopener">' + esc(page) + '</a></p>' +
-          '<p class="muted">進去後按右上角的「⬇ Download raw file」。</p><div style="text-align:right"><button class="btn primary" id="okUp2">好</button></div>');
-        $('okUp2').onclick = closeModal;
-      });
+    var a = document.createElement('a');
+    a.href = LATEST_URL; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    modal('<h3>正在下載新版 v' + esc(remote.version) + '</h3>' +
+      '<ol class="next"><li><div>到瀏覽器的「下載」資料夾找到 <b>' + esc(ASSET) + '</b>。</div></li>' +
+      '<li><div>用它<b>取代</b>你原本放的舊檔（或直接改用新檔）。</div></li>' +
+      '<li><div>關掉這個頁面，打開新檔就是新版了。</div></li></ol>' +
+      '<p class="muted">沒有開始下載？直接到 <a href="' + esc(RELEASES_PAGE) + '" target="_blank" rel="noopener">GitHub Releases</a> 下載 ' + esc(ASSET) + '。<br>固定下載網址（永遠是最新版）：<br><code class="mono" style="word-break:break-all">' + esc(LATEST_URL) + '</code></p>' +
+      '<div style="text-align:right;margin-top:14px"><button class="btn primary" id="okUp">知道了</button></div>');
+    $('okUp').onclick = closeModal;
   }
 
   // 開啟後稍等再檢查，不影響使用；沒有網路就安靜略過

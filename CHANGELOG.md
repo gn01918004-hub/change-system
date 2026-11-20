@@ -2,6 +2,13 @@
 
 版本號與更新內容都寫在 `version.json`，執行 `npm run build` 會自動更新本檔與網頁。
 
+## v3.6.0（2026-11-20）
+
+* 改用 GitHub Releases 發布：檔名固定為 change-system.html（不含版本號），版本號只寫在 Release 標題和程式內
+* 固定下載網址：https://github.com/gn01918004-hub/change-system/releases/latest/download/change-system.html，永遠是最新版
+* 新版本提醒改看 GitHub Releases 的最新版；按「⬇ 下載新版」會直接從 Release 下載
+* 注意：檔名改了，第一次打開新檔時「📁 存檔資料夾」要重新選一次（每個檔案各自記住）
+
 ## v3.5.0（2026-11-13）
 
 * 放大檢查視窗多一條「🕰 各年度航照」時間軸：拖拉（或按 ← →、點年份）就換成那一年的航照，點位不動，可以看出這裡怎麼變化
