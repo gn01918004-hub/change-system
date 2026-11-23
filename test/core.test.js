@@ -675,3 +675,35 @@ test('合併兩個重測檔：來源 67 自動用公式換成 97；自由坐標�
   const out = Core.buildMerge(pf, jf.main, jf.src);
   assert.ok(out.d14 && out.d20 && out.d29);
 });
+
+test('合併到重測系統：DXF（CAD 圖）不一樣的點寫成參考點 .97、連線寫進 D29', () => {
+  const { main } = mgJobs((N, E) => [N, E]);
+  const J = Core.jobFromDbf(main);
+  // 用主要檔底圖畫一張 DXF：大部分線照抄；另外多畫一條「不一樣」的線（兩端都不在底圖上）和一個十字點位記號、一條摺線
+  const ent = [];
+  const line = (ly, a, b) => ent.push('0', 'LINE', '8', ly, '10', a.E.toFixed(3), '20', a.N.toFixed(3), '11', b.E.toFixed(3), '21', b.N.toFixed(3));
+  J.segs.slice(0, 120).forEach(sg => line('LIN0', sg[0], sg[1]));
+  const c = J.d2c[50], d = J.d2c[51];
+  const x1 = { E: c.E + 3, N: c.N + 2 }, x2 = { E: c.E + 9, N: c.N + 6 };
+  line('SPLIT', x1, x2); line('SPLIT', x2, d); // 第二條的另一端在底圖點上
+  line('PNT', { E: x1.E - 0.3, N: x1.N }, { E: x1.E + 0.3, N: x1.N }); line('PNT', { E: x1.E, N: x1.N - 0.3 }, { E: x1.E, N: x1.N + 0.3 });
+  line('FOLD', { E: c.E - 50, N: c.N + 1 }, { E: c.E + 50, N: c.N + 1 });
+  ent.push('0', 'TEXT', '8', 'PAR', '10', String(c.E), '20', String(c.N), '1', '123');
+  const text = ['0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1015', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES'].concat(ent, ['0', 'ENDSEC', '0', 'EOF']).join('\r\n');
+  const dxf = Core.parseDxf(text);
+  assert.strictEqual(dxf.pts.length, 1); // 十字 → 一個點位記號
+  assert.strictEqual(dxf.texts[0].text, '123');
+  assert.ok(Core.dxfLayerDefault('LIN0') && !Core.dxfLayerDefault('FOLD'));
+  const p = Core.planDxfMerge(main, dxf, {});
+  assert.strictEqual(p.method, 'asis');
+  // 不一樣的點：x1、x2（FOLD 預設不用）；另一端 d 在底圖上 → 為了連線寫入
+  assert.strictEqual(p.counts.ref, 2); assert.strictEqual(p.counts.ends, 1);
+  assert.ok(p.d14.every(r => r.ref === 97 && r.num > 30));
+  assert.strictEqual(p.d29.length, 2);
+  const out = Core.buildMerge(p, main, {});
+  assert.strictEqual(Core.parseDbf(out.d14).nrec, main.d14.nrec + 3);
+  assert.strictEqual(Core.parseDbf(out.d29).nrec, main.d29.nrec + 2);
+  // 勾掉 SPLIT：只剩十字點位記號那一點
+  const p2 = Core.planDxfMerge(main, dxf, { layers: { SPLIT: false } });
+  assert.strictEqual(p2.counts.ref, 1); assert.strictEqual(p2.d29.length, 0);
+});

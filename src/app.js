@@ -63,7 +63,7 @@
       next: function (r) { return KINDS.l2csv.next(r); }
     },
     merge: {
-      title: '合併兩個重測檔',
+      title: '合併到重測系統',
       accept: '',
       hint: '',
       step2: '檢查合併內容',
@@ -2644,29 +2644,40 @@
 
   // ═════════════ 合併兩個重測檔（進階，使用者主動啟用） ═════════════
 
-  var ADV_KEY = 'chsys-adv-merge';
-  function advEnabled() { try { return localStorage.getItem(ADV_KEY) === '1'; } catch (e) { return false; } }
-  function renderAdv() { $('cardMerge').classList.toggle('hidden', !advEnabled()); }
-  $('advToggle').onclick = function () {
-    modal('<h3>⚙ 進階功能</h3>' +
-      '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:8px 0"><input type="checkbox" id="advMerge" style="width:20px;height:20px;margin-top:3px"' + (advEnabled() ? ' checked' : '') + '>' +
-      '<span><b>合併兩個重測檔</b><br><span class="muted">把另一份重測資料（例如不同時期、不同人做的同一段）的參考點、套合點、補點和連線，併進你主要用的那份。會直接改 D14、D20、D29，寫入前自動備份 .bak。不熟悉的話先不要開。</span></span></label>' +
-      '<div style="text-align:right;margin-top:10px"><button class="btn primary" id="advOk">好</button></div>');
-    $('advOk').onclick = function () {
-      try { localStorage.setItem(ADV_KEY, $('advMerge').checked ? '1' : '0'); } catch (e) {}
-      closeModal(); renderAdv(); toast($('advMerge').checked ? '首頁「其他」多了「合併兩個重測檔」' : '已關閉合併功能');
-    };
-  };
-  renderAdv();
-
   var MG_EXT = ['D14', 'D20', 'D29', 'D2C', 'D2D'];
   function mgState() {
-    if (!state.mg) state.mg = { main: null, src: null, opts: { dupRef: 10, dupQ: 6, anchorCode: 96, prefix: 'TS', method: 'auto', datumMain: '', datumSrc: '' }, plan: null, built: null, done: null };
+    if (!state.mg) state.mg = { main: null, src: null, opts: { dupRef: 10, dupQ: 6, anchorCode: 96, prefix: 'TS', method: 'auto', datumMain: '', datumSrc: '', dxfCode: 97, tol: 2, near: 5, linkEnds: true, layers: null }, plan: null, built: null, done: null };
     return state.mg;
+  }
+
+  /** 讀 DXF（來源）：自動判斷文字編碼（Big5／UTF-8） */
+  function mgLoadDxf(file) {
+    return file.arrayBuffer().then(function (b) {
+      var u8 = new Uint8Array(b), enc = Core.dxfEncoding(u8), text;
+      try { text = new TextDecoder(enc).decode(u8); } catch (e) { text = new TextDecoder('utf-8').decode(u8); }
+      var dxf = Core.parseDxf(text);
+      if (!dxf.segs.length && !dxf.pts.length) throw new Error(file.name + ' 裡沒有線或點（請確認是 DXF，不是 DWG）');
+      var g = mgState();
+      g.opts.layers = {}; Object.keys(dxf.layers).forEach(function (k) { g.opts.layers[k] = Core.dxfLayerDefault(k); });
+      g.src = { type: 'dxf', label: file.name.replace(/\.[^.]*$/, ''), folder: file.name, dxf: dxf, files: {}, enc: enc };
+      g.plan = null; g.built = null; g.done = null;
+      renderMerge();
+    }).catch(function (e) { toast('讀 DXF 失敗：' + (e.message || e)); });
+  }
+  function mgPickDxf() {
+    var inp = el('input', { type: 'file', accept: '.dxf,.DXF' });
+    inp.onchange = function () { if (inp.files[0]) mgLoadDxf(inp.files[0]); };
+    inp.click();
   }
 
   /** 從資料夾（或拖進來的檔案）挑出同一個案件的 D14、D20、D29、D2C、D2D */
   function mgLoadFiles(which, entries, dirHandle, folderName) {
+    // 來源格：拖進來的是 DXF（或資料夾裡只有 DXF、沒有重測檔）
+    if (which === 'src') {
+      var dx = entries.map(function (x) { return x.file || x; }).filter(function (f) { return /\.dxf$/i.test(f.name); });
+      var has14 = entries.some(function (x) { return /\.d14$/i.test((x.file || x).name); });
+      if (dx.length && !has14) { if (dx.length > 1) toast('有 ' + dx.length + ' 個 DXF，先用 ' + dx[0].name); mgLoadDxf(dx[0]); return; }
+    }
     var list = entries.map(function (x) { return { file: x.file || x, path: x.path || (x.file || x).name }; })
       .filter(function (x) { return MG_EXT.indexOf(Core.extName(x.file.name)) >= 0 && !/\.bak$/i.test(x.file.name); });
     // 只看資料夾本層（或下一層），以有 D14 的主檔名為準
@@ -2711,6 +2722,11 @@
     var g = mgState(); if (!g.main || !g.src) return null;
     if (g.plan) return g.plan;
     var o = g.opts;
+    if (g.src.type === 'dxf') {
+      g.plan = Core.planDxfMerge(mgSet(g.main), g.src.dxf, { layers: o.layers, tol: (+o.tol || 2) / 100, dupRef: (+o.dupRef || 10) / 100, code: +o.dxfCode, near: +o.near || 5,
+        linkEnds: o.linkEnds !== false, method: o.method, datumMain: o.datumMain || null, datumSrc: o.datumSrc || null, sectionDatumMain: Core.sectionDatum(Core.sectionCode(g.main.label)) });
+      return g.plan;
+    }
     g.plan = Core.planMerge(mgSet(g.main), mgSet(g.src), {
       dupRef: (+o.dupRef || 10) / 100, dupQ: (+o.dupQ || 6) / 100, anchorCode: +o.anchorCode, prefix: o.prefix, method: o.method,
       datumMain: o.datumMain || null, datumSrc: o.datumSrc || null,
@@ -2725,30 +2741,40 @@
     var g = mgState(), box = $('mergeArea');
     var slot = function (which, title, role) {
       var j = g[which];
+      if (j && j.type === 'dxf') {
+        var lys = Object.keys(j.dxf.layers).length;
+        return '<div class="mgslot ok" data-slot="' + which + '"><h4>' + title + '</h4><div class="role">' + role + '</div>' +
+          '<div class="mgfiles">📄 <b>' + esc(j.folder) + '</b>（CAD 圖，' + esc(j.enc) + '）<br>' + j.dxf.segs.length + ' 條線、' + j.dxf.pts.length + ' 個點位記號、' + j.dxf.texts.length + ' 個文字，' + lys + ' 個圖層</div>' +
+          '<div style="margin-top:10px"><button class="btn" type="button" data-pick="src">📁 改選重測資料夾</button> <button class="btn" type="button" data-pickdxf="1">📄 換一個 DXF</button></div></div>';
+      }
       var files = j ? MG_EXT.map(function (e) { var f = j.files[e]; return f ? '<b>' + esc(f.name) + '</b> ' + f.db.nrec + ' 筆' : '<span class="miss">沒有 .' + e + '</span>'; }).join('<br>') : '';
       return '<div class="mgslot' + (j ? ' ok' : '') + '" data-slot="' + which + '"><h4>' + title + '</h4><div class="role">' + role + '</div>' +
         (j ? '<div class="mgfiles">📁 ' + esc(j.folder || '') + '　案件 <b>' + esc(j.label) + '</b>' + (Core.SECTION_NAMES[Core.sectionCode(j.label)] ? '（' + esc(Core.SECTION_NAMES[Core.sectionCode(j.label)]) + '）' : '') + '<br>' + files +
           (j.others ? '<br><span class="muted">資料夾裡還有 ' + j.others + ' 個案件，用的是 ' + esc(j.label) + '</span>' : '') + '</div>' : '') +
-        '<div style="margin-top:10px"><button class="btn ' + (j ? '' : 'primary') + '" type="button" data-pick="' + which + '">📁 ' + (j ? '換一個資料夾' : '選資料夾') + '</button> <span class="muted">或把資料夾拖到這格</span></div></div>';
+        '<div style="margin-top:10px"><button class="btn ' + (j ? '' : 'primary') + '" type="button" data-pick="' + which + '">📁 ' + (j ? '換一個資料夾' : '選資料夾') + '</button>' +
+        (which === 'src' ? ' <button class="btn" type="button" data-pickdxf="1">📄 選 DXF（CAD 圖）</button>' : '') +
+        ' <span class="muted">或拖到這格</span></div></div>';
     };
     var h = ['<div class="panel"><h3>第 1 步：選兩份重測資料</h3><div class="mgslots">' +
       slot('main', '① 主要檔', '你主要用的那份，成果會寫進這裡（D14、D20、D29）') +
-      slot('src', '② 要併進來的檔', '另一份（不同時期、不同人做的），只讀不改') + '</div>' +
-      '<p class="muted" style="margin:10px 0 0">需要：兩邊的 D14（參考點）；有 D20（補點）、D29（連線）、D2C＋D2D（圖解底圖）會一起處理。底圖用來找出套合點、判斷兩張圖的關係。</p></div>'];
+      slot('src', '② 要併進來的', '另一份重測資料（不同時期、不同人做的），或 CAD 圖 DXF；只讀不改') + '</div>' +
+      '<p class="muted" style="margin:10px 0 0">主要檔需要 D14，有 D2C＋D2D（圖解底圖）才能比對兩張圖。重測資料：D14、D20、D29 會一起處理。DXF：CAD 圖上和主要檔底圖不一樣的點寫成參考點，連線寫進 D29（DWG 請先在 CAD 另存成 DXF）。</p></div>'];
     var plan = mgPlan();
     if (plan) {
       h.push(mgAnalysisHtml(plan));
-      if (!plan.blocked) h.push(mgPreviewHtml(plan), mgWriteHtml(plan));
+      if (!plan.blocked) h.push(plan.dxf ? mgDxfPreviewHtml(plan) : mgPreviewHtml(plan), mgWriteHtml(plan));
     }
     box.innerHTML = h.join('');
     setSteps(!plan ? 1 : g.done ? 3 : 2);
     Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'), function (b) { b.onclick = function () { mgPick(b.getAttribute('data-pick')); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-pickdxf]'), function (b) { b.onclick = mgPickDxf; });
     Array.prototype.forEach.call(box.querySelectorAll('.mgslot'), function (sl) {
       sl.addEventListener('dragover', function () { sl.classList.add('over'); }); sl.addEventListener('dragleave', function () { sl.classList.remove('over'); }); sl.addEventListener('drop', function () { sl.classList.remove('over'); });
     });
     if (!plan) return;
     var reopt = function (k, v) { g.opts[k] = v; g.plan = null; g.built = null; g.done = null; renderMerge(); };
-    Array.prototype.forEach.call(box.querySelectorAll('[data-opt]'), function (x) { x.onchange = function () { reopt(x.getAttribute('data-opt'), x.value); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-opt]'), function (x) { x.onchange = function () { reopt(x.getAttribute('data-opt'), x.type === 'checkbox' ? x.checked : x.value); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-layer]'), function (x) { x.onchange = function () { g.opts.layers[x.getAttribute('data-layer')] = x.checked; reopt('layers', g.opts.layers); }; });
     Array.prototype.forEach.call(box.querySelectorAll('input[name=mgMethod]'), function (x) { x.onchange = function () { reopt('method', x.value); }; });
     if (plan.blocked) return;
     $('mgCsv').onclick = function () { var b = mgBuild(); downloadAll([{ name: g.main.label + '_合併對照表.csv', content: b.tableCsv }, { name: g.main.label + '_連線對照表.csv', content: b.lineCsv }]); };
@@ -2759,11 +2785,11 @@
   function mgAnalysisHtml(plan) {
     var g = mgState(), r = plan.reg, o = g.opts;
     var dsel = function (k, cur) { return '<select data-opt="' + k + '">' + [['', '自動'], ['TWD97', 'TWD97'], ['TWD67', 'TWD67'], ['free', '自由坐標']].map(function (x) { return '<option value="' + x[0] + '"' + (o[k] === x[0] ? ' selected' : '') + '>' + x[1] + (x[0] === '' ? '（' + DATUM_TXT[cur] + '）' : '') + '</option>'; }).join('') + '</select>'; };
-    var h = '<div class="panel"><h3>第 2 步：兩份資料的關係</h3><table class="mgtable"><tr><th></th><th>主要檔 ' + esc(g.main.label) + '</th><th>要併進來 ' + esc(g.src.label) + '</th></tr>' +
+    var h = '<div class="panel"><h3>第 2 步：兩份資料的關係</h3><table class="mgtable"><tr><th></th><th>主要檔 ' + esc(g.main.label) + '</th><th>要併進來 ' + esc(g.src.label) + (plan.dxf ? '（DXF）' : '') + '</th></tr>' +
       '<tr><td>坐標系統</td><td>' + dsel('datumMain', plan.datum.main) + '</td><td>' + dsel('datumSrc', plan.datum.src) + '</td></tr></table>';
     if (r && !r.failed) {
       var dc = r.T.apply(r.T.sx, r.T.sy);
-      h += '<div>兩張底圖是同一張圖：' + r.matched + '／' + r.total + ' 個底圖點（' + (r.inliers * 100).toFixed(1) + '%）換過去後差不到 2 cm。' +
+      h += '<div>' + (plan.dxf ? 'CAD 圖和主要檔底圖對得上：' : '兩張底圖是同一張圖：') + r.matched + '／' + r.total + ' 個' + (plan.dxf ? ' CAD 點' : '底圖點') + '（' + (r.inliers * 100).toFixed(1) + '%）換過去後差不到 2 cm' + (plan.dxf && r.inliers < 0.9 ? '（CAD 圖常包含旁邊別幅，比例低是正常的）' : '') + '。' +
         '<br>來源圖 → 主要圖：旋轉 <b>' + fmtRot(r.T.rotSec) + '</b>，圖中心平移 ΔE <b>' + (dc.E - r.T.sx).toFixed(3) + '</b>、ΔN <b>' + (dc.N - r.T.sy).toFixed(3) + '</b> m' +
         (r.how === 'shape' ? '（用圖形比對找到的）' : r.how === '67→97' ? '（約等於 67→97 的差，加上兩次套合不同）' : '') + '</div>';
     } else if (r && r.failed) h += '<div class="warnTxt">兩張底圖對不起來（' + (r.inliers * 100).toFixed(0) + '% 重合），可能不是同一張圖。</div>';
@@ -2776,6 +2802,7 @@
       var ok = plan.methods[m[0]];
       return '<label class="' + (ok ? '' : 'dis') + '"><input type="radio" name="mgMethod" value="' + m[0] + '"' + (plan.method === m[0] ? ' checked' : '') + (ok ? '' : ' disabled') + '> <b>' + m[1] + '</b>' + (plan.method === m[0] && o.method === 'auto' ? ' <span class="advtag">自動選的</span>' : '') + '<span class="muted">' + m[2] + '</span></label>';
     }).join('') + '</div>';
+    if (plan.dxf) return h + mgDxfRulesHtml(plan) + '</div>';
     h += '<h4 style="margin:14px 0 4px">規則</h4><div class="mgopts">' +
       '<label>參考點重複：<input type="number" min="1" max="100" data-opt="dupRef" value="' + esc(o.dupRef) + '"> cm 內不寫</label>' +
       '<label>補點同一點：<input type="number" min="1" max="100" data-opt="dupQ" value="' + esc(o.dupQ) + '"> cm 內不寫</label>' +
@@ -2805,15 +2832,48 @@
       '<div style="margin-top:10px"><button class="btn" id="mgCsv" type="button">⬇ 下載對照表（CSV）</button></div></div>';
     return t;
   }
+  /** DXF：圖層勾選與規則 */
+  function mgDxfRulesHtml(plan) {
+    var g = mgState(), o = g.opts, L = g.src.dxf.layers;
+    var lys = Object.keys(L).sort(function (a, b) { return (L[b].lines + L[b].points) - (L[a].lines + L[a].points); });
+    return '<h4 style="margin:14px 0 4px">要用的圖層</h4><div class="mgopts">' + lys.map(function (k) {
+      var l = L[k], n = plan.perLayer && plan.perLayer[k];
+      if (!l.lines && !l.points) return '<label class="muted" title="只有文字">' + esc(k) + '（文字 ' + l.texts + '）</label>';
+      return '<label><input type="checkbox" data-layer="' + esc(k) + '"' + (o.layers && o.layers[k] !== false ? ' checked' : '') + '> <b>' + esc(k) + '</b> <span class="muted">線 ' + l.lines + (l.points ? '、點 ' + l.points : '') + (n ? '｜<span class="warnTxt">不同的點 ' + n + '</span>' : '') + '</span></label>';
+    }).join('') + '</div><div class="muted">摺線、圖框這類圖層（FOLD、圖框…）預設不勾。</div>' +
+      '<h4 style="margin:14px 0 4px">規則</h4><div class="mgopts">' +
+      '<label>和主要檔底圖點差 <input type="number" min="0.1" max="50" step="0.1" data-opt="tol" value="' + esc(o.tol) + '"> cm 內＝相同，不寫</label>' +
+      '<label>只看主要檔界線 <input type="number" min="0.5" max="100" step="0.5" data-opt="near" value="' + esc(o.near) + '"> m 內的點</label>' +
+      '<label>CAD 點編碼：<input type="number" min="1" max="99" data-opt="dxfCode" value="' + esc(o.dxfCode) + '"></label>' +
+      '<label><input type="checkbox" data-opt="linkEnds"' + (o.linkEnds !== false ? ' checked' : '') + '> 線的另一端在底圖上時也寫入，讓線連起來</label></div>' +
+      '<div class="muted" style="margin-top:6px">CAD 圖上和主要檔底圖不一樣的點（點位記號、線的端點）寫成參考點 .' + pad2(o.dxfCode) + '，點號從主要檔參考點最大號（' + plan.maxRef + '）＋1 起、由北往南編；主要檔 D14 ' + esc(o.dupRef) + ' cm 內已有的點不寫。兩端都寫入的線寫進 D29。</div>';
+  }
+  function mgDxfPreviewHtml(plan) {
+    var c = plan.counts, g = mgState();
+    var nums = plan.d14.map(function (r) { return r.num; });
+    var range = nums.length ? Math.min.apply(null, nums) + '～' + Math.max.apply(null, nums) : '—';
+    var t = '<div class="panel"><h3>第 3 步：會寫進主要檔的內容</h3><table class="mgtable"><tr><th>項目</th><th>數量</th><th>說明</th></tr>' +
+      '<tr><td>CAD 點（勾選的圖層）</td><td class="n">' + c.dxfPts + '</td><td>和主要檔底圖相同 ' + c.same + '；在主要檔範圍外 ' + c.outside + '</td></tr>' +
+      '<tr><td>不一樣的點 → 參考點 .' + pad2(g.opts.dxfCode) + '</td><td class="n"><b>' + c.ref + '</b></td><td>' + (c.ref ? '點號 ' + range : '沒有不一樣的點') + '</td></tr>' +
+      (c.ends ? '<tr><td>線的端點（在底圖上）</td><td class="n"><b>' + c.ends + '</b></td><td>為了讓線連起來才寫入，和底圖相同</td></tr>' : '') +
+      '<tr><td>連線（D29）</td><td class="n"><b>' + c.lines + '</b></td><td>' + (c.halfLines ? c.halfLines + ' 條另一端在範圍外或沒有寫入，不連' : '') + '</td></tr></table>';
+    if (plan.warnings.length) t += '<ul class="report">' + plan.warnings.map(function (w) { return '<li class="warn"><span class="lv">注意</span><span>' + esc(w) + '</span></li>'; }).join('') + '</ul>';
+    t += '<div class="mgmap">' + mgMapSvg(plan) + '</div><div class="legend" style="margin-top:6px"><span><i style="background:#9fb3c8"></i>主要檔底圖</span><span><i style="background:#e5484d"></i>CAD 不一樣的點與線</span><span><i style="background:#8b3dff"></i>線的端點（在底圖上）</span></div>' +
+      '<div style="margin-top:10px"><button class="btn" id="mgCsv" type="button">⬇ 下載對照表（CSV）</button></div></div>';
+    return t;
+  }
   function pad2(n) { n = +n || 0; return (n < 10 ? '0' : '') + n; }
   function mgMapSvg(plan) {
     var g = mgState(), M = Core.jobFromDbf(mgSet(g.main));
-    var P = plan.d14.map(function (r) { return { E: r.at.E, N: r.at.N, a: r.anchor }; }).concat(plan.d20.map(function (r) { return { E: r.at.E, N: r.at.N, q: 1 }; }));
+    var P = plan.d14.map(function (r) { return { E: r.at.E, N: r.at.N, a: r.anchor || r.linkEnd }; }).concat(plan.d20.map(function (r) { return { E: r.at.E, N: r.at.N, q: 1 }; }));
     if (!P.length) return '<div class="muted" style="padding:20px">沒有要寫入的點</div>';
     var minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
     P.forEach(function (p) { minE = Math.min(minE, p.E); maxE = Math.max(maxE, p.E); minN = Math.min(minN, p.N); maxN = Math.max(maxN, p.N); });
-    var pad = Math.max(20, (maxE - minE) * 0.05); minE -= pad; maxE += pad; minN -= pad; maxN += pad;
-    var W = 1000, s = W / (maxE - minE), H = Math.max(200, Math.round((maxN - minN) * s));
+    var pad = Math.max(20, Math.max(maxE - minE, maxN - minN) * 0.05); minE -= pad; maxE += pad; minN -= pad; maxN += pad;
+    // 固定 1000 × 640 的框：比較窄的那一邊往兩側放寬，圖才不會又細又長
+    var W = 1000, H = 640, wE = maxE - minE, wN = maxN - minN;
+    if (wE / wN < W / H) { var add = (wN * W / H - wE) / 2; minE -= add; maxE += add; } else { var add2 = (wE * H / W - wN) / 2; minN -= add2; maxN += add2; }
+    var s = W / (maxE - minE);
     var X = function (E) { return ((E - minE) * s).toFixed(1); }, Y = function (N) { return ((maxN - N) * s).toFixed(1); };
     var inBox = function (p) { return p.E > minE && p.E < maxE && p.N > minN && p.N < maxN; };
     var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">'];

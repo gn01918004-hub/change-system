@@ -474,13 +474,12 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
             <span class="d">依案件點位自動抓國土測繪中心正射影像並置中，可選套合點校正偏差</span>
             <span class="flow"><b>.L14</b> <b>.L20</b> → <b>.jpg</b> <b>.jgw</b>（TWD97，CAD／GIS 直接疊圖）</span></span>
         </button>
-        <button class="card hidden" data-kind="merge" id="cardMerge">
+        <button class="card" data-kind="merge" id="cardMerge">
           <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6"/><path d="M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/></svg></span>
-          <span><span class="t">合併兩個重測檔 <span class="advtag">進階</span></span>
-            <span class="d">把另一份重測資料的參考點、套合點、補點、連線併進主要檔；97、67、自由坐標都可以</span>
-            <span class="flow"><b>.D14</b> <b>.D20</b> <b>.D29</b> ＋ <b>.D2C</b> <b>.D2D</b>（底圖）→ 寫回主要檔</span></span>
+          <span><span class="t">合併到重測系統</span>
+            <span class="d">把另一份重測資料或 CAD 圖（DXF）的成果併進主要檔：參考點、套合點、補點、連線；97、67、自由坐標都可以</span>
+            <span class="flow">重測資料夾 或 <b>.dxf</b> → 寫回主要檔 <b>.D14</b> <b>.D20</b> <b>.D29</b></span></span>
         </button>
-        <button class="advlink" id="advToggle" type="button">⚙ 進階功能</button>
       </div>
     </div>
   </section>
@@ -586,7 +585,7 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
 <div class="toast hidden" id="toast"></div>
 
 <script>
-window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","date":"2026-11-23","repo":"gn01918004-hub/change-system","asset":"change-system.html","file":"dist/change-system.html","changelog":[{"version":"3.7.0","date":"2026-11-23","items":["新功能（進階，要自己打開）：「合併兩個重測檔」。首頁「其他」下方按「⚙ 進階功能」勾選後才會出現，選資料夾時不會自動列出","把另一份重測資料的參考點、套合點、補點、連線併進主要檔：參考點 10 cm 內重複不寫，其餘從主要檔參考點最大號＋1 起編（同一原整數對同一新整數，編碼不變）；落在來源底圖上的 00 界址點當套合點，寫成參考點 .96；補點同名且 6 cm 內是同一點不寫，不同點改名 QTS；連線兩端都有寫入才連，點號換成新的","自動判斷兩份資料的坐標系統與底圖關係：同是 97（或 67）照原坐標寫入；一份 67、一份 97 用公式換算；自由坐標用兩張底圖的旋轉、平移換算","寫入前顯示預覽圖、各項數量、點號有兩種讀法的連線；寫入時原檔先備份 .bak，對照表一起存"]},{"version":"3.6.0","date":"2026-11-20","items":["改用 GitHub Releases 發布：檔名固定為 change-system.html（不含版本號），版本號只寫在 Release 標題和程式內","固定下載網址：https://github.com/gn01918004-hub/change-system/releases/latest/download/change-system.html，永遠是最新版","新版本提醒改看 GitHub Releases 的最新版；按「⬇ 下載新版」會直接從 Release 下載","注意：檔名改了，第一次打開新檔時「📁 存檔資料夾」要重新選一次（每個檔案各自記住）"]},{"version":"3.5.0","date":"2026-11-13","items":["放大檢查視窗多一條「🕰 各年度航照」時間軸：拖拉（或按 ← →、點年份）就換成那一年的航照，點位不動，可以看出這裡怎麼變化","切換時先用低解析度秒開，停在某一年約 1 秒再自動換成清楚的版本","看到合適的那張，按「用這一年輸出」就直接輸出那一年的 JPG + JGW（67 段一樣輸出 67 坐標）","用詞修正：年份是國土測繪中心的「圖層年份」，實際拍攝年份請看影像上的浮水印"]},{"version":"3.4.0","date":"2026-11-13","items":["輸出航照圖預設改成抓「最新」的正射影像（國土測繪中心通用版，約 0.14 m），畫面會顯示這裡最新是哪一年拍的；每次都從最新開始，不會沿用上次選的圖源","新增「指定年份」：列出 92～94 年、103～114 年的正射影像，同一張航照的年份會併在一起（例「111 年（111～113 年圖層都是這張）」），不用一年一年試","原本的「通用_3826（TWD97 原生，0.26 m）」保留為選項；它的拍攝年份可能比最新舊"]},{"version":"3.3.0","date":"2026-11-10","items":["輸出航照圖會自己判斷 67 段／97 段：看檔名的段號（例 KC0367 社柑段），67 段清單和「地籍共作平台」相同（0346～0353、0357～0365、0367、0370、0375～0380）","67 段自動把航照換算成 TWD67 坐標輸出（JPG + JGW 都是 67，檔名加 _TWD67），可以直接和該段資料疊圖；67→97 用近似公式（誤差約 1～2 m），剩下的偏差用套合點校正","也可以手動指定 TWD97／TWD67；畫面會顯示段名"]},{"version":"3.2.0","date":"2026-11-10","items":["拖進來（或點一下選）的是「檔案」時，也會自動存回檔案所在的資料夾：系統會記住用過的資料夾，檔案在這些資料夾（含子資料夾）裡就自動切換","檔案來自沒用過的位置時，存檔區會出現一鍵按鈕「📁 存到「檔名」所在的資料夾」，選資料夾視窗會直接停在那個位置，按「選取資料夾」就好","「存檔位置」視窗列出用過的資料夾，點一下就切換","選資料夾後的選單改成和首頁一樣的卡片：每張寫清楚做什麼、找到哪些檔案，點一下就開始；同類有多個時可以勾選要哪幾個"]},{"version":"3.1.1","date":"2026-11-10","items":["選資料夾或把資料夾拖進來時，存檔位置自動換成那個資料夾（所有功能一樣），不再一直沿用上次存的資料夾","輸出航照圖的下載按鈕下方也會顯示「📁 存到：…」，可以確認或更改"]},{"version":"3.1.0","date":"2026-11-10","items":["「輸出航照圖」獨立成一個功能：首頁多一個「其他」分類；選資料夾讀到 L02／L14／L20 時，清單下方也多一個「其他：輸出航照圖」","航照圖會以案件點位為中心：離其他點很遠的零星點（例如單獨一點的補點）自動排除，不再把圖拉偏；也可以勾「全部算進去」。可設最小範圍（預設 200 m）","自選套合點：先輸出一次，按「🎯 選套合點」→ 點實測點（本次點位或 D14 參考點）→ 再點航照上它真正的位置；滾輪放大、拖曳移動，選完即時預覽校正後的樣子，按「套用並重新輸出」","D14 航照判讀點的編碼可以自己設（預設 87，不用就清空）","重測資料、複丈輸入檔的結果頁有「輸出航照圖 →」捷徑"]},{"version":"3.0.0","date":"2026-11-10","items":["新功能「🛰 航照底圖」：依本次作業的點位範圍，自動到國土測繪中心（NLSC）抓正射影像，存成 JPG + JGW（TWD97 坐標，CAD／GIS 直接疊圖）","圖源可選「正射影像圖(通用)_3826」（/97/ 服務，TWD97 原生 0.26 m）或「正射影像圖(通用)」（較新、約 0.14 m，自動轉投影到 TWD97）","偏差校正：自動讀 D14 裡編碼 87 的航照判讀點，配對 10 m 內最近的實測參考點算出平均位移（例：100.87↔5.30、101.87↔6.30 約 3.5 m），可逐組取消；也可手動輸入 N／E 位移（會記住）","「放大檢查」：在航照上疊出本次點位、實測點與 87 點，確認地物有對齊","範圍太大時自動降低解析度；網路連不上會跳出原因"]},{"version":"2.9.0","date":"2026-11-05","items":["存進資料夾後會重新讀一次檔案確認真的存好，檔案下方顯示「✓ 已存好：資料夾裡的檔名（大小）」","存檔失敗會跳出提示窗，用白話說明原因（找不到資料夾、要再按一次允許、檔案被 Excel 開著、磁碟空間不足…），並可以「再試一次」「改存到瀏覽器的下載」「重新選資料夾」","修正：存不進資料夾時以前會悄悄改用瀏覽器下載，有時被瀏覽器擋掉而變成沒有檔案；現在一定會讓你知道","全部下載改成一個接一個存，最後統一回報成功與失敗"]},{"version":"2.8.0","date":"2026-11-05","items":["用「選擇整個資料夾」或把資料夾拖進來時，如果資料夾裡就有這份系統，會自動設成存檔位置，之後按下載直接存進去","選到別的資料夾時，下載按鈕旁會多一個「存到剛剛選的資料夾」，按一下就切換","Chrome / Edge 的「選擇整個資料夾」改用新的資料夾選擇方式（讀檔和存檔權限一次取得）"]},{"version":"2.7.0","date":"2026-11-04","items":["存檔區的檔名可以直接點來改（沒打副檔名會自動補上），下載時用新檔名","「選擇存檔資料夾」按鈕移到下載按鈕旁邊（重測系統寫入區也有），選好後顯示「📁 存到：資料夾名稱」"]},{"version":"2.6.0","date":"2026-11-04","items":["輸出排序一律：界址點／參考點 → 補點 → 控制點（重測資料匯出、複丈輸入檔、GPS 的 CNT 都一樣）；複丈輸入檔的排序選項拿掉","新增「存檔位置」（右上角）：選一次資料夾（建議選系統所在的資料夾），之後按下載都直接存進去；每份複製到不同位置的系統各自記住自己的資料夾，同名檔案自動加 (1)、(2) 不會蓋掉","手機等窄螢幕時標題列自動換行"]},{"version":"2.5.0","date":"2026-11-03","items":["Y、X 判斷改用位數：Y 整數部分一定 7 位、X 一定 6 位；L 檔與 GPS CSV 都用這個規則判斷順序，GPS 點位數不對時會標出來提醒","「複丈輸入檔 → 全站儀 / GPS 控制器」移到首頁「匯出」區，成為正式的卡片","選資料夾時自動略過系統預設檔 KC0000.L02，除非路徑裡有名為 KC0000 的資料夾"]},{"version":"2.4.0","date":"2026-11-03","items":["全站儀 MAC 預設改成 Excel 版格式，和 Excel 轉檔工具存出來的逐字相同（Tab 分隔、去尾 0、數字點號後加空白、Q 點照原名）；進階設定可改回空白分隔","寫入 D14：新的參考點點號只要和 D14 裡任何參考點（X.XX，不含計算的 X.00）重複，就改成參考點最大號＋1；改號也會套用到 MAC／CNT（例如 1～14 → 26～39）","同點號或同補點名稱、坐標相差 6 cm 內：視為重測，預設不寫入並列出差值；打勾可改寫成新的參考點（X.XX，補點預設編碼 11）","全站儀照準 D14／D20 裡已有的點，也會列出差值（用 6 cm 規則判斷）"]},{"version":"2.3.0","date":"2026-11-03","items":["GPS CSV 改成只輸出 CNT（點號.編碼,Y,X），重測系統直接讀入就好；舊的虛擬測站 CNT＋MAC 收起來，需要時按「展開」","CNT 不能有 Q 點：編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點自動編成這批最大點號＋1 的參考點（QGGC32 → 42.11），都列在編碼對照表；直接寫入 D20 時仍用補點原名稱"]},{"version":"2.2.0","date":"2026-11-03","items":["有放 D14、D20 時，「直接寫入重測系統」成為第 3 步主力；舊的 CNT＋MAC 檔收起來（照原本規則、不含 Q 補點），需要時按「展開」","沒有放 D14、D20 時跟以前一樣只做 CNT＋MAC","「接下來這樣做」改成寫入的步驟（先關重測系統 → 寫入 → 檢查，可用 .bak 還原）"]},{"version":"2.1.2","date":"2026-11-03","items":["修正：CNT＋MAC 照原本的規則，不能有 Q 點——編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點（QGGC32）不放進 MAC 並提醒；補點規則只用在「直接寫入 D20」","編碼對照表分成「MAC 點號」和「補點名稱（D20）」兩欄"]},{"version":"2.1.1","date":"2026-11-03","items":["修正補點名稱：數字點號的編碼寫 Q 開頭時，編碼本身就是補點名稱（13,…,q11 → 補點 Q11）；編碼只有字母時才接上點號（12,…,QW → QW12）"]},{"version":"2.1.0","date":"2026-11-03","items":["GPS CSV 補點判斷：點名 Q 開頭且有高程（例如 QGGC32）是補點，寫入時進 D20；Q 開頭但沒有高程（例如 QW1）是系統原有點，照舊剔除","數字點號、編碼寫 Q 開頭時（例如 12,…,QW），把編碼移到點號上（QW12）當補點，並列入編碼對照表","修正：高程欄寫成「0」（不是 0.000）時認不出高程欄，導致現場核對點被當成要問編碼的點"]},{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
+window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.8.0","date":"2026-11-23","repo":"gn01918004-hub/change-system","asset":"change-system.html","file":"dist/change-system.html","changelog":[{"version":"3.8.0","date":"2026-11-23","items":["「合併兩個重測檔」改名「合併到重測系統」，直接放在首頁「其他」，不用另外打開（選資料夾時一樣不會自動列出）","新增 DXF（CAD 圖）併進重測系統：自動判斷 Big5／UTF-8、找出點位記號（十字）與線；CAD 圖上和主要檔底圖不一樣的點寫成參考點 .97，兩端都寫入的線寫進 D29","DXF 可以勾選要用的圖層（摺線、圖框預設不勾），並顯示每個圖層有幾個不一樣的點；只看主要檔界線附近（預設 5 m）的點，旁邊別幅不會被寫進來","線的另一端在主要檔底圖上時，可選擇也寫入那一端，讓線連得起來","97、67、自由坐標的 DXF 一樣自動判斷並換算；主要檔沒有 D29 時會自動建立","預覽圖固定大小，點位集中在細長範圍時也看得清楚"]},{"version":"3.7.0","date":"2026-11-23","items":["新功能（進階，要自己打開）：「合併兩個重測檔」。首頁「其他」下方按「⚙ 進階功能」勾選後才會出現，選資料夾時不會自動列出","把另一份重測資料的參考點、套合點、補點、連線併進主要檔：參考點 10 cm 內重複不寫，其餘從主要檔參考點最大號＋1 起編（同一原整數對同一新整數，編碼不變）；落在來源底圖上的 00 界址點當套合點，寫成參考點 .96；補點同名且 6 cm 內是同一點不寫，不同點改名 QTS；連線兩端都有寫入才連，點號換成新的","自動判斷兩份資料的坐標系統與底圖關係：同是 97（或 67）照原坐標寫入；一份 67、一份 97 用公式換算；自由坐標用兩張底圖的旋轉、平移換算","寫入前顯示預覽圖、各項數量、點號有兩種讀法的連線；寫入時原檔先備份 .bak，對照表一起存"]},{"version":"3.6.0","date":"2026-11-20","items":["改用 GitHub Releases 發布：檔名固定為 change-system.html（不含版本號），版本號只寫在 Release 標題和程式內","固定下載網址：https://github.com/gn01918004-hub/change-system/releases/latest/download/change-system.html，永遠是最新版","新版本提醒改看 GitHub Releases 的最新版；按「⬇ 下載新版」會直接從 Release 下載","注意：檔名改了，第一次打開新檔時「📁 存檔資料夾」要重新選一次（每個檔案各自記住）"]},{"version":"3.5.0","date":"2026-11-13","items":["放大檢查視窗多一條「🕰 各年度航照」時間軸：拖拉（或按 ← →、點年份）就換成那一年的航照，點位不動，可以看出這裡怎麼變化","切換時先用低解析度秒開，停在某一年約 1 秒再自動換成清楚的版本","看到合適的那張，按「用這一年輸出」就直接輸出那一年的 JPG + JGW（67 段一樣輸出 67 坐標）","用詞修正：年份是國土測繪中心的「圖層年份」，實際拍攝年份請看影像上的浮水印"]},{"version":"3.4.0","date":"2026-11-13","items":["輸出航照圖預設改成抓「最新」的正射影像（國土測繪中心通用版，約 0.14 m），畫面會顯示這裡最新是哪一年拍的；每次都從最新開始，不會沿用上次選的圖源","新增「指定年份」：列出 92～94 年、103～114 年的正射影像，同一張航照的年份會併在一起（例「111 年（111～113 年圖層都是這張）」），不用一年一年試","原本的「通用_3826（TWD97 原生，0.26 m）」保留為選項；它的拍攝年份可能比最新舊"]},{"version":"3.3.0","date":"2026-11-10","items":["輸出航照圖會自己判斷 67 段／97 段：看檔名的段號（例 KC0367 社柑段），67 段清單和「地籍共作平台」相同（0346～0353、0357～0365、0367、0370、0375～0380）","67 段自動把航照換算成 TWD67 坐標輸出（JPG + JGW 都是 67，檔名加 _TWD67），可以直接和該段資料疊圖；67→97 用近似公式（誤差約 1～2 m），剩下的偏差用套合點校正","也可以手動指定 TWD97／TWD67；畫面會顯示段名"]},{"version":"3.2.0","date":"2026-11-10","items":["拖進來（或點一下選）的是「檔案」時，也會自動存回檔案所在的資料夾：系統會記住用過的資料夾，檔案在這些資料夾（含子資料夾）裡就自動切換","檔案來自沒用過的位置時，存檔區會出現一鍵按鈕「📁 存到「檔名」所在的資料夾」，選資料夾視窗會直接停在那個位置，按「選取資料夾」就好","「存檔位置」視窗列出用過的資料夾，點一下就切換","選資料夾後的選單改成和首頁一樣的卡片：每張寫清楚做什麼、找到哪些檔案，點一下就開始；同類有多個時可以勾選要哪幾個"]},{"version":"3.1.1","date":"2026-11-10","items":["選資料夾或把資料夾拖進來時，存檔位置自動換成那個資料夾（所有功能一樣），不再一直沿用上次存的資料夾","輸出航照圖的下載按鈕下方也會顯示「📁 存到：…」，可以確認或更改"]},{"version":"3.1.0","date":"2026-11-10","items":["「輸出航照圖」獨立成一個功能：首頁多一個「其他」分類；選資料夾讀到 L02／L14／L20 時，清單下方也多一個「其他：輸出航照圖」","航照圖會以案件點位為中心：離其他點很遠的零星點（例如單獨一點的補點）自動排除，不再把圖拉偏；也可以勾「全部算進去」。可設最小範圍（預設 200 m）","自選套合點：先輸出一次，按「🎯 選套合點」→ 點實測點（本次點位或 D14 參考點）→ 再點航照上它真正的位置；滾輪放大、拖曳移動，選完即時預覽校正後的樣子，按「套用並重新輸出」","D14 航照判讀點的編碼可以自己設（預設 87，不用就清空）","重測資料、複丈輸入檔的結果頁有「輸出航照圖 →」捷徑"]},{"version":"3.0.0","date":"2026-11-10","items":["新功能「🛰 航照底圖」：依本次作業的點位範圍，自動到國土測繪中心（NLSC）抓正射影像，存成 JPG + JGW（TWD97 坐標，CAD／GIS 直接疊圖）","圖源可選「正射影像圖(通用)_3826」（/97/ 服務，TWD97 原生 0.26 m）或「正射影像圖(通用)」（較新、約 0.14 m，自動轉投影到 TWD97）","偏差校正：自動讀 D14 裡編碼 87 的航照判讀點，配對 10 m 內最近的實測參考點算出平均位移（例：100.87↔5.30、101.87↔6.30 約 3.5 m），可逐組取消；也可手動輸入 N／E 位移（會記住）","「放大檢查」：在航照上疊出本次點位、實測點與 87 點，確認地物有對齊","範圍太大時自動降低解析度；網路連不上會跳出原因"]},{"version":"2.9.0","date":"2026-11-05","items":["存進資料夾後會重新讀一次檔案確認真的存好，檔案下方顯示「✓ 已存好：資料夾裡的檔名（大小）」","存檔失敗會跳出提示窗，用白話說明原因（找不到資料夾、要再按一次允許、檔案被 Excel 開著、磁碟空間不足…），並可以「再試一次」「改存到瀏覽器的下載」「重新選資料夾」","修正：存不進資料夾時以前會悄悄改用瀏覽器下載，有時被瀏覽器擋掉而變成沒有檔案；現在一定會讓你知道","全部下載改成一個接一個存，最後統一回報成功與失敗"]},{"version":"2.8.0","date":"2026-11-05","items":["用「選擇整個資料夾」或把資料夾拖進來時，如果資料夾裡就有這份系統，會自動設成存檔位置，之後按下載直接存進去","選到別的資料夾時，下載按鈕旁會多一個「存到剛剛選的資料夾」，按一下就切換","Chrome / Edge 的「選擇整個資料夾」改用新的資料夾選擇方式（讀檔和存檔權限一次取得）"]},{"version":"2.7.0","date":"2026-11-04","items":["存檔區的檔名可以直接點來改（沒打副檔名會自動補上），下載時用新檔名","「選擇存檔資料夾」按鈕移到下載按鈕旁邊（重測系統寫入區也有），選好後顯示「📁 存到：資料夾名稱」"]},{"version":"2.6.0","date":"2026-11-04","items":["輸出排序一律：界址點／參考點 → 補點 → 控制點（重測資料匯出、複丈輸入檔、GPS 的 CNT 都一樣）；複丈輸入檔的排序選項拿掉","新增「存檔位置」（右上角）：選一次資料夾（建議選系統所在的資料夾），之後按下載都直接存進去；每份複製到不同位置的系統各自記住自己的資料夾，同名檔案自動加 (1)、(2) 不會蓋掉","手機等窄螢幕時標題列自動換行"]},{"version":"2.5.0","date":"2026-11-03","items":["Y、X 判斷改用位數：Y 整數部分一定 7 位、X 一定 6 位；L 檔與 GPS CSV 都用這個規則判斷順序，GPS 點位數不對時會標出來提醒","「複丈輸入檔 → 全站儀 / GPS 控制器」移到首頁「匯出」區，成為正式的卡片","選資料夾時自動略過系統預設檔 KC0000.L02，除非路徑裡有名為 KC0000 的資料夾"]},{"version":"2.4.0","date":"2026-11-03","items":["全站儀 MAC 預設改成 Excel 版格式，和 Excel 轉檔工具存出來的逐字相同（Tab 分隔、去尾 0、數字點號後加空白、Q 點照原名）；進階設定可改回空白分隔","寫入 D14：新的參考點點號只要和 D14 裡任何參考點（X.XX，不含計算的 X.00）重複，就改成參考點最大號＋1；改號也會套用到 MAC／CNT（例如 1～14 → 26～39）","同點號或同補點名稱、坐標相差 6 cm 內：視為重測，預設不寫入並列出差值；打勾可改寫成新的參考點（X.XX，補點預設編碼 11）","全站儀照準 D14／D20 裡已有的點，也會列出差值（用 6 cm 規則判斷）"]},{"version":"2.3.0","date":"2026-11-03","items":["GPS CSV 改成只輸出 CNT（點號.編碼,Y,X），重測系統直接讀入就好；舊的虛擬測站 CNT＋MAC 收起來，需要時按「展開」","CNT 不能有 Q 點：編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點自動編成這批最大點號＋1 的參考點（QGGC32 → 42.11），都列在編碼對照表；直接寫入 D20 時仍用補點原名稱"]},{"version":"2.2.0","date":"2026-11-03","items":["有放 D14、D20 時，「直接寫入重測系統」成為第 3 步主力；舊的 CNT＋MAC 檔收起來（照原本規則、不含 Q 補點），需要時按「展開」","沒有放 D14、D20 時跟以前一樣只做 CNT＋MAC","「接下來這樣做」改成寫入的步驟（先關重測系統 → 寫入 → 檢查，可用 .bak 還原）"]},{"version":"2.1.2","date":"2026-11-03","items":["修正：CNT＋MAC 照原本的規則，不能有 Q 點——編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點（QGGC32）不放進 MAC 並提醒；補點規則只用在「直接寫入 D20」","編碼對照表分成「MAC 點號」和「補點名稱（D20）」兩欄"]},{"version":"2.1.1","date":"2026-11-03","items":["修正補點名稱：數字點號的編碼寫 Q 開頭時，編碼本身就是補點名稱（13,…,q11 → 補點 Q11）；編碼只有字母時才接上點號（12,…,QW → QW12）"]},{"version":"2.1.0","date":"2026-11-03","items":["GPS CSV 補點判斷：點名 Q 開頭且有高程（例如 QGGC32）是補點，寫入時進 D20；Q 開頭但沒有高程（例如 QW1）是系統原有點，照舊剔除","數字點號、編碼寫 Q 開頭時（例如 12,…,QW），把編碼移到點號上（QW12）當補點，並列入編碼對照表","修正：高程欄寫成「0」（不是 0.000）時認不出高程欄，導致現場核對點被當成要問編碼的點"]},{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
 /*
  * 土地重測資料轉換系統 — 轉換核心
  *
@@ -2746,6 +2745,213 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
     return plan;
   }
 
+  // ─── DXF（CAD 圖）併進重測系統 ───
+
+  /** DXF 文字編碼：AutoCAD 2007 以後是 UTF-8，之前看 $DWGCODEPAGE（台灣多半是 ANSI_950＝Big5） */
+  function dxfEncoding(u8) {
+    var head = ''; for (var i = 0; i < Math.min(u8.length, 4000); i++) head += String.fromCharCode(u8[i]);
+    var ver = (/\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*AC(\d+)/.exec(head) || [])[1], cp = (/\$DWGCODEPAGE\s*\r?\n\s*3\s*\r?\n\s*(\S+)/.exec(head) || [])[1] || '';
+    if (ver && +ver >= 1021) return 'utf-8';
+    if (/950/.test(cp)) return 'big5';
+    if (/936/.test(cp)) return 'gbk';
+    if (/125[0-9]/.test(cp)) return 'windows-' + cp.replace(/\D/g, '');
+    return 'big5';
+  }
+  /** 讀 DXF 的圖形：LINE、LWPOLYLINE、POLYLINE/VERTEX、POINT、ARC、CIRCLE、TEXT、MTEXT（只取 ENTITIES 區） */
+  function parseDxf(text) {
+    var L = text.split(/\r?\n/), ents = [], sec = null, cur = null;
+    for (var i = 0; i + 1 < L.length; i += 2) {
+      var c = L[i].trim(), v = L[i + 1];
+      if (c === '0' && v.trim() === 'SECTION') { sec = (L[i + 3] || '').trim(); cur = null; continue; }
+      if (c === '0' && v.trim() === 'ENDSEC') { sec = null; cur = null; continue; }
+      if (sec !== 'ENTITIES') continue;
+      if (c === '0') { cur = { type: v.trim(), layer: '0', xs: [], ys: [], flags: 0 }; ents.push(cur); continue; }
+      if (!cur) continue;
+      var k = +c;
+      if (k === 8) cur.layer = v.trim();
+      else if (k === 1) cur.text = (cur.text || '') + v.trim();
+      else if (k === 10) cur.xs.push(+v); else if (k === 20) cur.ys.push(+v);
+      else if (k === 11) cur.x2 = +v; else if (k === 21) cur.y2 = +v;
+      else if (k === 40) cur.r = +v; else if (k === 50) cur.a1 = +v; else if (k === 51) cur.a2 = +v;
+      else if (k === 70) cur.flags = +v;
+    }
+    // POLYLINE 後面接 VERTEX … SEQEND：把頂點收回 POLYLINE
+    var out = [], poly = null;
+    ents.forEach(function (e) {
+      if (e.type === 'POLYLINE') { poly = { type: 'LWPOLYLINE', layer: e.layer, xs: [], ys: [], flags: e.flags }; out.push(poly); return; }
+      if (e.type === 'VERTEX') { if (poly) { poly.xs.push(e.xs[0]); poly.ys.push(e.ys[0]); } return; }
+      if (e.type === 'SEQEND') { poly = null; return; }
+      out.push(e);
+    });
+    var layers = {};
+    var segs = [], pts = [], texts = [];
+    out.forEach(function (e) {
+      var ly = layers[e.layer] = layers[e.layer] || { name: e.layer, lines: 0, points: 0, texts: 0 };
+      var P = function (x, y) { return { E: x, N: y, layer: e.layer }; };
+      if (e.type === 'LINE' && e.xs.length && isFinite(e.x2)) { segs.push({ a: P(e.xs[0], e.ys[0]), b: P(e.x2, e.y2), layer: e.layer }); ly.lines++; }
+      else if (e.type === 'LWPOLYLINE' && e.xs.length > 1) {
+        for (var j = 1; j < e.xs.length; j++) segs.push({ a: P(e.xs[j - 1], e.ys[j - 1]), b: P(e.xs[j], e.ys[j]), layer: e.layer });
+        if (e.flags & 1) segs.push({ a: P(e.xs[e.xs.length - 1], e.ys[e.ys.length - 1]), b: P(e.xs[0], e.ys[0]), layer: e.layer });
+        ly.lines += e.xs.length - 1;
+      } else if (e.type === 'ARC' && e.xs.length && isFinite(e.r)) {
+        var a1 = e.a1 * D2R, a2 = e.a2 * D2R; if (a2 < a1) a2 += 2 * Math.PI; var am = (a1 + a2) / 2;
+        segs.push({ a: P(e.xs[0] + e.r * Math.cos(a1), e.ys[0] + e.r * Math.sin(a1)), m: P(e.xs[0] + e.r * Math.cos(am), e.ys[0] + e.r * Math.sin(am)), b: P(e.xs[0] + e.r * Math.cos(a2), e.ys[0] + e.r * Math.sin(a2)), layer: e.layer, arc: true });
+        ly.lines++;
+      } else if (e.type === 'POINT' && e.xs.length) { pts.push(P(e.xs[0], e.ys[0])); ly.points++; }
+      else if ((e.type === 'TEXT' || e.type === 'MTEXT') && e.xs.length) { texts.push({ E: e.xs[0], N: e.ys[0], text: (e.text || '').replace(/\\[A-Za-z][^;]*;|[{}]/g, ''), layer: e.layer }); ly.texts++; }
+    });
+    // 點位記號：同一個中點、互相垂直的兩條短線（十字），當成一個點；這些短線不算界線
+    var byMid = {};
+    segs.forEach(function (sg, idx) {
+      if (sg.arc) return;
+      var len = Math.hypot(sg.b.E - sg.a.E, sg.b.N - sg.a.N); if (len > 1.5 || len < 0.01) return;
+      var k = Math.round((sg.a.E + sg.b.E) / 2 * 1000) + ',' + Math.round((sg.a.N + sg.b.N) / 2 * 1000);
+      (byMid[k] = byMid[k] || []).push(idx);
+    });
+    var cross = {};
+    Object.keys(byMid).forEach(function (k) {
+      var ids = byMid[k]; if (ids.length < 2) return;
+      var s0 = segs[ids[0]], s1 = segs[ids[1]];
+      var ang = function (sg) { return Math.atan2(sg.b.N - sg.a.N, sg.b.E - sg.a.E); };
+      var d = Math.abs(Math.sin(ang(s0) - ang(s1))); if (d < 0.9) return;
+      ids.forEach(function (id) { cross[id] = 1; });
+      pts.push({ E: (s0.a.E + s0.b.E) / 2, N: (s0.a.N + s0.b.N) / 2, layer: s0.layer, mark: true });
+      layers[s0.layer].points++;
+    });
+    var lines = segs.filter(function (_, i) { return !cross[i]; });
+    // 十字線不算在圖層的「線」裡
+    Object.keys(layers).forEach(function (k) { layers[k].lines = lines.filter(function (sg) { return sg.layer === k; }).length; });
+    return { segs: lines, pts: pts, texts: texts, layers: layers };
+  }
+
+  /**
+   * DXF 併進重測系統：把 CAD 圖上「和主要檔底圖不一樣」的點寫成參考點（編碼 code），
+   * 兩端都有寫入的線寫進 D29。和主要檔底圖點 tol 內、或主要檔 D14 點 dupRef 內的點不寫。
+   * opts：{ layers: { 圖層: true/false }, tol 0.02, dupRef 0.10, code 97, method, datumMain, datumSrc, sectionDatumMain }
+   */
+  var DXF_OFF = /fold|frame|border|圖框|塗色|^defpoints$/i; // 預設不用的圖層（摺線、圖框）
+  function dxfLayerDefault(name) { return !DXF_OFF.test(name); }
+  function planDxfMerge(mainSet, dxf, opts) {
+    opts = opts || {};
+    var tol = opts.tol == null ? 0.02 : opts.tol, dupRef = opts.dupRef == null ? 0.10 : opts.dupRef, code = opts.code == null ? 97 : +opts.code;
+    var nearM = opts.near == null ? 5 : +opts.near;
+    var on = function (ly) { return opts.layers && ly in opts.layers ? opts.layers[ly] !== false : !DXF_OFF.test(ly); };
+    var M = jobFromDbf(mainSet);
+    var plan = { dxf: true, warnings: [], d14: [], d20: [], d29: [], table: [], lineTable: [] };
+    // DXF 的點：點位記號、POINT、所有線的端點（去重複）
+    var raw = [];
+    dxf.pts.forEach(function (p) { if (on(p.layer)) raw.push(p); });
+    dxf.segs.forEach(function (sg) { if (!on(sg.layer)) return; raw.push(sg.a, sg.b); if (sg.m) raw.push(sg.m); });
+    var G0 = ptGrid([], 1), P = [];
+    raw.forEach(function (p) {
+      var m = ptNear(G0, p.E, p.N, 0.001);
+      if (m) { m.q.layers[p.layer] = 1; if (p.mark) m.q.mark = true; p.id = m.q.id; return; }
+      var q = { E: p.E, N: p.N, layers: {}, mark: !!p.mark, id: P.length }; q.layers[p.layer] = 1; P.push(q); p.id = q.id;
+      var k = Math.floor(p.E) + ',' + Math.floor(p.N); var a = G0.g.get(k); if (a) a.push(q); else G0.g.set(k, [q]);
+    });
+    var idOf = function (p) { var m = ptNear(G0, p.E, p.N, 0.001); return m ? m.q.id : -1; };
+    plan.dxfPoints = P.length;
+    if (!P.length) { plan.blocked = 'DXF 裡（勾選的圖層）沒有點或線。'; return plan; }
+    // 坐標系統與兩張圖的關係
+    var fM = frameOf(M.d14.concat(M.d2c)), fS = frameOf(P);
+    var reg = M.d2c.length ? registerBasemaps(P, M.d2c) : null;
+    plan.frames = { main: fM, src: fS }; plan.reg = reg;
+    var dM = opts.datumMain || (fM === 'free' ? 'free' : null), dS = opts.datumSrc || (fS === 'free' ? 'free' : null);
+    if (!dS && !dM && reg && !reg.failed) { if (reg.how === '67→97') { dS = 'TWD67'; dM = 'TWD97'; } else if (reg.how === '97→67') { dS = 'TWD97'; dM = 'TWD67'; } }
+    dM = dM || opts.sectionDatumMain || 'TWD97'; dS = dS || dM;
+    plan.datum = { main: dM, src: dS };
+    var same = dM === dS && dM !== 'free', canFormula = (dM === 'TWD97' && dS === 'TWD67') || (dM === 'TWD67' && dS === 'TWD97'), canBasemap = reg && !reg.failed;
+    var method = opts.method && opts.method !== 'auto' ? opts.method : (same ? 'asis' : canFormula ? 'formula' : canBasemap ? 'basemap' : null);
+    if ((method === 'formula' && !canFormula) || (method === 'basemap' && !canBasemap)) method = null;
+    plan.method = method; plan.methods = { asis: same, formula: canFormula, basemap: !!canBasemap };
+    if (!method) { plan.blocked = 'DXF 和主要檔的坐標系統不同，而且兩張圖對不起來，沒辦法換算。'; return plan; }
+    var place = method === 'asis' ? function (p) { return { E: p.E, N: p.N }; } : method === 'formula'
+      ? function (p) { var q = dS === 'TWD67' ? twd67to97(p.N, p.E) : twd97to67(p.N, p.E); return { N: q[0], E: q[1] }; }
+      : function (p) { return reg.T.apply(p.E, p.N); };
+    // 和主要檔底圖、主要檔 D14 比
+    var GB = ptGrid(M.d2c, 5), GD = ptGrid(M.d14, 5);
+    // 只看主要檔範圍：離主要檔底圖界線 nearM 公尺內的點（DXF 常常包含旁邊別幅的圖）
+    var segIdx = new Map(), CELL = 10;
+    M.segs.forEach(function (sg) { var x0 = Math.floor(Math.min(sg[0].E, sg[1].E) / CELL), x1 = Math.floor(Math.max(sg[0].E, sg[1].E) / CELL), y0 = Math.floor(Math.min(sg[0].N, sg[1].N) / CELL), y1 = Math.floor(Math.max(sg[0].N, sg[1].N) / CELL);
+      for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) { var k = x + ',' + y, a = segIdx.get(k); if (a) a.push(sg); else segIdx.set(k, [sg]); } });
+    var segDist = function (E, N) {
+      var cx = Math.floor(E / CELL), cy = Math.floor(N / CELL), R = Math.ceil(nearM / CELL), best = Infinity;
+      for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) (segIdx.get((cx + i) + ',' + (cy + j)) || []).forEach(function (sg) {
+        var a = sg[0], b = sg[1], vx = b.E - a.E, vy = b.N - a.N, L2 = vx * vx + vy * vy, t = L2 ? ((E - a.E) * vx + (N - a.N) * vy) / L2 : 0; t = Math.max(0, Math.min(1, t));
+        best = Math.min(best, Math.hypot(a.E + t * vx - E, a.N + t * vy - N)); });
+      return best;
+    };
+    var inArea = M.segs.length ? function (at) { return segDist(at.E, at.N) <= nearM; } : function (at) { return !!ptNear(GB, at.E, at.N, nearM); };
+    var outside = 0;
+    var maxRef = 0; M.d14.forEach(function (p) { if (p.ref !== 0 && p.n > maxRef) maxRef = p.n; });
+    plan.maxRef = maxRef;
+    var next = maxRef, written = {}, perLayer = {};
+    // 由北往南、由西往東編號，點號順序看起來比較有規律
+    P.map(function (p) { var at = place(p); return { p: p, at: at }; })
+      .sort(function (x, y) { return (y.at.N - x.at.N) || (x.at.E - y.at.E); })
+      .forEach(function (x) {
+        var b = ptNear(GB, x.at.E, x.at.N, tol);
+        if (b) { x.p.same = true; return; }
+        if (!inArea(x.at)) { outside++; return; }
+        var d = ptNear(GD, x.at.E, x.at.N, dupRef);
+        if (d) { plan.table.push({ kind: 'DXF 點', from: x.at.E.toFixed(3) + ',' + x.at.N.toFixed(3), to: '', N: x.at.N, E: x.at.E, note: '不寫：主要檔 ' + Math.round(dupRef * 100) + ' cm 內已有 ' + d.q.n + '.' + pad(d.q.ref, 2) }); return; }
+        next++;
+        var near = ptNear(GB, x.at.E, x.at.N, 20);
+        var lays = Object.keys(x.p.layers);
+        lays.forEach(function (ly) { perLayer[ly] = (perLayer[ly] || 0) + 1; });
+        written[x.p.id] = next + '.' + pad(code, 2);
+        plan.d14.push({ p: { values: {} }, num: next, ref: code, at: x.at, moved: true, dxf: true, layers: lays, mark: x.p.mark });
+        plan.table.push({ kind: 'DXF 點', from: lays.join('／') + (x.p.mark ? '（點位記號）' : '（線端點）'), to: next + '.' + pad(code, 2), N: x.at.N, E: x.at.E,
+          note: near ? '離主要檔最近的底圖點 ' + near.d.toFixed(3) + ' m' : '主要檔底圖 20 m 內沒有點' });
+      });
+    // 線的另一端剛好在主要檔底圖上（沒有寫入）：選項開著時，把那一端也寫成參考點，線才連得起來
+    var linkEnds = opts.linkEnds !== false, ends = 0;
+    if (linkEnds) {
+      var byId = {}; P.forEach(function (p) { byId[p.id] = p; });
+      dxf.segs.forEach(function (sg) {
+        if (!on(sg.layer)) return;
+        var ids = [idOf(sg.a), idOf(sg.b)].concat(sg.m ? [idOf(sg.m)] : []);
+        if (!ids.some(function (id) { return written[id]; })) return;
+        ids.forEach(function (id) {
+          if (written[id] || id < 0) return;
+          var p = byId[id], at = place(p);
+          if (!p.same) return; // 只補「在主要檔底圖上」的端點
+          var d = ptNear(GD, at.E, at.N, dupRef);
+          if (d) { written[id] = d.q.n + '.' + pad(d.q.ref, 2); return; } // 主要檔 D14 已有這點：直接連到它
+          next++; ends++;
+          written[id] = next + '.' + pad(code, 2);
+          plan.d14.push({ p: { values: {} }, num: next, ref: code, at: at, moved: true, dxf: true, layers: Object.keys(p.layers), linkEnd: true });
+          plan.table.push({ kind: 'DXF 線端點', from: Object.keys(p.layers).join('／'), to: next + '.' + pad(code, 2), N: at.N, E: at.E, note: '在主要檔底圖點上（和底圖相同），為了讓線連起來才寫入' });
+        });
+      });
+    }
+    plan.linkEnds = ends;
+    plan.same = P.filter(function (p) { return p.same; }).length;
+    plan.perLayer = perLayer;
+    // 線：兩端（弧加中點）都寫入的才連
+    var lineCount = 0;
+    dxf.segs.forEach(function (sg) {
+      if (!on(sg.layer)) return;
+      var a = written[idOf(sg.a)], b = written[idOf(sg.b)], m = sg.m ? written[idOf(sg.m)] : '';
+      if (a && b && (!sg.m || m) && a !== b) { plan.d29.push({ top: a, mid: m || '', bot: b, mode: '0' }); lineCount++; plan.lineTable.push({ ok: true, row: '', from: sg.layer, to: a + (m ? ' → ' + m : '') + ' → ' + b, note: '' }); }
+      else if (a || b) plan.lineTable.push({ ok: false, row: '', from: sg.layer, note: '另一端在主要檔範圍外、或和主要檔底圖相同而沒有寫入，沒辦法連' });
+    });
+    plan.outside = outside;
+    plan.counts = { dxfPts: P.length, same: plan.same, outside: outside, ref: plan.d14.length - ends, ends: ends, lines: lineCount, halfLines: plan.lineTable.filter(function (l) { return !l.ok; }).length };
+    if (M.d14.some(function (p) { return p.ref === code; })) plan.warnings.push('編碼 ' + pad(code, 2) + ' 主要檔已經有人用過，CAD 點會和它們混在一起，建議換一個編碼。');
+    return plan;
+  }
+
+  /** 新的空 dBASE III（欄位 [[名稱, 型態, 長度, 小數]]），主要檔和來源都沒有 D29 時用 */
+  function newDbf(fields) {
+    var hlen = 32 + fields.length * 32 + 1, rlen = 1 + fields.reduce(function (a, f) { return a + f[2]; }, 0);
+    var u8 = new Uint8Array(hlen + 1); u8[0] = 3; u8[8] = hlen & 255; u8[9] = hlen >> 8; u8[10] = rlen & 255; u8[11] = rlen >> 8;
+    fields.forEach(function (f, i) { var o = 32 + i * 32; for (var k = 0; k < f[0].length; k++) u8[o + k] = f[0].charCodeAt(k); u8[o + 11] = f[1].charCodeAt(0); u8[o + 16] = f[2]; u8[o + 17] = f[3] || 0; });
+    u8[hlen - 1] = 0x0D; u8[hlen] = 0x1A;
+    return parseDbf(u8);
+  }
+  var D29_FIELDS = [['LIN_TOP', 'C', 10], ['LIN_MID', 'C', 10], ['LIN_BOT', 'C', 10], ['LIN_MODE', 'N', 1]];
+
   /** 空的 dBASE（沿用另一個檔的欄位定義），主要檔缺 D29 等時用 */
   function emptyDbfLike(db) {
     var u8 = new Uint8Array(db.hlen + 1); u8.set(db.u8.subarray(0, db.hlen)); u8[4] = u8[5] = u8[6] = u8[7] = 0; u8[db.hlen] = 0x1A;
@@ -2781,7 +2987,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
       out.d20Created = !mainSet.d20;
     }
     if (plan.d29.length) {
-      var d29 = mainSet.d29 || (srcSet.d29 && emptyDbfLike(srcSet.d29));
+      var d29 = mainSet.d29 || (srcSet.d29 ? emptyDbfLike(srcSet.d29) : newDbf(D29_FIELDS));
       out.d29 = appendDbf(d29, plan.d29.map(function (l) { return { LIN_TOP: l.top, LIN_MID: l.mid || '', LIN_BOT: l.bot, LIN_MODE: l.mode || '0' }; }), now);
       out.d29Created = !mainSet.d29;
     }
@@ -2911,6 +3117,10 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
     worldFileText: worldFileText,
     SECTIONS_67: SECTIONS_67,
     planMerge: planMerge,
+    planDxfMerge: planDxfMerge,
+    dxfLayerDefault: dxfLayerDefault,
+    parseDxf: parseDxf,
+    dxfEncoding: dxfEncoding,
     buildMerge: buildMerge,
     registerBasemaps: registerBasemaps,
     jobFromDbf: jobFromDbf,
@@ -3000,7 +3210,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
       next: function (r) { return KINDS.l2csv.next(r); }
     },
     merge: {
-      title: '合併兩個重測檔',
+      title: '合併到重測系統',
       accept: '',
       hint: '',
       step2: '檢查合併內容',
@@ -5581,29 +5791,40 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
 
   // ═════════════ 合併兩個重測檔（進階，使用者主動啟用） ═════════════
 
-  var ADV_KEY = 'chsys-adv-merge';
-  function advEnabled() { try { return localStorage.getItem(ADV_KEY) === '1'; } catch (e) { return false; } }
-  function renderAdv() { $('cardMerge').classList.toggle('hidden', !advEnabled()); }
-  $('advToggle').onclick = function () {
-    modal('<h3>⚙ 進階功能</h3>' +
-      '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:8px 0"><input type="checkbox" id="advMerge" style="width:20px;height:20px;margin-top:3px"' + (advEnabled() ? ' checked' : '') + '>' +
-      '<span><b>合併兩個重測檔</b><br><span class="muted">把另一份重測資料（例如不同時期、不同人做的同一段）的參考點、套合點、補點和連線，併進你主要用的那份。會直接改 D14、D20、D29，寫入前自動備份 .bak。不熟悉的話先不要開。</span></span></label>' +
-      '<div style="text-align:right;margin-top:10px"><button class="btn primary" id="advOk">好</button></div>');
-    $('advOk').onclick = function () {
-      try { localStorage.setItem(ADV_KEY, $('advMerge').checked ? '1' : '0'); } catch (e) {}
-      closeModal(); renderAdv(); toast($('advMerge').checked ? '首頁「其他」多了「合併兩個重測檔」' : '已關閉合併功能');
-    };
-  };
-  renderAdv();
-
   var MG_EXT = ['D14', 'D20', 'D29', 'D2C', 'D2D'];
   function mgState() {
-    if (!state.mg) state.mg = { main: null, src: null, opts: { dupRef: 10, dupQ: 6, anchorCode: 96, prefix: 'TS', method: 'auto', datumMain: '', datumSrc: '' }, plan: null, built: null, done: null };
+    if (!state.mg) state.mg = { main: null, src: null, opts: { dupRef: 10, dupQ: 6, anchorCode: 96, prefix: 'TS', method: 'auto', datumMain: '', datumSrc: '', dxfCode: 97, tol: 2, near: 5, linkEnds: true, layers: null }, plan: null, built: null, done: null };
     return state.mg;
+  }
+
+  /** 讀 DXF（來源）：自動判斷文字編碼（Big5／UTF-8） */
+  function mgLoadDxf(file) {
+    return file.arrayBuffer().then(function (b) {
+      var u8 = new Uint8Array(b), enc = Core.dxfEncoding(u8), text;
+      try { text = new TextDecoder(enc).decode(u8); } catch (e) { text = new TextDecoder('utf-8').decode(u8); }
+      var dxf = Core.parseDxf(text);
+      if (!dxf.segs.length && !dxf.pts.length) throw new Error(file.name + ' 裡沒有線或點（請確認是 DXF，不是 DWG）');
+      var g = mgState();
+      g.opts.layers = {}; Object.keys(dxf.layers).forEach(function (k) { g.opts.layers[k] = Core.dxfLayerDefault(k); });
+      g.src = { type: 'dxf', label: file.name.replace(/\.[^.]*$/, ''), folder: file.name, dxf: dxf, files: {}, enc: enc };
+      g.plan = null; g.built = null; g.done = null;
+      renderMerge();
+    }).catch(function (e) { toast('讀 DXF 失敗：' + (e.message || e)); });
+  }
+  function mgPickDxf() {
+    var inp = el('input', { type: 'file', accept: '.dxf,.DXF' });
+    inp.onchange = function () { if (inp.files[0]) mgLoadDxf(inp.files[0]); };
+    inp.click();
   }
 
   /** 從資料夾（或拖進來的檔案）挑出同一個案件的 D14、D20、D29、D2C、D2D */
   function mgLoadFiles(which, entries, dirHandle, folderName) {
+    // 來源格：拖進來的是 DXF（或資料夾裡只有 DXF、沒有重測檔）
+    if (which === 'src') {
+      var dx = entries.map(function (x) { return x.file || x; }).filter(function (f) { return /\.dxf$/i.test(f.name); });
+      var has14 = entries.some(function (x) { return /\.d14$/i.test((x.file || x).name); });
+      if (dx.length && !has14) { if (dx.length > 1) toast('有 ' + dx.length + ' 個 DXF，先用 ' + dx[0].name); mgLoadDxf(dx[0]); return; }
+    }
     var list = entries.map(function (x) { return { file: x.file || x, path: x.path || (x.file || x).name }; })
       .filter(function (x) { return MG_EXT.indexOf(Core.extName(x.file.name)) >= 0 && !/\.bak$/i.test(x.file.name); });
     // 只看資料夾本層（或下一層），以有 D14 的主檔名為準
@@ -5648,6 +5869,11 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
     var g = mgState(); if (!g.main || !g.src) return null;
     if (g.plan) return g.plan;
     var o = g.opts;
+    if (g.src.type === 'dxf') {
+      g.plan = Core.planDxfMerge(mgSet(g.main), g.src.dxf, { layers: o.layers, tol: (+o.tol || 2) / 100, dupRef: (+o.dupRef || 10) / 100, code: +o.dxfCode, near: +o.near || 5,
+        linkEnds: o.linkEnds !== false, method: o.method, datumMain: o.datumMain || null, datumSrc: o.datumSrc || null, sectionDatumMain: Core.sectionDatum(Core.sectionCode(g.main.label)) });
+      return g.plan;
+    }
     g.plan = Core.planMerge(mgSet(g.main), mgSet(g.src), {
       dupRef: (+o.dupRef || 10) / 100, dupQ: (+o.dupQ || 6) / 100, anchorCode: +o.anchorCode, prefix: o.prefix, method: o.method,
       datumMain: o.datumMain || null, datumSrc: o.datumSrc || null,
@@ -5662,30 +5888,40 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
     var g = mgState(), box = $('mergeArea');
     var slot = function (which, title, role) {
       var j = g[which];
+      if (j && j.type === 'dxf') {
+        var lys = Object.keys(j.dxf.layers).length;
+        return '<div class="mgslot ok" data-slot="' + which + '"><h4>' + title + '</h4><div class="role">' + role + '</div>' +
+          '<div class="mgfiles">📄 <b>' + esc(j.folder) + '</b>（CAD 圖，' + esc(j.enc) + '）<br>' + j.dxf.segs.length + ' 條線、' + j.dxf.pts.length + ' 個點位記號、' + j.dxf.texts.length + ' 個文字，' + lys + ' 個圖層</div>' +
+          '<div style="margin-top:10px"><button class="btn" type="button" data-pick="src">📁 改選重測資料夾</button> <button class="btn" type="button" data-pickdxf="1">📄 換一個 DXF</button></div></div>';
+      }
       var files = j ? MG_EXT.map(function (e) { var f = j.files[e]; return f ? '<b>' + esc(f.name) + '</b> ' + f.db.nrec + ' 筆' : '<span class="miss">沒有 .' + e + '</span>'; }).join('<br>') : '';
       return '<div class="mgslot' + (j ? ' ok' : '') + '" data-slot="' + which + '"><h4>' + title + '</h4><div class="role">' + role + '</div>' +
         (j ? '<div class="mgfiles">📁 ' + esc(j.folder || '') + '　案件 <b>' + esc(j.label) + '</b>' + (Core.SECTION_NAMES[Core.sectionCode(j.label)] ? '（' + esc(Core.SECTION_NAMES[Core.sectionCode(j.label)]) + '）' : '') + '<br>' + files +
           (j.others ? '<br><span class="muted">資料夾裡還有 ' + j.others + ' 個案件，用的是 ' + esc(j.label) + '</span>' : '') + '</div>' : '') +
-        '<div style="margin-top:10px"><button class="btn ' + (j ? '' : 'primary') + '" type="button" data-pick="' + which + '">📁 ' + (j ? '換一個資料夾' : '選資料夾') + '</button> <span class="muted">或把資料夾拖到這格</span></div></div>';
+        '<div style="margin-top:10px"><button class="btn ' + (j ? '' : 'primary') + '" type="button" data-pick="' + which + '">📁 ' + (j ? '換一個資料夾' : '選資料夾') + '</button>' +
+        (which === 'src' ? ' <button class="btn" type="button" data-pickdxf="1">📄 選 DXF（CAD 圖）</button>' : '') +
+        ' <span class="muted">或拖到這格</span></div></div>';
     };
     var h = ['<div class="panel"><h3>第 1 步：選兩份重測資料</h3><div class="mgslots">' +
       slot('main', '① 主要檔', '你主要用的那份，成果會寫進這裡（D14、D20、D29）') +
-      slot('src', '② 要併進來的檔', '另一份（不同時期、不同人做的），只讀不改') + '</div>' +
-      '<p class="muted" style="margin:10px 0 0">需要：兩邊的 D14（參考點）；有 D20（補點）、D29（連線）、D2C＋D2D（圖解底圖）會一起處理。底圖用來找出套合點、判斷兩張圖的關係。</p></div>'];
+      slot('src', '② 要併進來的', '另一份重測資料（不同時期、不同人做的），或 CAD 圖 DXF；只讀不改') + '</div>' +
+      '<p class="muted" style="margin:10px 0 0">主要檔需要 D14，有 D2C＋D2D（圖解底圖）才能比對兩張圖。重測資料：D14、D20、D29 會一起處理。DXF：CAD 圖上和主要檔底圖不一樣的點寫成參考點，連線寫進 D29（DWG 請先在 CAD 另存成 DXF）。</p></div>'];
     var plan = mgPlan();
     if (plan) {
       h.push(mgAnalysisHtml(plan));
-      if (!plan.blocked) h.push(mgPreviewHtml(plan), mgWriteHtml(plan));
+      if (!plan.blocked) h.push(plan.dxf ? mgDxfPreviewHtml(plan) : mgPreviewHtml(plan), mgWriteHtml(plan));
     }
     box.innerHTML = h.join('');
     setSteps(!plan ? 1 : g.done ? 3 : 2);
     Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'), function (b) { b.onclick = function () { mgPick(b.getAttribute('data-pick')); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-pickdxf]'), function (b) { b.onclick = mgPickDxf; });
     Array.prototype.forEach.call(box.querySelectorAll('.mgslot'), function (sl) {
       sl.addEventListener('dragover', function () { sl.classList.add('over'); }); sl.addEventListener('dragleave', function () { sl.classList.remove('over'); }); sl.addEventListener('drop', function () { sl.classList.remove('over'); });
     });
     if (!plan) return;
     var reopt = function (k, v) { g.opts[k] = v; g.plan = null; g.built = null; g.done = null; renderMerge(); };
-    Array.prototype.forEach.call(box.querySelectorAll('[data-opt]'), function (x) { x.onchange = function () { reopt(x.getAttribute('data-opt'), x.value); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-opt]'), function (x) { x.onchange = function () { reopt(x.getAttribute('data-opt'), x.type === 'checkbox' ? x.checked : x.value); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-layer]'), function (x) { x.onchange = function () { g.opts.layers[x.getAttribute('data-layer')] = x.checked; reopt('layers', g.opts.layers); }; });
     Array.prototype.forEach.call(box.querySelectorAll('input[name=mgMethod]'), function (x) { x.onchange = function () { reopt('method', x.value); }; });
     if (plan.blocked) return;
     $('mgCsv').onclick = function () { var b = mgBuild(); downloadAll([{ name: g.main.label + '_合併對照表.csv', content: b.tableCsv }, { name: g.main.label + '_連線對照表.csv', content: b.lineCsv }]); };
@@ -5696,11 +5932,11 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
   function mgAnalysisHtml(plan) {
     var g = mgState(), r = plan.reg, o = g.opts;
     var dsel = function (k, cur) { return '<select data-opt="' + k + '">' + [['', '自動'], ['TWD97', 'TWD97'], ['TWD67', 'TWD67'], ['free', '自由坐標']].map(function (x) { return '<option value="' + x[0] + '"' + (o[k] === x[0] ? ' selected' : '') + '>' + x[1] + (x[0] === '' ? '（' + DATUM_TXT[cur] + '）' : '') + '</option>'; }).join('') + '</select>'; };
-    var h = '<div class="panel"><h3>第 2 步：兩份資料的關係</h3><table class="mgtable"><tr><th></th><th>主要檔 ' + esc(g.main.label) + '</th><th>要併進來 ' + esc(g.src.label) + '</th></tr>' +
+    var h = '<div class="panel"><h3>第 2 步：兩份資料的關係</h3><table class="mgtable"><tr><th></th><th>主要檔 ' + esc(g.main.label) + '</th><th>要併進來 ' + esc(g.src.label) + (plan.dxf ? '（DXF）' : '') + '</th></tr>' +
       '<tr><td>坐標系統</td><td>' + dsel('datumMain', plan.datum.main) + '</td><td>' + dsel('datumSrc', plan.datum.src) + '</td></tr></table>';
     if (r && !r.failed) {
       var dc = r.T.apply(r.T.sx, r.T.sy);
-      h += '<div>兩張底圖是同一張圖：' + r.matched + '／' + r.total + ' 個底圖點（' + (r.inliers * 100).toFixed(1) + '%）換過去後差不到 2 cm。' +
+      h += '<div>' + (plan.dxf ? 'CAD 圖和主要檔底圖對得上：' : '兩張底圖是同一張圖：') + r.matched + '／' + r.total + ' 個' + (plan.dxf ? ' CAD 點' : '底圖點') + '（' + (r.inliers * 100).toFixed(1) + '%）換過去後差不到 2 cm' + (plan.dxf && r.inliers < 0.9 ? '（CAD 圖常包含旁邊別幅，比例低是正常的）' : '') + '。' +
         '<br>來源圖 → 主要圖：旋轉 <b>' + fmtRot(r.T.rotSec) + '</b>，圖中心平移 ΔE <b>' + (dc.E - r.T.sx).toFixed(3) + '</b>、ΔN <b>' + (dc.N - r.T.sy).toFixed(3) + '</b> m' +
         (r.how === 'shape' ? '（用圖形比對找到的）' : r.how === '67→97' ? '（約等於 67→97 的差，加上兩次套合不同）' : '') + '</div>';
     } else if (r && r.failed) h += '<div class="warnTxt">兩張底圖對不起來（' + (r.inliers * 100).toFixed(0) + '% 重合），可能不是同一張圖。</div>';
@@ -5713,6 +5949,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
       var ok = plan.methods[m[0]];
       return '<label class="' + (ok ? '' : 'dis') + '"><input type="radio" name="mgMethod" value="' + m[0] + '"' + (plan.method === m[0] ? ' checked' : '') + (ok ? '' : ' disabled') + '> <b>' + m[1] + '</b>' + (plan.method === m[0] && o.method === 'auto' ? ' <span class="advtag">自動選的</span>' : '') + '<span class="muted">' + m[2] + '</span></label>';
     }).join('') + '</div>';
+    if (plan.dxf) return h + mgDxfRulesHtml(plan) + '</div>';
     h += '<h4 style="margin:14px 0 4px">規則</h4><div class="mgopts">' +
       '<label>參考點重複：<input type="number" min="1" max="100" data-opt="dupRef" value="' + esc(o.dupRef) + '"> cm 內不寫</label>' +
       '<label>補點同一點：<input type="number" min="1" max="100" data-opt="dupQ" value="' + esc(o.dupQ) + '"> cm 內不寫</label>' +
@@ -5742,15 +5979,48 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","da
       '<div style="margin-top:10px"><button class="btn" id="mgCsv" type="button">⬇ 下載對照表（CSV）</button></div></div>';
     return t;
   }
+  /** DXF：圖層勾選與規則 */
+  function mgDxfRulesHtml(plan) {
+    var g = mgState(), o = g.opts, L = g.src.dxf.layers;
+    var lys = Object.keys(L).sort(function (a, b) { return (L[b].lines + L[b].points) - (L[a].lines + L[a].points); });
+    return '<h4 style="margin:14px 0 4px">要用的圖層</h4><div class="mgopts">' + lys.map(function (k) {
+      var l = L[k], n = plan.perLayer && plan.perLayer[k];
+      if (!l.lines && !l.points) return '<label class="muted" title="只有文字">' + esc(k) + '（文字 ' + l.texts + '）</label>';
+      return '<label><input type="checkbox" data-layer="' + esc(k) + '"' + (o.layers && o.layers[k] !== false ? ' checked' : '') + '> <b>' + esc(k) + '</b> <span class="muted">線 ' + l.lines + (l.points ? '、點 ' + l.points : '') + (n ? '｜<span class="warnTxt">不同的點 ' + n + '</span>' : '') + '</span></label>';
+    }).join('') + '</div><div class="muted">摺線、圖框這類圖層（FOLD、圖框…）預設不勾。</div>' +
+      '<h4 style="margin:14px 0 4px">規則</h4><div class="mgopts">' +
+      '<label>和主要檔底圖點差 <input type="number" min="0.1" max="50" step="0.1" data-opt="tol" value="' + esc(o.tol) + '"> cm 內＝相同，不寫</label>' +
+      '<label>只看主要檔界線 <input type="number" min="0.5" max="100" step="0.5" data-opt="near" value="' + esc(o.near) + '"> m 內的點</label>' +
+      '<label>CAD 點編碼：<input type="number" min="1" max="99" data-opt="dxfCode" value="' + esc(o.dxfCode) + '"></label>' +
+      '<label><input type="checkbox" data-opt="linkEnds"' + (o.linkEnds !== false ? ' checked' : '') + '> 線的另一端在底圖上時也寫入，讓線連起來</label></div>' +
+      '<div class="muted" style="margin-top:6px">CAD 圖上和主要檔底圖不一樣的點（點位記號、線的端點）寫成參考點 .' + pad2(o.dxfCode) + '，點號從主要檔參考點最大號（' + plan.maxRef + '）＋1 起、由北往南編；主要檔 D14 ' + esc(o.dupRef) + ' cm 內已有的點不寫。兩端都寫入的線寫進 D29。</div>';
+  }
+  function mgDxfPreviewHtml(plan) {
+    var c = plan.counts, g = mgState();
+    var nums = plan.d14.map(function (r) { return r.num; });
+    var range = nums.length ? Math.min.apply(null, nums) + '～' + Math.max.apply(null, nums) : '—';
+    var t = '<div class="panel"><h3>第 3 步：會寫進主要檔的內容</h3><table class="mgtable"><tr><th>項目</th><th>數量</th><th>說明</th></tr>' +
+      '<tr><td>CAD 點（勾選的圖層）</td><td class="n">' + c.dxfPts + '</td><td>和主要檔底圖相同 ' + c.same + '；在主要檔範圍外 ' + c.outside + '</td></tr>' +
+      '<tr><td>不一樣的點 → 參考點 .' + pad2(g.opts.dxfCode) + '</td><td class="n"><b>' + c.ref + '</b></td><td>' + (c.ref ? '點號 ' + range : '沒有不一樣的點') + '</td></tr>' +
+      (c.ends ? '<tr><td>線的端點（在底圖上）</td><td class="n"><b>' + c.ends + '</b></td><td>為了讓線連起來才寫入，和底圖相同</td></tr>' : '') +
+      '<tr><td>連線（D29）</td><td class="n"><b>' + c.lines + '</b></td><td>' + (c.halfLines ? c.halfLines + ' 條另一端在範圍外或沒有寫入，不連' : '') + '</td></tr></table>';
+    if (plan.warnings.length) t += '<ul class="report">' + plan.warnings.map(function (w) { return '<li class="warn"><span class="lv">注意</span><span>' + esc(w) + '</span></li>'; }).join('') + '</ul>';
+    t += '<div class="mgmap">' + mgMapSvg(plan) + '</div><div class="legend" style="margin-top:6px"><span><i style="background:#9fb3c8"></i>主要檔底圖</span><span><i style="background:#e5484d"></i>CAD 不一樣的點與線</span><span><i style="background:#8b3dff"></i>線的端點（在底圖上）</span></div>' +
+      '<div style="margin-top:10px"><button class="btn" id="mgCsv" type="button">⬇ 下載對照表（CSV）</button></div></div>';
+    return t;
+  }
   function pad2(n) { n = +n || 0; return (n < 10 ? '0' : '') + n; }
   function mgMapSvg(plan) {
     var g = mgState(), M = Core.jobFromDbf(mgSet(g.main));
-    var P = plan.d14.map(function (r) { return { E: r.at.E, N: r.at.N, a: r.anchor }; }).concat(plan.d20.map(function (r) { return { E: r.at.E, N: r.at.N, q: 1 }; }));
+    var P = plan.d14.map(function (r) { return { E: r.at.E, N: r.at.N, a: r.anchor || r.linkEnd }; }).concat(plan.d20.map(function (r) { return { E: r.at.E, N: r.at.N, q: 1 }; }));
     if (!P.length) return '<div class="muted" style="padding:20px">沒有要寫入的點</div>';
     var minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
     P.forEach(function (p) { minE = Math.min(minE, p.E); maxE = Math.max(maxE, p.E); minN = Math.min(minN, p.N); maxN = Math.max(maxN, p.N); });
-    var pad = Math.max(20, (maxE - minE) * 0.05); minE -= pad; maxE += pad; minN -= pad; maxN += pad;
-    var W = 1000, s = W / (maxE - minE), H = Math.max(200, Math.round((maxN - minN) * s));
+    var pad = Math.max(20, Math.max(maxE - minE, maxN - minN) * 0.05); minE -= pad; maxE += pad; minN -= pad; maxN += pad;
+    // 固定 1000 × 640 的框：比較窄的那一邊往兩側放寬，圖才不會又細又長
+    var W = 1000, H = 640, wE = maxE - minE, wN = maxN - minN;
+    if (wE / wN < W / H) { var add = (wN * W / H - wE) / 2; minE -= add; maxE += add; } else { var add2 = (wE * H / W - wN) / 2; minN -= add2; maxN += add2; }
+    var s = W / (maxE - minE);
     var X = function (E) { return ((E - minE) * s).toFixed(1); }, Y = function (N) { return ((maxN - N) * s).toFixed(1); };
     var inBox = function (p) { return p.E > minE && p.E < maxE && p.N > minN && p.N < maxN; };
     var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">'];

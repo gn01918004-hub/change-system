@@ -474,13 +474,12 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
             <span class="d">依案件點位自動抓國土測繪中心正射影像並置中，可選套合點校正偏差</span>
             <span class="flow"><b>.L14</b> <b>.L20</b> → <b>.jpg</b> <b>.jgw</b>（TWD97，CAD／GIS 直接疊圖）</span></span>
         </button>
-        <button class="card hidden" data-kind="merge" id="cardMerge">
+        <button class="card" data-kind="merge" id="cardMerge">
           <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6"/><path d="M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/></svg></span>
-          <span><span class="t">合併兩個重測檔 <span class="advtag">進階</span></span>
-            <span class="d">把另一份重測資料的參考點、套合點、補點、連線併進主要檔；97、67、自由坐標都可以</span>
-            <span class="flow"><b>.D14</b> <b>.D20</b> <b>.D29</b> ＋ <b>.D2C</b> <b>.D2D</b>（底圖）→ 寫回主要檔</span></span>
+          <span><span class="t">合併到重測系統</span>
+            <span class="d">把另一份重測資料或 CAD 圖（DXF）的成果併進主要檔：參考點、套合點、補點、連線；97、67、自由坐標都可以</span>
+            <span class="flow">重測資料夾 或 <b>.dxf</b> → 寫回主要檔 <b>.D14</b> <b>.D20</b> <b>.D29</b></span></span>
         </button>
-        <button class="advlink" id="advToggle" type="button">⚙ 進階功能</button>
       </div>
     </div>
   </section>

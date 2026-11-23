@@ -2157,6 +2157,213 @@
     return plan;
   }
 
+  // ─── DXF（CAD 圖）併進重測系統 ───
+
+  /** DXF 文字編碼：AutoCAD 2007 以後是 UTF-8，之前看 $DWGCODEPAGE（台灣多半是 ANSI_950＝Big5） */
+  function dxfEncoding(u8) {
+    var head = ''; for (var i = 0; i < Math.min(u8.length, 4000); i++) head += String.fromCharCode(u8[i]);
+    var ver = (/\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*AC(\d+)/.exec(head) || [])[1], cp = (/\$DWGCODEPAGE\s*\r?\n\s*3\s*\r?\n\s*(\S+)/.exec(head) || [])[1] || '';
+    if (ver && +ver >= 1021) return 'utf-8';
+    if (/950/.test(cp)) return 'big5';
+    if (/936/.test(cp)) return 'gbk';
+    if (/125[0-9]/.test(cp)) return 'windows-' + cp.replace(/\D/g, '');
+    return 'big5';
+  }
+  /** 讀 DXF 的圖形：LINE、LWPOLYLINE、POLYLINE/VERTEX、POINT、ARC、CIRCLE、TEXT、MTEXT（只取 ENTITIES 區） */
+  function parseDxf(text) {
+    var L = text.split(/\r?\n/), ents = [], sec = null, cur = null;
+    for (var i = 0; i + 1 < L.length; i += 2) {
+      var c = L[i].trim(), v = L[i + 1];
+      if (c === '0' && v.trim() === 'SECTION') { sec = (L[i + 3] || '').trim(); cur = null; continue; }
+      if (c === '0' && v.trim() === 'ENDSEC') { sec = null; cur = null; continue; }
+      if (sec !== 'ENTITIES') continue;
+      if (c === '0') { cur = { type: v.trim(), layer: '0', xs: [], ys: [], flags: 0 }; ents.push(cur); continue; }
+      if (!cur) continue;
+      var k = +c;
+      if (k === 8) cur.layer = v.trim();
+      else if (k === 1) cur.text = (cur.text || '') + v.trim();
+      else if (k === 10) cur.xs.push(+v); else if (k === 20) cur.ys.push(+v);
+      else if (k === 11) cur.x2 = +v; else if (k === 21) cur.y2 = +v;
+      else if (k === 40) cur.r = +v; else if (k === 50) cur.a1 = +v; else if (k === 51) cur.a2 = +v;
+      else if (k === 70) cur.flags = +v;
+    }
+    // POLYLINE 後面接 VERTEX … SEQEND：把頂點收回 POLYLINE
+    var out = [], poly = null;
+    ents.forEach(function (e) {
+      if (e.type === 'POLYLINE') { poly = { type: 'LWPOLYLINE', layer: e.layer, xs: [], ys: [], flags: e.flags }; out.push(poly); return; }
+      if (e.type === 'VERTEX') { if (poly) { poly.xs.push(e.xs[0]); poly.ys.push(e.ys[0]); } return; }
+      if (e.type === 'SEQEND') { poly = null; return; }
+      out.push(e);
+    });
+    var layers = {};
+    var segs = [], pts = [], texts = [];
+    out.forEach(function (e) {
+      var ly = layers[e.layer] = layers[e.layer] || { name: e.layer, lines: 0, points: 0, texts: 0 };
+      var P = function (x, y) { return { E: x, N: y, layer: e.layer }; };
+      if (e.type === 'LINE' && e.xs.length && isFinite(e.x2)) { segs.push({ a: P(e.xs[0], e.ys[0]), b: P(e.x2, e.y2), layer: e.layer }); ly.lines++; }
+      else if (e.type === 'LWPOLYLINE' && e.xs.length > 1) {
+        for (var j = 1; j < e.xs.length; j++) segs.push({ a: P(e.xs[j - 1], e.ys[j - 1]), b: P(e.xs[j], e.ys[j]), layer: e.layer });
+        if (e.flags & 1) segs.push({ a: P(e.xs[e.xs.length - 1], e.ys[e.ys.length - 1]), b: P(e.xs[0], e.ys[0]), layer: e.layer });
+        ly.lines += e.xs.length - 1;
+      } else if (e.type === 'ARC' && e.xs.length && isFinite(e.r)) {
+        var a1 = e.a1 * D2R, a2 = e.a2 * D2R; if (a2 < a1) a2 += 2 * Math.PI; var am = (a1 + a2) / 2;
+        segs.push({ a: P(e.xs[0] + e.r * Math.cos(a1), e.ys[0] + e.r * Math.sin(a1)), m: P(e.xs[0] + e.r * Math.cos(am), e.ys[0] + e.r * Math.sin(am)), b: P(e.xs[0] + e.r * Math.cos(a2), e.ys[0] + e.r * Math.sin(a2)), layer: e.layer, arc: true });
+        ly.lines++;
+      } else if (e.type === 'POINT' && e.xs.length) { pts.push(P(e.xs[0], e.ys[0])); ly.points++; }
+      else if ((e.type === 'TEXT' || e.type === 'MTEXT') && e.xs.length) { texts.push({ E: e.xs[0], N: e.ys[0], text: (e.text || '').replace(/\\[A-Za-z][^;]*;|[{}]/g, ''), layer: e.layer }); ly.texts++; }
+    });
+    // 點位記號：同一個中點、互相垂直的兩條短線（十字），當成一個點；這些短線不算界線
+    var byMid = {};
+    segs.forEach(function (sg, idx) {
+      if (sg.arc) return;
+      var len = Math.hypot(sg.b.E - sg.a.E, sg.b.N - sg.a.N); if (len > 1.5 || len < 0.01) return;
+      var k = Math.round((sg.a.E + sg.b.E) / 2 * 1000) + ',' + Math.round((sg.a.N + sg.b.N) / 2 * 1000);
+      (byMid[k] = byMid[k] || []).push(idx);
+    });
+    var cross = {};
+    Object.keys(byMid).forEach(function (k) {
+      var ids = byMid[k]; if (ids.length < 2) return;
+      var s0 = segs[ids[0]], s1 = segs[ids[1]];
+      var ang = function (sg) { return Math.atan2(sg.b.N - sg.a.N, sg.b.E - sg.a.E); };
+      var d = Math.abs(Math.sin(ang(s0) - ang(s1))); if (d < 0.9) return;
+      ids.forEach(function (id) { cross[id] = 1; });
+      pts.push({ E: (s0.a.E + s0.b.E) / 2, N: (s0.a.N + s0.b.N) / 2, layer: s0.layer, mark: true });
+      layers[s0.layer].points++;
+    });
+    var lines = segs.filter(function (_, i) { return !cross[i]; });
+    // 十字線不算在圖層的「線」裡
+    Object.keys(layers).forEach(function (k) { layers[k].lines = lines.filter(function (sg) { return sg.layer === k; }).length; });
+    return { segs: lines, pts: pts, texts: texts, layers: layers };
+  }
+
+  /**
+   * DXF 併進重測系統：把 CAD 圖上「和主要檔底圖不一樣」的點寫成參考點（編碼 code），
+   * 兩端都有寫入的線寫進 D29。和主要檔底圖點 tol 內、或主要檔 D14 點 dupRef 內的點不寫。
+   * opts：{ layers: { 圖層: true/false }, tol 0.02, dupRef 0.10, code 97, method, datumMain, datumSrc, sectionDatumMain }
+   */
+  var DXF_OFF = /fold|frame|border|圖框|塗色|^defpoints$/i; // 預設不用的圖層（摺線、圖框）
+  function dxfLayerDefault(name) { return !DXF_OFF.test(name); }
+  function planDxfMerge(mainSet, dxf, opts) {
+    opts = opts || {};
+    var tol = opts.tol == null ? 0.02 : opts.tol, dupRef = opts.dupRef == null ? 0.10 : opts.dupRef, code = opts.code == null ? 97 : +opts.code;
+    var nearM = opts.near == null ? 5 : +opts.near;
+    var on = function (ly) { return opts.layers && ly in opts.layers ? opts.layers[ly] !== false : !DXF_OFF.test(ly); };
+    var M = jobFromDbf(mainSet);
+    var plan = { dxf: true, warnings: [], d14: [], d20: [], d29: [], table: [], lineTable: [] };
+    // DXF 的點：點位記號、POINT、所有線的端點（去重複）
+    var raw = [];
+    dxf.pts.forEach(function (p) { if (on(p.layer)) raw.push(p); });
+    dxf.segs.forEach(function (sg) { if (!on(sg.layer)) return; raw.push(sg.a, sg.b); if (sg.m) raw.push(sg.m); });
+    var G0 = ptGrid([], 1), P = [];
+    raw.forEach(function (p) {
+      var m = ptNear(G0, p.E, p.N, 0.001);
+      if (m) { m.q.layers[p.layer] = 1; if (p.mark) m.q.mark = true; p.id = m.q.id; return; }
+      var q = { E: p.E, N: p.N, layers: {}, mark: !!p.mark, id: P.length }; q.layers[p.layer] = 1; P.push(q); p.id = q.id;
+      var k = Math.floor(p.E) + ',' + Math.floor(p.N); var a = G0.g.get(k); if (a) a.push(q); else G0.g.set(k, [q]);
+    });
+    var idOf = function (p) { var m = ptNear(G0, p.E, p.N, 0.001); return m ? m.q.id : -1; };
+    plan.dxfPoints = P.length;
+    if (!P.length) { plan.blocked = 'DXF 裡（勾選的圖層）沒有點或線。'; return plan; }
+    // 坐標系統與兩張圖的關係
+    var fM = frameOf(M.d14.concat(M.d2c)), fS = frameOf(P);
+    var reg = M.d2c.length ? registerBasemaps(P, M.d2c) : null;
+    plan.frames = { main: fM, src: fS }; plan.reg = reg;
+    var dM = opts.datumMain || (fM === 'free' ? 'free' : null), dS = opts.datumSrc || (fS === 'free' ? 'free' : null);
+    if (!dS && !dM && reg && !reg.failed) { if (reg.how === '67→97') { dS = 'TWD67'; dM = 'TWD97'; } else if (reg.how === '97→67') { dS = 'TWD97'; dM = 'TWD67'; } }
+    dM = dM || opts.sectionDatumMain || 'TWD97'; dS = dS || dM;
+    plan.datum = { main: dM, src: dS };
+    var same = dM === dS && dM !== 'free', canFormula = (dM === 'TWD97' && dS === 'TWD67') || (dM === 'TWD67' && dS === 'TWD97'), canBasemap = reg && !reg.failed;
+    var method = opts.method && opts.method !== 'auto' ? opts.method : (same ? 'asis' : canFormula ? 'formula' : canBasemap ? 'basemap' : null);
+    if ((method === 'formula' && !canFormula) || (method === 'basemap' && !canBasemap)) method = null;
+    plan.method = method; plan.methods = { asis: same, formula: canFormula, basemap: !!canBasemap };
+    if (!method) { plan.blocked = 'DXF 和主要檔的坐標系統不同，而且兩張圖對不起來，沒辦法換算。'; return plan; }
+    var place = method === 'asis' ? function (p) { return { E: p.E, N: p.N }; } : method === 'formula'
+      ? function (p) { var q = dS === 'TWD67' ? twd67to97(p.N, p.E) : twd97to67(p.N, p.E); return { N: q[0], E: q[1] }; }
+      : function (p) { return reg.T.apply(p.E, p.N); };
+    // 和主要檔底圖、主要檔 D14 比
+    var GB = ptGrid(M.d2c, 5), GD = ptGrid(M.d14, 5);
+    // 只看主要檔範圍：離主要檔底圖界線 nearM 公尺內的點（DXF 常常包含旁邊別幅的圖）
+    var segIdx = new Map(), CELL = 10;
+    M.segs.forEach(function (sg) { var x0 = Math.floor(Math.min(sg[0].E, sg[1].E) / CELL), x1 = Math.floor(Math.max(sg[0].E, sg[1].E) / CELL), y0 = Math.floor(Math.min(sg[0].N, sg[1].N) / CELL), y1 = Math.floor(Math.max(sg[0].N, sg[1].N) / CELL);
+      for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) { var k = x + ',' + y, a = segIdx.get(k); if (a) a.push(sg); else segIdx.set(k, [sg]); } });
+    var segDist = function (E, N) {
+      var cx = Math.floor(E / CELL), cy = Math.floor(N / CELL), R = Math.ceil(nearM / CELL), best = Infinity;
+      for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) (segIdx.get((cx + i) + ',' + (cy + j)) || []).forEach(function (sg) {
+        var a = sg[0], b = sg[1], vx = b.E - a.E, vy = b.N - a.N, L2 = vx * vx + vy * vy, t = L2 ? ((E - a.E) * vx + (N - a.N) * vy) / L2 : 0; t = Math.max(0, Math.min(1, t));
+        best = Math.min(best, Math.hypot(a.E + t * vx - E, a.N + t * vy - N)); });
+      return best;
+    };
+    var inArea = M.segs.length ? function (at) { return segDist(at.E, at.N) <= nearM; } : function (at) { return !!ptNear(GB, at.E, at.N, nearM); };
+    var outside = 0;
+    var maxRef = 0; M.d14.forEach(function (p) { if (p.ref !== 0 && p.n > maxRef) maxRef = p.n; });
+    plan.maxRef = maxRef;
+    var next = maxRef, written = {}, perLayer = {};
+    // 由北往南、由西往東編號，點號順序看起來比較有規律
+    P.map(function (p) { var at = place(p); return { p: p, at: at }; })
+      .sort(function (x, y) { return (y.at.N - x.at.N) || (x.at.E - y.at.E); })
+      .forEach(function (x) {
+        var b = ptNear(GB, x.at.E, x.at.N, tol);
+        if (b) { x.p.same = true; return; }
+        if (!inArea(x.at)) { outside++; return; }
+        var d = ptNear(GD, x.at.E, x.at.N, dupRef);
+        if (d) { plan.table.push({ kind: 'DXF 點', from: x.at.E.toFixed(3) + ',' + x.at.N.toFixed(3), to: '', N: x.at.N, E: x.at.E, note: '不寫：主要檔 ' + Math.round(dupRef * 100) + ' cm 內已有 ' + d.q.n + '.' + pad(d.q.ref, 2) }); return; }
+        next++;
+        var near = ptNear(GB, x.at.E, x.at.N, 20);
+        var lays = Object.keys(x.p.layers);
+        lays.forEach(function (ly) { perLayer[ly] = (perLayer[ly] || 0) + 1; });
+        written[x.p.id] = next + '.' + pad(code, 2);
+        plan.d14.push({ p: { values: {} }, num: next, ref: code, at: x.at, moved: true, dxf: true, layers: lays, mark: x.p.mark });
+        plan.table.push({ kind: 'DXF 點', from: lays.join('／') + (x.p.mark ? '（點位記號）' : '（線端點）'), to: next + '.' + pad(code, 2), N: x.at.N, E: x.at.E,
+          note: near ? '離主要檔最近的底圖點 ' + near.d.toFixed(3) + ' m' : '主要檔底圖 20 m 內沒有點' });
+      });
+    // 線的另一端剛好在主要檔底圖上（沒有寫入）：選項開著時，把那一端也寫成參考點，線才連得起來
+    var linkEnds = opts.linkEnds !== false, ends = 0;
+    if (linkEnds) {
+      var byId = {}; P.forEach(function (p) { byId[p.id] = p; });
+      dxf.segs.forEach(function (sg) {
+        if (!on(sg.layer)) return;
+        var ids = [idOf(sg.a), idOf(sg.b)].concat(sg.m ? [idOf(sg.m)] : []);
+        if (!ids.some(function (id) { return written[id]; })) return;
+        ids.forEach(function (id) {
+          if (written[id] || id < 0) return;
+          var p = byId[id], at = place(p);
+          if (!p.same) return; // 只補「在主要檔底圖上」的端點
+          var d = ptNear(GD, at.E, at.N, dupRef);
+          if (d) { written[id] = d.q.n + '.' + pad(d.q.ref, 2); return; } // 主要檔 D14 已有這點：直接連到它
+          next++; ends++;
+          written[id] = next + '.' + pad(code, 2);
+          plan.d14.push({ p: { values: {} }, num: next, ref: code, at: at, moved: true, dxf: true, layers: Object.keys(p.layers), linkEnd: true });
+          plan.table.push({ kind: 'DXF 線端點', from: Object.keys(p.layers).join('／'), to: next + '.' + pad(code, 2), N: at.N, E: at.E, note: '在主要檔底圖點上（和底圖相同），為了讓線連起來才寫入' });
+        });
+      });
+    }
+    plan.linkEnds = ends;
+    plan.same = P.filter(function (p) { return p.same; }).length;
+    plan.perLayer = perLayer;
+    // 線：兩端（弧加中點）都寫入的才連
+    var lineCount = 0;
+    dxf.segs.forEach(function (sg) {
+      if (!on(sg.layer)) return;
+      var a = written[idOf(sg.a)], b = written[idOf(sg.b)], m = sg.m ? written[idOf(sg.m)] : '';
+      if (a && b && (!sg.m || m) && a !== b) { plan.d29.push({ top: a, mid: m || '', bot: b, mode: '0' }); lineCount++; plan.lineTable.push({ ok: true, row: '', from: sg.layer, to: a + (m ? ' → ' + m : '') + ' → ' + b, note: '' }); }
+      else if (a || b) plan.lineTable.push({ ok: false, row: '', from: sg.layer, note: '另一端在主要檔範圍外、或和主要檔底圖相同而沒有寫入，沒辦法連' });
+    });
+    plan.outside = outside;
+    plan.counts = { dxfPts: P.length, same: plan.same, outside: outside, ref: plan.d14.length - ends, ends: ends, lines: lineCount, halfLines: plan.lineTable.filter(function (l) { return !l.ok; }).length };
+    if (M.d14.some(function (p) { return p.ref === code; })) plan.warnings.push('編碼 ' + pad(code, 2) + ' 主要檔已經有人用過，CAD 點會和它們混在一起，建議換一個編碼。');
+    return plan;
+  }
+
+  /** 新的空 dBASE III（欄位 [[名稱, 型態, 長度, 小數]]），主要檔和來源都沒有 D29 時用 */
+  function newDbf(fields) {
+    var hlen = 32 + fields.length * 32 + 1, rlen = 1 + fields.reduce(function (a, f) { return a + f[2]; }, 0);
+    var u8 = new Uint8Array(hlen + 1); u8[0] = 3; u8[8] = hlen & 255; u8[9] = hlen >> 8; u8[10] = rlen & 255; u8[11] = rlen >> 8;
+    fields.forEach(function (f, i) { var o = 32 + i * 32; for (var k = 0; k < f[0].length; k++) u8[o + k] = f[0].charCodeAt(k); u8[o + 11] = f[1].charCodeAt(0); u8[o + 16] = f[2]; u8[o + 17] = f[3] || 0; });
+    u8[hlen - 1] = 0x0D; u8[hlen] = 0x1A;
+    return parseDbf(u8);
+  }
+  var D29_FIELDS = [['LIN_TOP', 'C', 10], ['LIN_MID', 'C', 10], ['LIN_BOT', 'C', 10], ['LIN_MODE', 'N', 1]];
+
   /** 空的 dBASE（沿用另一個檔的欄位定義），主要檔缺 D29 等時用 */
   function emptyDbfLike(db) {
     var u8 = new Uint8Array(db.hlen + 1); u8.set(db.u8.subarray(0, db.hlen)); u8[4] = u8[5] = u8[6] = u8[7] = 0; u8[db.hlen] = 0x1A;
@@ -2192,7 +2399,7 @@
       out.d20Created = !mainSet.d20;
     }
     if (plan.d29.length) {
-      var d29 = mainSet.d29 || (srcSet.d29 && emptyDbfLike(srcSet.d29));
+      var d29 = mainSet.d29 || (srcSet.d29 ? emptyDbfLike(srcSet.d29) : newDbf(D29_FIELDS));
       out.d29 = appendDbf(d29, plan.d29.map(function (l) { return { LIN_TOP: l.top, LIN_MID: l.mid || '', LIN_BOT: l.bot, LIN_MODE: l.mode || '0' }; }), now);
       out.d29Created = !mainSet.d29;
     }
@@ -2322,6 +2529,10 @@
     worldFileText: worldFileText,
     SECTIONS_67: SECTIONS_67,
     planMerge: planMerge,
+    planDxfMerge: planDxfMerge,
+    dxfLayerDefault: dxfLayerDefault,
+    parseDxf: parseDxf,
+    dxfEncoding: dxfEncoding,
     buildMerge: buildMerge,
     registerBasemaps: registerBasemaps,
     jobFromDbf: jobFromDbf,
