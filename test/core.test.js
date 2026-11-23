@@ -582,3 +582,96 @@ test('航照底圖：各年度正射影像依內容分組（KC1117 實測）', (
   assert.strictEqual(Core.probeTileUrl('PHOTO2025', 2706889.5, 221008.2), 'https://wmts.nlsc.gov.tw/wmts/PHOTO2025/default/GoogleMapsCompatible/20/450749/875893');
   assert.strictEqual(Core.BASEMAP_SOURCES.PHOTO2022.label, '111 年圖層正射影像');
 });
+
+// ── 合併兩個重測檔：用小的假資料測規則 ──
+function mgDbf(fields, rows) {
+  const hlen = 32 + fields.length * 32 + 1, rlen = 1 + fields.reduce((a, f) => a + f[2], 0);
+  const u8 = new Uint8Array(hlen + rows.length * rlen); u8[0] = 3;
+  u8[4] = rows.length & 255; u8[5] = rows.length >> 8; u8[8] = hlen & 255; u8[9] = hlen >> 8; u8[10] = rlen & 255; u8[11] = rlen >> 8;
+  fields.forEach((f, i) => { const o = 32 + i * 32; for (let k = 0; k < f[0].length; k++) u8[o + k] = f[0].charCodeAt(k); u8[o + 11] = f[1].charCodeAt(0); u8[o + 16] = f[2]; u8[o + 17] = f[3] || 0; });
+  u8[hlen - 1] = 0x0D;
+  rows.forEach((r, i) => { let o = hlen + i * rlen; u8[o++] = 0x20; fields.forEach(f => { let v = r[f[0]] == null ? '' : String(r[f[0]]); v = f[1] === 'C' ? v.padEnd(f[2]) : v.padStart(f[2]); for (let k = 0; k < f[2]; k++) u8[o + k] = v.charCodeAt(k); o += f[2]; }); });
+  return Core.parseDbf(u8);
+}
+const MF14 = [['COT_NUMBER', 'N', 5], ['COT_REF', 'N', 2], ['COT_Y', 'N', 16, 8], ['COT_X', 'N', 15, 8], ['COT_MATTER', 'N', 1]];
+const MF20 = [['CTL_NAME', 'C', 8], ['CTL_Y', 'N', 12, 3], ['CTL_X', 'N', 11, 3], ['CTL_LEVEL', 'C', 3]];
+const MF29 = [['LIN_TOP', 'C', 10], ['LIN_MID', 'C', 10], ['LIN_BOT', 'C', 10], ['LIN_MODE', 'N', 1]];
+const MF2D = [['LIN_TOP', 'N', 5], ['LIN_MID', 'N', 5], ['LIN_BOT', 'N', 5]];
+// 底圖：不規則的格網（讓形狀有特徵），來源在 97，主要檔＝來源旋轉 0.3°、平移 (1.5, -4)
+function mgBasemap(f) {
+  const pts = [], segs = []; let n = 0;
+  for (let i = 0; i < 14; i++) for (let j = 0; j < 12; j++) { n++; const E = 222500 + i * 23 + ((i * 7 + j * 3) % 5) * 1.7, N = 2709100 + j * 19 + ((i * 5 + j * 11) % 7) * 1.3; const q = f(N, E); pts.push({ COT_NUMBER: n, COT_REF: 0, COT_Y: q[0].toFixed(8), COT_X: q[1].toFixed(8), COT_MATTER: 0 }); if (i) segs.push({ LIN_TOP: n - 12, LIN_MID: 0, LIN_BOT: n }); if (j) segs.push({ LIN_TOP: n - 1, LIN_MID: 0, LIN_BOT: n }); }
+  return { d2c: mgDbf(MF14, pts), d2d: mgDbf(MF2D, segs), raw: pts };
+}
+const mgRot = (a, dE, dN, cE, cN) => (N, E) => { const c = Math.cos(a), s = Math.sin(a), x = E - cE, y = N - cN; return [cN + s * x + c * y + dN, cE + c * x - s * y + dE]; };
+function mgJobs(srcF) {
+  const id = (N, E) => [N, E];
+  const T = mgRot(0.3 * Math.PI / 180, 1.5, -4, 222660, 2709210);
+  const mb = mgBasemap(T), sb = mgBasemap(id);
+  const main = { d2c: mb.d2c, d2d: mb.d2d,
+    d14: mgDbf(MF14, [{ COT_NUMBER: 30, COT_REF: 10, COT_Y: '2709150.00000000', COT_X: '222600.00000000', COT_MATTER: 0 }, { COT_NUMBER: 7322, COT_REF: 0, COT_Y: '2709160.00000000', COT_X: '222610.00000000', COT_MATTER: 0 }]),
+    d20: mgDbf(MF20, [{ CTL_NAME: 'Q50', CTL_Y: '2709170.000', CTL_X: '222620.000' }, { CTL_NAME: 'Q51', CTL_Y: '2709180.000', CTL_X: '222630.000' }]),
+    d29: mgDbf(MF29, [{ LIN_TOP: '30.10', LIN_BOT: 'Q50', LIN_MODE: 0 }]) };
+  const s = (N, E) => { const q = srcF(N, E); return { COT_Y: q[0].toFixed(8), COT_X: q[1].toFixed(8) }; };
+  const sq = (N, E) => { const q = srcF(N, E); return { CTL_Y: q[0].toFixed(3), CTL_X: q[1].toFixed(3) }; };
+  const b0 = sb.raw[20], b1 = sb.raw[45];
+  const src = { d2c: mgDbf(MF14, sb.raw.map(p => ({ ...p, ...s(+p.COT_Y, +p.COT_X) }))), d2d: sb.d2d,
+    d14: mgDbf(MF14, [
+      { COT_NUMBER: 39, COT_REF: 1, ...s(2709200, 222700), COT_MATTER: 0 }, { COT_NUMBER: 39, COT_REF: 10, ...s(2709205, 222705), COT_MATTER: 0 },
+      { COT_NUMBER: 39, COT_REF: 5, ...s(2709210, 222710), COT_MATTER: 0 }, { COT_NUMBER: 41, COT_REF: 10, ...s(2709220, 222720), COT_MATTER: 0 },
+      { COT_NUMBER: 42, COT_REF: 10, ...s(2709150.05, 222600.02), COT_MATTER: 0 }, // 主要檔 30.10 的 10 cm 內 → 重複
+      { COT_NUMBER: 800, COT_REF: 0, ...s(+b0.COT_Y, +b0.COT_X), COT_MATTER: 0 }, { COT_NUMBER: 801, COT_REF: 0, ...s(+b1.COT_Y, +b1.COT_X), COT_MATTER: 0 }, // 套合點
+      { COT_NUMBER: 900, COT_REF: 0, ...s(2709230, 222730), COT_MATTER: 0 }, // 不在底圖上的 00 點
+      { COT_NUMBER: 99999, COT_REF: 0, ...s(2709240, 222740), COT_MATTER: 0 },
+      { COT_NUMBER: 0, COT_REF: 0, COT_Y: '0', COT_X: '0', COT_MATTER: 0 }]),
+    d20: mgDbf(MF20, [{ CTL_NAME: 'Q50', ...sq(2709170.03, 222620.02) }, { CTL_NAME: 'Q51', ...sq(2709300, 222800) }, { CTL_NAME: 'Q7', ...sq(2709250, 222750) }]),
+    d29: mgDbf(MF29, [{ LIN_TOP: '39.1', LIN_BOT: '41.1', LIN_MODE: 0 }, { LIN_TOP: '39.5', LIN_BOT: 'Q7', LIN_MODE: 0 }, { LIN_TOP: '41.10', LIN_BOT: '800', LIN_MODE: 0 },
+      { LIN_TOP: '900', LIN_BOT: '41.10', LIN_MODE: 0 }, { LIN_TOP: '39.01', LIN_BOT: '39.10', LIN_MODE: 0 }]) };
+  return { main, src, T };
+}
+
+test('合併兩個重測檔：97＋97 照原坐標，點號、套合點、補點、連線規則', () => {
+  const { main, src, T } = mgJobs((N, E) => [N, E]);
+  const p = Core.planMerge(main, src, {});
+  assert.strictEqual(p.method, 'asis');
+  assert.ok(p.reg && p.reg.inliers > 0.99 && Math.abs(Math.abs(p.reg.T.rotSec / 3600) - 0.3) < 0.001, JSON.stringify(p.reg && { i: p.reg.inliers, r: p.reg.T.rotSec }));
+  const refs = p.d14.filter(r => !r.anchor).map(r => r.num + '.' + r.ref);
+  assert.deepStrictEqual(refs, ['31.1', '31.5', '31.10', '32.10']); // 參考點最大號 30 → 31 起；同一原整數 39 → 31；42.10 重複不寫
+  assert.deepStrictEqual(p.d14.filter(r => r.anchor).map(r => r.num + '.' + r.ref), ['33.96', '34.96']);
+  assert.ok(p.table.some(r => r.from === '42.10' && /不寫/.test(r.note)));
+  assert.ok(p.table.some(r => r.from === '900.00' && /不在來源底圖/.test(r.note)) && p.table.some(r => r.from === '99999.00' && /虛擬測站/.test(r.note)));
+  assert.deepStrictEqual(p.d20.map(r => r.name), ['QTS51', 'Q7']); // Q50 同一點不寫；Q51 撞名不同點 → QTS51
+  // 連線：39.1 依本檔慣例讀成 39.01（也可能 39.10）；900 沒寫入 → 不連
+  assert.deepStrictEqual(p.d29.map(l => l.top + '-' + l.bot), ['31.01-32.10', '31.05-Q7', '32.10-33.96', '31.01-31.10']);
+  assert.strictEqual(p.ambLines, 1);
+  assert.ok(p.lineTable.some(l => !l.ok && /900\.00/.test(l.note)));
+  // 寫出來：原紀錄不變、新紀錄坐標照原字串
+  const out = Core.buildMerge(p, main, src, Date.UTC(2026, 10, 23));
+  const d14 = Core.parseDbf(out.d14), add = d14.records.slice(2);
+  assert.strictEqual(add.length, 6);
+  assert.strictEqual(add[0].values.COT_Y.trim(), src.d14.records[0].values.COT_Y.trim());
+  assert.deepStrictEqual(Core.parseDbf(out.d20).records.map(r => r.values.CTL_NAME.trim()), ['Q50', 'Q51', 'QTS51', 'Q7']);
+  assert.strictEqual(Core.parseDbf(out.d29).nrec, 5);
+  // 套合點的說明寫出和主要檔同一角點相差多少
+  assert.ok(p.table.some(r => /套合點/.test(r.kind) && /相差 \d/.test(r.note)));
+});
+
+test('合併兩個重測檔：來源 67 自動用公式換成 97；自由坐標用底圖換算', () => {
+  const back = Core.planMerge(...Object.values((({ main, src }) => ({ main, src }))(mgJobs((N, E) => [N, E]))), {});
+  const ref = new Map(back.d14.map(r => [r.p.n + '.' + r.p.ref, r.at]));
+  // 67
+  const j67 = mgJobs((N, E) => Core.twd97to67(N, E));
+  const p67 = Core.planMerge(j67.main, j67.src, {});
+  assert.strictEqual(p67.datum.src, 'TWD67'); assert.strictEqual(p67.method, 'formula');
+  p67.d14.forEach(r => { const a = ref.get(r.p.n + '.' + r.p.ref); assert.ok(Math.hypot(r.at.E - a.E, r.at.N - a.N) < 0.001, r.p.n + '.' + r.p.ref); });
+  // 自由坐標（旋轉 40°、移到小數字）
+  const free = mgRot(40 * Math.PI / 180, 5000 - 222660, 3000 - 2709210, 222660, 2709210);
+  const jf = mgJobs(free);
+  const pf = Core.planMerge(jf.main, jf.src, {});
+  assert.strictEqual(pf.datum.src, 'free'); assert.strictEqual(pf.method, 'basemap');
+  assert.ok(pf.reg.inliers > 0.99);
+  // 換到主要檔後的位置 ＝ 主要檔底圖的關係（旋轉 0.3°、平移）套在原 97 位置上
+  pf.d14.filter(r => !r.anchor && ref.has(r.p.n + '.' + r.p.ref)).forEach(r => { const a = ref.get(r.p.n + '.' + r.p.ref), t = jf.T(a.N, a.E); assert.ok(Math.hypot(r.at.E - t[1], r.at.N - t[0]) < 0.002, r.p.n + '.' + r.p.ref); });
+  const out = Core.buildMerge(pf, jf.main, jf.src);
+  assert.ok(out.d14 && out.d20 && out.d29);
+});

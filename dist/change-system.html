@@ -182,6 +182,26 @@ ul.report li .ln{color:var(--ink2);font-size:13px;white-space:nowrap}
 .bmdat .seg{display:inline-flex;margin-right:6px;border:1px solid var(--line);border-radius:10px;overflow:hidden;vertical-align:middle}
 .bmdat .seg button{border:none;background:#fff;padding:6px 12px;cursor:pointer;color:var(--ink2);font-weight:700}
 .bmdat .seg button.on{background:var(--oth);color:#fff}
+.advlink{border:none;background:none;color:var(--ink2);font-size:14px;cursor:pointer;padding:4px 2px;margin-top:2px}.advlink:hover{color:var(--oth)}
+.advtag{font-size:12px;background:var(--oth-soft);color:var(--oth);border-radius:999px;padding:1px 8px;vertical-align:middle;font-weight:700}
+.mgslots{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.mgslots{grid-template-columns:1fr}}
+.mgslot{border:2px dashed var(--line);border-radius:12px;padding:14px 16px;min-height:120px;transition:.15s}
+.mgslot.over{border-color:var(--oth);background:var(--oth-soft)}
+.mgslot.ok{border-style:solid;border-color:#cfe5d8;background:#f7fcf9}
+.mgslot h4{margin:0 0 4px;font-size:17px}.mgslot .role{color:var(--ink2);font-size:14px;margin-bottom:10px}
+.mgslot .mgfiles{font-size:14px;line-height:1.7}.mgslot .mgfiles b{font-family:Consolas,monospace}
+.mgslot .miss{color:#b26a00}
+.mgtable{border-collapse:collapse;font-size:14px;margin:6px 0;width:100%}.mgtable td,.mgtable th{white-space:normal;position:static}.mgtable td{overflow-wrap:anywhere}.mgtable td.n,.mgtable th{white-space:nowrap;overflow-wrap:normal}.mgtable td:first-child{min-width:7em}.mgtable td,.mgtable th{border-bottom:1px solid var(--line);padding:5px 10px;text-align:left;vertical-align:top}
+.mgtable td.n{text-align:right;font-variant-numeric:tabular-nums}
+.mgopts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px}.mgopts label{font-size:14px}
+.mgopts input[type=number],.mgopts input[type=text]{width:64px;padding:3px 6px}
+.mgmap{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;margin-top:10px}
+.mgmap svg{display:block;width:100%;height:auto}
+.mglist{font-size:14px;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-top:6px}
+.mgmethod{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+.mgmethod label{cursor:pointer}.mgmethod label.dis{opacity:.45;cursor:default}
+.mgmethod .muted{margin-left:24px;display:block}
 .bmsavedir{margin-top:8px}
 .bmgrid{display:grid;grid-template-columns:70px 1fr;gap:8px 12px;align-items:center}
 .bmgrid>label{color:var(--ink2);font-weight:600}
@@ -454,6 +474,13 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
             <span class="d">依案件點位自動抓國土測繪中心正射影像並置中，可選套合點校正偏差</span>
             <span class="flow"><b>.L14</b> <b>.L20</b> → <b>.jpg</b> <b>.jgw</b>（TWD97，CAD／GIS 直接疊圖）</span></span>
         </button>
+        <button class="card hidden" data-kind="merge" id="cardMerge">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6"/><path d="M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/></svg></span>
+          <span><span class="t">合併兩個重測檔 <span class="advtag">進階</span></span>
+            <span class="d">把另一份重測資料的參考點、套合點、補點、連線併進主要檔；97、67、自由坐標都可以</span>
+            <span class="flow"><b>.D14</b> <b>.D20</b> <b>.D29</b> ＋ <b>.D2C</b> <b>.D2D</b>（底圖）→ 寫回主要檔</span></span>
+        </button>
+        <button class="advlink" id="advToggle" type="button">⚙ 進階功能</button>
       </div>
     </div>
   </section>
@@ -471,7 +498,9 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
       <li data-s="3"><span class="n">3</span><span id="step3Label">存檔</span></li>
     </ol>
 
-    <div class="panel">
+    <div id="mergeArea" class="hidden"></div>
+
+    <div class="panel" id="pickPanel">
       <h3 id="pickTitle">第 1 步：放入檔案</h3>
       <div class="pickrow">
         <div class="drop compact" id="workDrop" tabindex="0" role="button">
@@ -557,7 +586,7 @@ input.fnedit{font:700 17px Consolas,"Courier New",monospace;padding:3px 8px;bord
 <div class="toast hidden" id="toast"></div>
 
 <script>
-window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.6.0","date":"2026-11-20","repo":"gn01918004-hub/change-system","asset":"change-system.html","file":"dist/change-system.html","changelog":[{"version":"3.6.0","date":"2026-11-20","items":["改用 GitHub Releases 發布：檔名固定為 change-system.html（不含版本號），版本號只寫在 Release 標題和程式內","固定下載網址：https://github.com/gn01918004-hub/change-system/releases/latest/download/change-system.html，永遠是最新版","新版本提醒改看 GitHub Releases 的最新版；按「⬇ 下載新版」會直接從 Release 下載","注意：檔名改了，第一次打開新檔時「📁 存檔資料夾」要重新選一次（每個檔案各自記住）"]},{"version":"3.5.0","date":"2026-11-13","items":["放大檢查視窗多一條「🕰 各年度航照」時間軸：拖拉（或按 ← →、點年份）就換成那一年的航照，點位不動，可以看出這裡怎麼變化","切換時先用低解析度秒開，停在某一年約 1 秒再自動換成清楚的版本","看到合適的那張，按「用這一年輸出」就直接輸出那一年的 JPG + JGW（67 段一樣輸出 67 坐標）","用詞修正：年份是國土測繪中心的「圖層年份」，實際拍攝年份請看影像上的浮水印"]},{"version":"3.4.0","date":"2026-11-13","items":["輸出航照圖預設改成抓「最新」的正射影像（國土測繪中心通用版，約 0.14 m），畫面會顯示這裡最新是哪一年拍的；每次都從最新開始，不會沿用上次選的圖源","新增「指定年份」：列出 92～94 年、103～114 年的正射影像，同一張航照的年份會併在一起（例「111 年（111～113 年圖層都是這張）」），不用一年一年試","原本的「通用_3826（TWD97 原生，0.26 m）」保留為選項；它的拍攝年份可能比最新舊"]},{"version":"3.3.0","date":"2026-11-10","items":["輸出航照圖會自己判斷 67 段／97 段：看檔名的段號（例 KC0367 社柑段），67 段清單和「地籍共作平台」相同（0346～0353、0357～0365、0367、0370、0375～0380）","67 段自動把航照換算成 TWD67 坐標輸出（JPG + JGW 都是 67，檔名加 _TWD67），可以直接和該段資料疊圖；67→97 用近似公式（誤差約 1～2 m），剩下的偏差用套合點校正","也可以手動指定 TWD97／TWD67；畫面會顯示段名"]},{"version":"3.2.0","date":"2026-11-10","items":["拖進來（或點一下選）的是「檔案」時，也會自動存回檔案所在的資料夾：系統會記住用過的資料夾，檔案在這些資料夾（含子資料夾）裡就自動切換","檔案來自沒用過的位置時，存檔區會出現一鍵按鈕「📁 存到「檔名」所在的資料夾」，選資料夾視窗會直接停在那個位置，按「選取資料夾」就好","「存檔位置」視窗列出用過的資料夾，點一下就切換","選資料夾後的選單改成和首頁一樣的卡片：每張寫清楚做什麼、找到哪些檔案，點一下就開始；同類有多個時可以勾選要哪幾個"]},{"version":"3.1.1","date":"2026-11-10","items":["選資料夾或把資料夾拖進來時，存檔位置自動換成那個資料夾（所有功能一樣），不再一直沿用上次存的資料夾","輸出航照圖的下載按鈕下方也會顯示「📁 存到：…」，可以確認或更改"]},{"version":"3.1.0","date":"2026-11-10","items":["「輸出航照圖」獨立成一個功能：首頁多一個「其他」分類；選資料夾讀到 L02／L14／L20 時，清單下方也多一個「其他：輸出航照圖」","航照圖會以案件點位為中心：離其他點很遠的零星點（例如單獨一點的補點）自動排除，不再把圖拉偏；也可以勾「全部算進去」。可設最小範圍（預設 200 m）","自選套合點：先輸出一次，按「🎯 選套合點」→ 點實測點（本次點位或 D14 參考點）→ 再點航照上它真正的位置；滾輪放大、拖曳移動，選完即時預覽校正後的樣子，按「套用並重新輸出」","D14 航照判讀點的編碼可以自己設（預設 87，不用就清空）","重測資料、複丈輸入檔的結果頁有「輸出航照圖 →」捷徑"]},{"version":"3.0.0","date":"2026-11-10","items":["新功能「🛰 航照底圖」：依本次作業的點位範圍，自動到國土測繪中心（NLSC）抓正射影像，存成 JPG + JGW（TWD97 坐標，CAD／GIS 直接疊圖）","圖源可選「正射影像圖(通用)_3826」（/97/ 服務，TWD97 原生 0.26 m）或「正射影像圖(通用)」（較新、約 0.14 m，自動轉投影到 TWD97）","偏差校正：自動讀 D14 裡編碼 87 的航照判讀點，配對 10 m 內最近的實測參考點算出平均位移（例：100.87↔5.30、101.87↔6.30 約 3.5 m），可逐組取消；也可手動輸入 N／E 位移（會記住）","「放大檢查」：在航照上疊出本次點位、實測點與 87 點，確認地物有對齊","範圍太大時自動降低解析度；網路連不上會跳出原因"]},{"version":"2.9.0","date":"2026-11-05","items":["存進資料夾後會重新讀一次檔案確認真的存好，檔案下方顯示「✓ 已存好：資料夾裡的檔名（大小）」","存檔失敗會跳出提示窗，用白話說明原因（找不到資料夾、要再按一次允許、檔案被 Excel 開著、磁碟空間不足…），並可以「再試一次」「改存到瀏覽器的下載」「重新選資料夾」","修正：存不進資料夾時以前會悄悄改用瀏覽器下載，有時被瀏覽器擋掉而變成沒有檔案；現在一定會讓你知道","全部下載改成一個接一個存，最後統一回報成功與失敗"]},{"version":"2.8.0","date":"2026-11-05","items":["用「選擇整個資料夾」或把資料夾拖進來時，如果資料夾裡就有這份系統，會自動設成存檔位置，之後按下載直接存進去","選到別的資料夾時，下載按鈕旁會多一個「存到剛剛選的資料夾」，按一下就切換","Chrome / Edge 的「選擇整個資料夾」改用新的資料夾選擇方式（讀檔和存檔權限一次取得）"]},{"version":"2.7.0","date":"2026-11-04","items":["存檔區的檔名可以直接點來改（沒打副檔名會自動補上），下載時用新檔名","「選擇存檔資料夾」按鈕移到下載按鈕旁邊（重測系統寫入區也有），選好後顯示「📁 存到：資料夾名稱」"]},{"version":"2.6.0","date":"2026-11-04","items":["輸出排序一律：界址點／參考點 → 補點 → 控制點（重測資料匯出、複丈輸入檔、GPS 的 CNT 都一樣）；複丈輸入檔的排序選項拿掉","新增「存檔位置」（右上角）：選一次資料夾（建議選系統所在的資料夾），之後按下載都直接存進去；每份複製到不同位置的系統各自記住自己的資料夾，同名檔案自動加 (1)、(2) 不會蓋掉","手機等窄螢幕時標題列自動換行"]},{"version":"2.5.0","date":"2026-11-03","items":["Y、X 判斷改用位數：Y 整數部分一定 7 位、X 一定 6 位；L 檔與 GPS CSV 都用這個規則判斷順序，GPS 點位數不對時會標出來提醒","「複丈輸入檔 → 全站儀 / GPS 控制器」移到首頁「匯出」區，成為正式的卡片","選資料夾時自動略過系統預設檔 KC0000.L02，除非路徑裡有名為 KC0000 的資料夾"]},{"version":"2.4.0","date":"2026-11-03","items":["全站儀 MAC 預設改成 Excel 版格式，和 Excel 轉檔工具存出來的逐字相同（Tab 分隔、去尾 0、數字點號後加空白、Q 點照原名）；進階設定可改回空白分隔","寫入 D14：新的參考點點號只要和 D14 裡任何參考點（X.XX，不含計算的 X.00）重複，就改成參考點最大號＋1；改號也會套用到 MAC／CNT（例如 1～14 → 26～39）","同點號或同補點名稱、坐標相差 6 cm 內：視為重測，預設不寫入並列出差值；打勾可改寫成新的參考點（X.XX，補點預設編碼 11）","全站儀照準 D14／D20 裡已有的點，也會列出差值（用 6 cm 規則判斷）"]},{"version":"2.3.0","date":"2026-11-03","items":["GPS CSV 改成只輸出 CNT（點號.編碼,Y,X），重測系統直接讀入就好；舊的虛擬測站 CNT＋MAC 收起來，需要時按「展開」","CNT 不能有 Q 點：編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點自動編成這批最大點號＋1 的參考點（QGGC32 → 42.11），都列在編碼對照表；直接寫入 D20 時仍用補點原名稱"]},{"version":"2.2.0","date":"2026-11-03","items":["有放 D14、D20 時，「直接寫入重測系統」成為第 3 步主力；舊的 CNT＋MAC 檔收起來（照原本規則、不含 Q 補點），需要時按「展開」","沒有放 D14、D20 時跟以前一樣只做 CNT＋MAC","「接下來這樣做」改成寫入的步驟（先關重測系統 → 寫入 → 檢查，可用 .bak 還原）"]},{"version":"2.1.2","date":"2026-11-03","items":["修正：CNT＋MAC 照原本的規則，不能有 Q 點——編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點（QGGC32）不放進 MAC 並提醒；補點規則只用在「直接寫入 D20」","編碼對照表分成「MAC 點號」和「補點名稱（D20）」兩欄"]},{"version":"2.1.1","date":"2026-11-03","items":["修正補點名稱：數字點號的編碼寫 Q 開頭時，編碼本身就是補點名稱（13,…,q11 → 補點 Q11）；編碼只有字母時才接上點號（12,…,QW → QW12）"]},{"version":"2.1.0","date":"2026-11-03","items":["GPS CSV 補點判斷：點名 Q 開頭且有高程（例如 QGGC32）是補點，寫入時進 D20；Q 開頭但沒有高程（例如 QW1）是系統原有點，照舊剔除","數字點號、編碼寫 Q 開頭時（例如 12,…,QW），把編碼移到點號上（QW12）當補點，並列入編碼對照表","修正：高程欄寫成「0」（不是 0.000）時認不出高程欄，導致現場核對點被當成要問編碼的點"]},{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
+window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.7.0","date":"2026-11-23","repo":"gn01918004-hub/change-system","asset":"change-system.html","file":"dist/change-system.html","changelog":[{"version":"3.7.0","date":"2026-11-23","items":["新功能（進階，要自己打開）：「合併兩個重測檔」。首頁「其他」下方按「⚙ 進階功能」勾選後才會出現，選資料夾時不會自動列出","把另一份重測資料的參考點、套合點、補點、連線併進主要檔：參考點 10 cm 內重複不寫，其餘從主要檔參考點最大號＋1 起編（同一原整數對同一新整數，編碼不變）；落在來源底圖上的 00 界址點當套合點，寫成參考點 .96；補點同名且 6 cm 內是同一點不寫，不同點改名 QTS；連線兩端都有寫入才連，點號換成新的","自動判斷兩份資料的坐標系統與底圖關係：同是 97（或 67）照原坐標寫入；一份 67、一份 97 用公式換算；自由坐標用兩張底圖的旋轉、平移換算","寫入前顯示預覽圖、各項數量、點號有兩種讀法的連線；寫入時原檔先備份 .bak，對照表一起存"]},{"version":"3.6.0","date":"2026-11-20","items":["改用 GitHub Releases 發布：檔名固定為 change-system.html（不含版本號），版本號只寫在 Release 標題和程式內","固定下載網址：https://github.com/gn01918004-hub/change-system/releases/latest/download/change-system.html，永遠是最新版","新版本提醒改看 GitHub Releases 的最新版；按「⬇ 下載新版」會直接從 Release 下載","注意：檔名改了，第一次打開新檔時「📁 存檔資料夾」要重新選一次（每個檔案各自記住）"]},{"version":"3.5.0","date":"2026-11-13","items":["放大檢查視窗多一條「🕰 各年度航照」時間軸：拖拉（或按 ← →、點年份）就換成那一年的航照，點位不動，可以看出這裡怎麼變化","切換時先用低解析度秒開，停在某一年約 1 秒再自動換成清楚的版本","看到合適的那張，按「用這一年輸出」就直接輸出那一年的 JPG + JGW（67 段一樣輸出 67 坐標）","用詞修正：年份是國土測繪中心的「圖層年份」，實際拍攝年份請看影像上的浮水印"]},{"version":"3.4.0","date":"2026-11-13","items":["輸出航照圖預設改成抓「最新」的正射影像（國土測繪中心通用版，約 0.14 m），畫面會顯示這裡最新是哪一年拍的；每次都從最新開始，不會沿用上次選的圖源","新增「指定年份」：列出 92～94 年、103～114 年的正射影像，同一張航照的年份會併在一起（例「111 年（111～113 年圖層都是這張）」），不用一年一年試","原本的「通用_3826（TWD97 原生，0.26 m）」保留為選項；它的拍攝年份可能比最新舊"]},{"version":"3.3.0","date":"2026-11-10","items":["輸出航照圖會自己判斷 67 段／97 段：看檔名的段號（例 KC0367 社柑段），67 段清單和「地籍共作平台」相同（0346～0353、0357～0365、0367、0370、0375～0380）","67 段自動把航照換算成 TWD67 坐標輸出（JPG + JGW 都是 67，檔名加 _TWD67），可以直接和該段資料疊圖；67→97 用近似公式（誤差約 1～2 m），剩下的偏差用套合點校正","也可以手動指定 TWD97／TWD67；畫面會顯示段名"]},{"version":"3.2.0","date":"2026-11-10","items":["拖進來（或點一下選）的是「檔案」時，也會自動存回檔案所在的資料夾：系統會記住用過的資料夾，檔案在這些資料夾（含子資料夾）裡就自動切換","檔案來自沒用過的位置時，存檔區會出現一鍵按鈕「📁 存到「檔名」所在的資料夾」，選資料夾視窗會直接停在那個位置，按「選取資料夾」就好","「存檔位置」視窗列出用過的資料夾，點一下就切換","選資料夾後的選單改成和首頁一樣的卡片：每張寫清楚做什麼、找到哪些檔案，點一下就開始；同類有多個時可以勾選要哪幾個"]},{"version":"3.1.1","date":"2026-11-10","items":["選資料夾或把資料夾拖進來時，存檔位置自動換成那個資料夾（所有功能一樣），不再一直沿用上次存的資料夾","輸出航照圖的下載按鈕下方也會顯示「📁 存到：…」，可以確認或更改"]},{"version":"3.1.0","date":"2026-11-10","items":["「輸出航照圖」獨立成一個功能：首頁多一個「其他」分類；選資料夾讀到 L02／L14／L20 時，清單下方也多一個「其他：輸出航照圖」","航照圖會以案件點位為中心：離其他點很遠的零星點（例如單獨一點的補點）自動排除，不再把圖拉偏；也可以勾「全部算進去」。可設最小範圍（預設 200 m）","自選套合點：先輸出一次，按「🎯 選套合點」→ 點實測點（本次點位或 D14 參考點）→ 再點航照上它真正的位置；滾輪放大、拖曳移動，選完即時預覽校正後的樣子，按「套用並重新輸出」","D14 航照判讀點的編碼可以自己設（預設 87，不用就清空）","重測資料、複丈輸入檔的結果頁有「輸出航照圖 →」捷徑"]},{"version":"3.0.0","date":"2026-11-10","items":["新功能「🛰 航照底圖」：依本次作業的點位範圍，自動到國土測繪中心（NLSC）抓正射影像，存成 JPG + JGW（TWD97 坐標，CAD／GIS 直接疊圖）","圖源可選「正射影像圖(通用)_3826」（/97/ 服務，TWD97 原生 0.26 m）或「正射影像圖(通用)」（較新、約 0.14 m，自動轉投影到 TWD97）","偏差校正：自動讀 D14 裡編碼 87 的航照判讀點，配對 10 m 內最近的實測參考點算出平均位移（例：100.87↔5.30、101.87↔6.30 約 3.5 m），可逐組取消；也可手動輸入 N／E 位移（會記住）","「放大檢查」：在航照上疊出本次點位、實測點與 87 點，確認地物有對齊","範圍太大時自動降低解析度；網路連不上會跳出原因"]},{"version":"2.9.0","date":"2026-11-05","items":["存進資料夾後會重新讀一次檔案確認真的存好，檔案下方顯示「✓ 已存好：資料夾裡的檔名（大小）」","存檔失敗會跳出提示窗，用白話說明原因（找不到資料夾、要再按一次允許、檔案被 Excel 開著、磁碟空間不足…），並可以「再試一次」「改存到瀏覽器的下載」「重新選資料夾」","修正：存不進資料夾時以前會悄悄改用瀏覽器下載，有時被瀏覽器擋掉而變成沒有檔案；現在一定會讓你知道","全部下載改成一個接一個存，最後統一回報成功與失敗"]},{"version":"2.8.0","date":"2026-11-05","items":["用「選擇整個資料夾」或把資料夾拖進來時，如果資料夾裡就有這份系統，會自動設成存檔位置，之後按下載直接存進去","選到別的資料夾時，下載按鈕旁會多一個「存到剛剛選的資料夾」，按一下就切換","Chrome / Edge 的「選擇整個資料夾」改用新的資料夾選擇方式（讀檔和存檔權限一次取得）"]},{"version":"2.7.0","date":"2026-11-04","items":["存檔區的檔名可以直接點來改（沒打副檔名會自動補上），下載時用新檔名","「選擇存檔資料夾」按鈕移到下載按鈕旁邊（重測系統寫入區也有），選好後顯示「📁 存到：資料夾名稱」"]},{"version":"2.6.0","date":"2026-11-04","items":["輸出排序一律：界址點／參考點 → 補點 → 控制點（重測資料匯出、複丈輸入檔、GPS 的 CNT 都一樣）；複丈輸入檔的排序選項拿掉","新增「存檔位置」（右上角）：選一次資料夾（建議選系統所在的資料夾），之後按下載都直接存進去；每份複製到不同位置的系統各自記住自己的資料夾，同名檔案自動加 (1)、(2) 不會蓋掉","手機等窄螢幕時標題列自動換行"]},{"version":"2.5.0","date":"2026-11-03","items":["Y、X 判斷改用位數：Y 整數部分一定 7 位、X 一定 6 位；L 檔與 GPS CSV 都用這個規則判斷順序，GPS 點位數不對時會標出來提醒","「複丈輸入檔 → 全站儀 / GPS 控制器」移到首頁「匯出」區，成為正式的卡片","選資料夾時自動略過系統預設檔 KC0000.L02，除非路徑裡有名為 KC0000 的資料夾"]},{"version":"2.4.0","date":"2026-11-03","items":["全站儀 MAC 預設改成 Excel 版格式，和 Excel 轉檔工具存出來的逐字相同（Tab 分隔、去尾 0、數字點號後加空白、Q 點照原名）；進階設定可改回空白分隔","寫入 D14：新的參考點點號只要和 D14 裡任何參考點（X.XX，不含計算的 X.00）重複，就改成參考點最大號＋1；改號也會套用到 MAC／CNT（例如 1～14 → 26～39）","同點號或同補點名稱、坐標相差 6 cm 內：視為重測，預設不寫入並列出差值；打勾可改寫成新的參考點（X.XX，補點預設編碼 11）","全站儀照準 D14／D20 裡已有的點，也會列出差值（用 6 cm 規則判斷）"]},{"version":"2.3.0","date":"2026-11-03","items":["GPS CSV 改成只輸出 CNT（點號.編碼,Y,X），重測系統直接讀入就好；舊的虛擬測站 CNT＋MAC 收起來，需要時按「展開」","CNT 不能有 Q 點：編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點自動編成這批最大點號＋1 的參考點（QGGC32 → 42.11），都列在編碼對照表；直接寫入 D20 時仍用補點原名稱"]},{"version":"2.2.0","date":"2026-11-03","items":["有放 D14、D20 時，「直接寫入重測系統」成為第 3 步主力；舊的 CNT＋MAC 檔收起來（照原本規則、不含 Q 補點），需要時按「展開」","沒有放 D14、D20 時跟以前一樣只做 CNT＋MAC","「接下來這樣做」改成寫入的步驟（先關重測系統 → 寫入 → 檢查，可用 .bak 還原）"]},{"version":"2.1.2","date":"2026-11-03","items":["修正：CNT＋MAC 照原本的規則，不能有 Q 點——編碼寫 Q 的點用原點號＋.11（13,…,q11 → 13.11），Q 開頭的補點（QGGC32）不放進 MAC 並提醒；補點規則只用在「直接寫入 D20」","編碼對照表分成「MAC 點號」和「補點名稱（D20）」兩欄"]},{"version":"2.1.1","date":"2026-11-03","items":["修正補點名稱：數字點號的編碼寫 Q 開頭時，編碼本身就是補點名稱（13,…,q11 → 補點 Q11）；編碼只有字母時才接上點號（12,…,QW → QW12）"]},{"version":"2.1.0","date":"2026-11-03","items":["GPS CSV 補點判斷：點名 Q 開頭且有高程（例如 QGGC32）是補點，寫入時進 D20；Q 開頭但沒有高程（例如 QW1）是系統原有點，照舊剔除","數字點號、編碼寫 Q 開頭時（例如 12,…,QW），把編碼移到點號上（QW12）當補點，並列入編碼對照表","修正：高程欄寫成「0」（不是 0.000）時認不出高程欄，導致現場核對點被當成要問編碼的點"]},{"version":"2.0.0","date":"2026-11-03","items":["新增「直接寫入重測系統檔」：GPS 的 CSV 或全站儀 RAW 和重測系統的 .D14、.D20 一起放進來（或選整個資料夾）就會出現，不用再經過 cnt / mac","點名 Q 開頭的寫進 .D20（補點）；數字點號帶編碼寫進 .D14（參考點，COT_SOURCE 寫 2＝計算求得）","點號（點號＋編碼）或補點名稱已存在時自動改號（該編碼最大號＋1、Q 名稱尾數＋1），寫入前可在表格修改，並可下載寫入對照表","全站儀 RAW 會用 D14、D20 裡的已知坐標（加上 RAW 的 UP 紀錄）算出新點坐標；照準已知點的檢核觀測不會重複寫入","可直接寫回原檔（寫入前自動把原檔備份成 .bak，並確認資料夾裡的檔案沒被改過），或下載新的 D14、D20"]},{"version":"1.9.0","date":"2026-11-03","items":["新增輸出格式 SOKKIA .sdr 與 TOPCON .txt，和舊程式「複丈輸入檔2SOKKIA」轉出的檔案逐字相同（檔名也一樣，例如 KC11171_2_3.sdr）；重測資料（L 檔）也能用","複丈輸入檔：控制點改為「每筆地號取最近的點」（預設 2 點，一組測站＋後視，可改），取代原本的包圍矩形","複丈輸入檔：可手動加減控制點（輸入 BKC001 BKC161~BKC170，或在清單搜尋勾選），滑鼠移到點名上可看為什麼被選"]},{"version":"1.8.0","date":"2026-11-03","items":["新增「複丈輸入檔 → 全站儀 / GPS 控制器」：讀同名的 .COA（界址點）、.CTL（控制點）、.BNP、.PAR，輸出和重測資料相同格式的 .csv / .txt（取代「複丈輸入檔2SOKKIA」）","預設全部轉出；可指定地號（直接輸入「12 15-1 20~25」或在清單勾選），控制點可選全部、地號周圍 N 公尺（預設 200）或不要，排序可選控制點或界址點在前","資料夾裡沒有 L02/L14/L20 時自動列出複丈輸入檔；首頁右下角也有按鈕可以手動啟用"]},{"version":"1.7.0","date":"2026-11-03","items":["重測資料匯出可選坐標順序「Y , X」（預設）或「X , Y」，會記住你的選擇；存檔區直接顯示第一點當例子","自動判斷 Y、X：依數值判斷（台灣 27… 開頭是 Y、21… 開頭是 X），原檔就算 X 在前或混在一起也會自動排對，並提醒調整了幾點","看不出 Y、X 的坐標（例如假設坐標）會照原順序並提醒確認"]},{"version":"1.6.0","date":"2026-11-03","items":["GPS：編碼不是 00～99（例如 be73、q11）自動改成 11（可在進階設定改號碼），並產生「編碼對照表」，可用 Excel 開啟或列印","GPS：沒有編碼但有高程的點（可能是現場收的點）會詢問要編成幾號（00～99），回答前不會給下載；也可以選「這些點不轉換」或在表格個別改編碼","點位檢查表新增「寫入編碼」欄，可個別修改每一點的編碼"]},{"version":"1.5.0","date":"2026-11-03","items":["選資料夾時可勾選要匯入哪幾種重測資料（控制點 L02、界址點/參考點 L14、補點 L20），預設全選；只有一個案件也會讓你選","轉換畫面也可以隨時勾選要匯出哪幾種資料","GPS CSV 自動判斷 N、E 欄位順序：若控制器輸出成「點名,E,N」會自動對調並提醒（進階設定可強制指定）"]},{"version":"1.4.1","date":"2026-11-03","items":["瀏覽器分頁加上系統小圖示，開很多分頁時容易找到"]},{"version":"1.4.0","date":"2026-11-03","items":["簡化：「重測資料 → 全站儀」與「→ GPS 控制器」合併成一個功能。兩種儀器的格式完全相同（點號,Y,X），一個案件只輸出一個檔，不再需要選儀器","點位順序統一為控制點 → 界址點/參考點 → 補點","副檔名 .csv / .txt 選擇保留（預設 .csv）"]},{"version":"1.3.0","date":"2026-11-02","items":["重測資料匯出可選副檔名 .csv 或 .txt（預設 .csv，會記住選擇）","加入版本號與更新歷程（按右上角版本號查看）","開啟時自動檢查 GitHub 上有沒有新版本，有的話在畫面上方提醒並可直接下載"]},{"version":"1.2.1","date":"2026-11-02","items":["修正：直接雙擊開啟網頁時，拖入資料夾會讀到 0 個檔案；被瀏覽器擋住時會說明原因並提供一鍵選資料夾"]},{"version":"1.2.0","date":"2026-11-02","items":["重測資料匯出新增「兩種都要」，同時輸出全站儀與 GPS 控制器用的檔案","檔案或資料夾可以拖到視窗任何地方"]},{"version":"1.1.0","date":"2026-11-02","items":["新增點位縮圖，點一下放大，GPS 可在圖上點選轉換或剔除","GPS 控制器原始 CSV 自動整理：去掉高程欄，剔除現場核對點、雜點、離群點、重複點，可逐點勾選","選擇資料夾自動尋找檔案；同案件的 L02、L14、L20 合併成一個檔，多個案件可勾選","全站儀 RAW 用已知坐標推算點位，並檢核後視距離"]},{"version":"1.0.0","date":"2026-11-02","items":["整合五個舊工具：RawToMAC.jar、NIKON 轉 MAC.xls、CSV TO 重測 CT02.xls、TrimblePointInput.jar、重測轉 CSV TS01.xls","Nikon RAW → MAC：修正舊版後視歸零無效、把時間當編碼、60 秒不進位等錯誤","GPS CSV → CNT + MAC：修正正北/正南方向錯誤，加入反算檢核","L02/L14/L20 → 全站儀 / GPS CSV：每行多點都能讀（舊 TS01 每行只讀第一點）"]}]};
 /*
  * 土地重測資料轉換系統 — 轉換核心
  *
@@ -2399,6 +2428,371 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.6.0","da
     return [f(res), '0', '0', f(-res), f(ulE), f(ulN)].join('\r\n') + '\r\n';
   }
 
+  // ═════════════ 7. 合併兩個重測檔（把來源檔的成果併進主要檔） ═════════════
+  //
+  // 讀兩份重測資料（D14 參考點、D20 補點、D29 連線、D2C/D2D 圖解底圖），
+  //   1. 判斷坐標系統（97／67／自由坐標）與兩張底圖的關係（同一張圖時算出旋轉、平移）
+  //   2. 依規則規劃要寫進主要檔的點與連線：
+  //      參考點（編碼不是 00）：和主要檔 dupRef 內重複的不寫；其餘依原整數對到新整數（主要檔參考點最大號＋1 起），編碼不變
+  //      00 界址點：落在來源底圖 D2C 點上的（套合點）→ 參考點，編碼 anchorCode；其他 00 點不寫；99998、99999 不寫
+  //      補點：同名且 dupQ 內＝同一點不寫；同名不同點 → Q 後面加前綴（Q50 → QTS50）；不同名但 dupQ 內有點＝同一點不寫
+  //      連線：兩端都有寫入的才連，點號換成新點號
+
+  function jobFromDbf(set) {
+    var o = { d14: [], d20: [], d2c: [], d2cByNum: {}, segs: [], d29: [] };
+    if (set.d14) set.d14.records.forEach(function (r, i) {
+      if (r.deleted) return;
+      var v = r.values, N = parseFloat(v.COT_Y), E = parseFloat(v.COT_X);
+      if (!isFinite(N) || !isFinite(E) || (N === 0 && E === 0)) return;
+      o.d14.push({ n: parseInt(v.COT_NUMBER, 10), ref: parseInt(v.COT_REF, 10) || 0, N: N, E: E, values: v, row: i });
+    });
+    if (set.d20) set.d20.records.forEach(function (r) {
+      if (r.deleted) return;
+      var v = r.values, N = parseFloat(v.CTL_Y), E = parseFloat(v.CTL_X);
+      if (!isFinite(N) || !isFinite(E)) return;
+      o.d20.push({ name: v.CTL_NAME.trim(), N: N, E: E, values: v });
+    });
+    if (set.d2c) set.d2c.records.forEach(function (r) {
+      if (r.deleted) return;
+      var p = { n: parseInt(r.values.COT_NUMBER, 10), N: parseFloat(r.values.COT_Y), E: parseFloat(r.values.COT_X) };
+      if (!isFinite(p.N) || !isFinite(p.E)) return;
+      o.d2c.push(p); o.d2cByNum[p.n] = p;
+    });
+    if (set.d2d) set.d2d.records.forEach(function (r) {
+      if (r.deleted) return;
+      var a = o.d2cByNum[parseInt(r.values.LIN_TOP, 10)], b = o.d2cByNum[parseInt(r.values.LIN_BOT, 10)];
+      if (a && b) o.segs.push([a, b]);
+    });
+    if (set.d29) set.d29.records.forEach(function (r, i) {
+      if (r.deleted) return;
+      o.d29.push({ top: r.values.LIN_TOP.trim(), mid: r.values.LIN_MID.trim(), bot: r.values.LIN_BOT.trim(), mode: (r.values.LIN_MODE || '').trim(), row: i + 1 });
+    });
+    return o;
+  }
+
+  /** 坐標系統：TM2 範圍（97 或 67，數值上分不出來）或自由坐標 */
+  function frameOf(points) {
+    var tm2 = 0, n = 0;
+    points.forEach(function (p) { n++; if (p.N > 2400000 && p.N < 2850000 && p.E > 90000 && p.E < 380000) tm2++; });
+    if (!n) return null;
+    return tm2 / n > 0.8 ? 'tm2' : 'free';
+  }
+
+  // ─── 最近鄰格網 ───
+  function ptGrid(ps, cell) {
+    var g = new Map();
+    ps.forEach(function (p) { var k = Math.floor(p.E / cell) + ',' + Math.floor(p.N / cell); var a = g.get(k); if (a) a.push(p); else g.set(k, [p]); });
+    return { g: g, cell: cell };
+  }
+  function ptNear(G, E, N, rad) {
+    var cx = Math.floor(E / G.cell), cy = Math.floor(N / G.cell), R = Math.ceil(rad / G.cell), best = null, bd = rad;
+    for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) {
+      var a = G.g.get((cx + i) + ',' + (cy + j)); if (!a) continue;
+      for (var k = 0; k < a.length; k++) { var d = Math.hypot(a[k].E - E, a[k].N - N); if (d <= bd) { bd = d; best = a[k]; } }
+    }
+    return best ? { q: best, d: bd } : null;
+  }
+  function dedupePts(ps, tol) {
+    var G = ptGrid([], 1), out = [];
+    ps.forEach(function (p) { if (!ptNear(G, p.E, p.N, tol)) { out.push(p); var k = Math.floor(p.E) + ',' + Math.floor(p.N); var a = G.g.get(k); if (a) a.push(p); else G.g.set(k, [p]); } });
+    return out;
+  }
+
+  /** 相似轉換（四參數）最小二乘：pairs [{s:{E,N}, t:{E,N}}]；fixScale：比例固定 1 */
+  function fitSimilarity(P, fixScale) {
+    var n = P.length, sx = 0, sy = 0, tx = 0, ty = 0;
+    P.forEach(function (p) { sx += p.s.E; sy += p.s.N; tx += p.t.E; ty += p.t.N; });
+    sx /= n; sy /= n; tx /= n; ty /= n;
+    var a = 0, b = 0, d = 0;
+    P.forEach(function (p) { var x = p.s.E - sx, y = p.s.N - sy, X = p.t.E - tx, Y = p.t.N - ty; a += x * X + y * Y; b += x * Y - y * X; d += x * x + y * y; });
+    a /= d; b /= d;
+    if (fixScale) { var k = Math.hypot(a, b); a /= k; b /= k; }
+    return makeSim(a, b, sx, sy, tx, ty);
+  }
+  function makeSim(a, b, sx, sy, tx, ty) {
+    return { a: a, b: b, sx: sx, sy: sy, tx: tx, ty: ty, scale: Math.hypot(a, b), rotSec: Math.atan2(b, a) * 206264.806,
+      apply: function (E, N) { return { E: tx + a * (E - sx) - b * (N - sy), N: ty + b * (E - sx) + a * (N - sy) }; } };
+  }
+
+  /** 從起始轉換做 ICP（最近點反覆配對＋四參數），回傳 { T, inliers（≤2 cm 的比例）, n } */
+  function icpRefine(S, GM, T0, iters) {
+    var T = T0, rad = 8;
+    for (var it = 0; it < (iters || 25); it++) {
+      var P = [];
+      S.forEach(function (p) { var t = T.apply(p.E, p.N), m = ptNear(GM, t.E, t.N, rad); if (m) P.push({ s: p, t: m.q, d: m.d }); });
+      if (P.length < 6) return { T: T, inliers: 0, n: 0 };
+      var ds = P.map(function (x) { return x.d; }).sort(function (x, y) { return x - y; }), med = ds[ds.length >> 1];
+      var keep = P.filter(function (x) { return x.d <= Math.max(3 * med, 0.02); });
+      T = fitSimilarity(keep, true);
+      var nr = Math.max(0.3, Math.min(rad, 5 * med));
+      if (nr === rad && med < 0.001) break;
+      rad = nr;
+    }
+    var ok = 0; S.forEach(function (p) { var t = T.apply(p.E, p.N), m = ptNear(GM, t.E, t.N, 0.02); if (m) ok++; });
+    return { T: T, inliers: ok / S.length, n: ok };
+  }
+
+  /** 平移投票：起始轉換套上後，和主要底圖 20 m 內的點投票找最常見的位移 */
+  function voteShift(S, GM, T0) {
+    var vote = new Map(), best = null;
+    S.forEach(function (p) {
+      var t = T0.apply(p.E, p.N), cx = Math.floor(t.E / GM.cell), cy = Math.floor(t.N / GM.cell), R = Math.ceil(20 / GM.cell);
+      for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) {
+        var a = GM.g.get((cx + i) + ',' + (cy + j)); if (!a) continue;
+        a.forEach(function (q) { var dE = q.E - t.E, dN = q.N - t.N; if (Math.hypot(dE, dN) > 20) return;
+          var k = Math.round(dE / 0.1) + ',' + Math.round(dN / 0.1), c = (vote.get(k) || 0) + 1; vote.set(k, c);
+          if (!best || c > best.c) best = { c: c, k: k }; });
+      }
+    });
+    if (!best) return T0;
+    var d = best.k.split(',').map(Number);
+    return makeSim(T0.a, T0.b, T0.sx, T0.sy, T0.tx + d[0] * 0.1, T0.ty + d[1] * 0.1);
+  }
+
+  /** 自由坐標：用「到最近兩點的距離」當特徵，配對後隨機試轉換（只轉不縮），挑重合最多的 */
+  function descriptorMatch(S, M, GM) {
+    function desc(ps, G) {
+      return ps.map(function (p) {
+        var near = [];
+        [2, 5, 12, 30].some(function (rad) {
+          near = []; var cx = Math.floor(p.E / G.cell), cy = Math.floor(p.N / G.cell), R = Math.ceil(rad / G.cell);
+          for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) { var a = G.g.get((cx + i) + ',' + (cy + j)); if (a) a.forEach(function (q) { var d = Math.hypot(q.E - p.E, q.N - p.N); if (d > 0.05 && d <= rad) near.push({ q: q, d: d }); }); }
+          return near.length >= 2;
+        });
+        near.sort(function (x, y) { return x.d - y.d; });
+        return near.length >= 2 ? { p: p, n1: near[0].q, d1: near[0].d, d2: near[1].d } : null;
+      }).filter(Boolean);
+    }
+    var GS = ptGrid(S, 5), DS = desc(S, GS), DM = desc(M, GM);
+    var idx = new Map(); DM.forEach(function (d) { var k = Math.round(d.d1 / 0.02) + ',' + Math.round(d.d2 / 0.02); var a = idx.get(k); if (a) a.push(d); else idx.set(k, [d]); });
+    var sample = S.filter(function (_, i) { return i % Math.max(1, Math.floor(S.length / 300)) === 0; });
+    var best = null, tries = 0;
+    var step = Math.max(1, Math.floor(DS.length / 400));
+    for (var i = 0; i < DS.length && tries < 3000; i += step) {
+      var ds = DS[i], cands = [];
+      for (var a = -1; a <= 1; a++) for (var b = -1; b <= 1; b++) { var c = idx.get((Math.round(ds.d1 / 0.02) + a) + ',' + (Math.round(ds.d2 / 0.02) + b)); if (c) cands = cands.concat(c); }
+      cands.slice(0, 6).forEach(function (dm) {
+        tries++;
+        var th = Math.atan2(dm.n1.N - dm.p.N, dm.n1.E - dm.p.E) - Math.atan2(ds.n1.N - ds.p.N, ds.n1.E - ds.p.E);
+        var T = makeSim(Math.cos(th), Math.sin(th), ds.p.E, ds.p.N, dm.p.E, dm.p.N);
+        var ok = 0; sample.forEach(function (p) { var t = T.apply(p.E, p.N); if (ptNear(GM, t.E, t.N, 0.1)) ok++; });
+        if (!best || ok > best.ok) best = { ok: ok, T: T };
+      });
+    }
+    return best && best.ok >= Math.max(5, sample.length * 0.2) ? best.T : null;
+  }
+
+  /**
+   * 兩張底圖的關係：來源 D2C → 主要 D2C 的相似轉換。
+   * hints：要試的起點（同坐標、67→97、97→67），都不行再用特徵配對（自由坐標）。
+   * 回傳 { T, inliers, matched, how } 或 null
+   */
+  function registerBasemaps(srcPts, mainPts) {
+    var S = dedupePts(srcPts, 0.001), M = dedupePts(mainPts, 0.001);
+    if (S.length < 10 || M.length < 10) return null;
+    var GM = ptGrid(M, 5);
+    var sub = S.filter(function (_, i) { return i % Math.max(1, Math.floor(S.length / 1500)) === 0; });
+    var c = S.reduce(function (o, p) { o.E += p.E / S.length; o.N += p.N / S.length; return o; }, { E: 0, N: 0 });
+    var I = makeSim(1, 0, 0, 0, 0, 0);
+    var q67 = twd67to97(c.N, c.E), q97 = twd97to67(c.N, c.E);
+    var starts = [['same', I], ['67→97', makeSim(1, 0, 0, 0, q67[1] - c.E, q67[0] - c.N)], ['97→67', makeSim(1, 0, 0, 0, q97[1] - c.E, q97[0] - c.N)]];
+    var best = null;
+    starts.forEach(function (st) {
+      var T0 = voteShift(sub, GM, st[1]), r = icpRefine(sub, GM, T0);
+      if (!best || r.inliers > best.inliers) best = { T: r.T, inliers: r.inliers, how: st[0] };
+    });
+    if (!best || best.inliers < 0.5) {
+      var Td = descriptorMatch(S, M, GM);
+      if (Td) { var r2 = icpRefine(sub, GM, Td); if (!best || r2.inliers > best.inliers) best = { T: r2.T, inliers: r2.inliers, how: 'shape' }; }
+    }
+    if (!best || best.inliers < 0.3) return best ? { T: best.T, inliers: best.inliers, how: best.how, failed: true } : null;
+    var fin = icpRefine(S, GM, best.T, 10);
+    return { T: fin.T, inliers: fin.inliers, matched: fin.n, total: S.length, how: best.how };
+  }
+
+  /** D29 端點文字 → 點的鍵（點號.兩位編碼 或 補點名）；一位小數依本檔慣例（多數是 X.0d 或 X.d0） */
+  function d29Resolver(job) {
+    var keys = new Map(); job.d14.forEach(function (p) { keys.set(p.n + '.' + pad(p.ref, 2), p); });
+    var q = new Map(); job.d20.forEach(function (p) { q.set(p.name.toUpperCase(), p); });
+    var zeroD = 0, dZero = 0;
+    job.d29.forEach(function (l) { [l.top, l.mid, l.bot].forEach(function (t) { var m = /^(\d+)\.(\d)$/.exec(t); if (!m) return;
+      var a = keys.has(+m[1] + '.0' + m[2]), b = keys.has(+m[1] + '.' + m[2] + '0'); if (a && !b) zeroD++; if (b && !a) dZero++; }); });
+    var prefer0d = zeroD >= dZero;
+    return function (t) {
+      t = String(t || '').trim(); if (!t) return { empty: true };
+      var m;
+      if (/^q/i.test(t)) return q.has(t.toUpperCase()) ? { key: t.toUpperCase(), q: true } : { miss: t };
+      if ((m = /^(\d+)$/.exec(t))) return keys.has(+m[1] + '.00') ? { key: +m[1] + '.00' } : { miss: t };
+      if ((m = /^(\d+)\.(\d\d)$/.exec(t))) return keys.has(+m[1] + '.' + m[2]) ? { key: +m[1] + '.' + m[2] } : { miss: t };
+      if ((m = /^(\d+)\.(\d)$/.exec(t))) {
+        var a = +m[1] + '.0' + m[2], b = +m[1] + '.' + m[2] + '0', first = prefer0d ? a : b, second = prefer0d ? b : a;
+        if (keys.has(first)) return { key: first, amb: keys.has(second) ? second : null };
+        if (keys.has(second)) return { key: second };
+      }
+      return { miss: t };
+    };
+  }
+
+  /**
+   * 規劃合併。main／src：{ d14, d20, d29, d2c, d2d }（parseDbf 結果，可缺）。
+   * opts：{ dupRef 0.10, dupQ 0.06, anchorCode 96, prefix 'TS', method 'auto'|'asis'|'formula'|'basemap', datumMain, datumSrc }
+   */
+  function planMerge(mainSet, srcSet, opts) {
+    opts = opts || {};
+    var dupRef = opts.dupRef == null ? 0.10 : opts.dupRef, dupQ = opts.dupQ == null ? 0.06 : opts.dupQ;
+    var anchorCode = opts.anchorCode == null ? 96 : +opts.anchorCode, prefix = opts.prefix == null ? 'TS' : String(opts.prefix);
+    var M = jobFromDbf(mainSet), S = jobFromDbf(srcSet);
+    var plan = { warnings: [], d14: [], d20: [], d29: [], table: [], lineTable: [] };
+
+    // 1) 坐標系統與底圖關係
+    var fM = frameOf(M.d14.concat(M.d2c)), fS = frameOf(S.d14.concat(S.d2c));
+    var reg = M.d2c.length && S.d2c.length ? registerBasemaps(S.d2c, M.d2c) : null;
+    plan.frames = { main: fM, src: fS };
+    plan.reg = reg;
+    // 坐標系統：使用者指定 > 段號（67 段清單）＋底圖關係
+    var dM = opts.datumMain || (fM === 'free' ? 'free' : null), dS = opts.datumSrc || (fS === 'free' ? 'free' : null);
+    if (!dS && !dM && reg && !reg.failed) {
+      if (reg.how === '67→97') { dS = 'TWD67'; dM = 'TWD97'; } else if (reg.how === '97→67') { dS = 'TWD97'; dM = 'TWD67'; }
+    }
+    dM = dM || opts.sectionDatumMain || 'TWD97'; dS = dS || opts.sectionDatumSrc || dM;
+    plan.datum = { main: dM, src: dS };
+    var same = dM === dS && dM !== 'free';
+    var canFormula = (dM === 'TWD97' && dS === 'TWD67') || (dM === 'TWD67' && dS === 'TWD97');
+    var canBasemap = reg && !reg.failed;
+    var method = opts.method && opts.method !== 'auto' ? opts.method : (same ? 'asis' : canFormula ? 'formula' : canBasemap ? 'basemap' : null);
+    if (method === 'formula' && !canFormula) method = null;
+    if (method === 'basemap' && !canBasemap) method = null;
+    plan.method = method; plan.methods = { asis: same, formula: canFormula, basemap: !!canBasemap };
+    if (!method) { plan.blocked = dS === 'free' || dM === 'free' ? '兩份資料坐標系統不同（自由坐標），而且兩張底圖對不起來，沒辦法換算。' : '沒辦法決定換算方式。'; return plan; }
+    var conv = method === 'asis' ? null : method === 'formula'
+      ? function (N, E) { var q = dS === 'TWD67' ? twd67to97(N, E) : twd97to67(N, E); return { N: q[0], E: q[1] }; }
+      : function (N, E) { var t = reg.T.apply(E, N); return { N: t.N, E: t.E }; };
+    var place = function (p) { return conv ? conv(p.N, p.E) : { N: p.N, E: p.E }; };
+
+    // 2) 參考點
+    var GM = ptGrid(M.d14.map(function (p) { return { E: p.E, N: p.N, p: p }; }), 5);
+    var maxRef = 0, maxAll = 0;
+    M.d14.forEach(function (p) { if (p.ref !== 0 && p.n > maxRef) maxRef = p.n; if (p.n > maxAll) maxAll = p.n; });
+    plan.maxRef = maxRef;
+    var next = maxRef, intMap = new Map(), keyMap = new Map();
+    var fmt = function (n, r) { return n + '.' + pad(r, 2); };
+    var newNum = function () { next += 1; return next; };
+    S.d14.filter(function (p) { return p.ref !== 0; }).sort(function (a, b) { return a.n - b.n || a.ref - b.ref; }).forEach(function (p) {
+      var at = place(p), m = ptNear(GM, at.E, at.N, dupRef), from = fmt(p.n, p.ref);
+      if (m) { plan.table.push({ kind: '參考點', from: from, to: '', N: at.N, E: at.E, note: '不寫：主要檔 ' + Math.round(dupRef * 100) + ' cm 內已有 ' + fmt(m.q.p.n, m.q.p.ref) + '（差 ' + (m.d * 100).toFixed(1) + ' cm）' }); return; }
+      if (!intMap.has(p.n)) intMap.set(p.n, newNum());
+      var n = intMap.get(p.n), to = fmt(n, p.ref);
+      keyMap.set(from, to);
+      plan.d14.push({ p: p, num: n, ref: p.ref, at: at, moved: !!conv });
+      plan.table.push({ kind: '參考點', from: from, to: to, N: at.N, E: at.E, note: conv ? '坐標已換算' : '' });
+    });
+    // 3) 00 界址點：套合點（在來源底圖 D2C 點上）→ 參考點 anchorCode
+    var GSb = ptGrid(S.d2c, 5), anchors = 0, skipped0 = 0;
+    var anchorUsed = M.d14.some(function (p) { return p.ref === anchorCode; }) || S.d14.some(function (p) { return p.ref === anchorCode; });
+    if (anchorUsed) plan.warnings.push('編碼 ' + pad(anchorCode, 2) + ' 已經有人用過，套合點會和它們混在一起，建議換一個編碼。');
+    S.d14.filter(function (p) { return p.ref === 0; }).sort(function (a, b) { return a.n - b.n; }).forEach(function (p) {
+      var from = fmt(p.n, 0), at = place(p);
+      if (p.n >= 99998) { plan.table.push({ kind: '界址點 00', from: from, to: '', N: at.N, E: at.E, note: '不寫：虛擬測站' }); skipped0++; return; }
+      if (!ptNear(GSb, p.E, p.N, 0.001)) { plan.table.push({ kind: '界址點 00', from: from, to: '', N: at.N, E: at.E, note: '不寫：不在來源底圖上' }); skipped0++; return; }
+      var m = ptNear(GM, at.E, at.N, dupRef);
+      if (m) { plan.table.push({ kind: '套合點', from: from, to: '', N: at.N, E: at.E, note: '不寫：主要檔 ' + Math.round(dupRef * 100) + ' cm 內已有 ' + fmt(m.q.p.n, m.q.p.ref) }); return; }
+      var n = newNum(), to = fmt(n, anchorCode);
+      keyMap.set(from, to); anchors++;
+      var note = '來源檔的套合點（原 00 界址點），坐標' + (conv ? '已換算' : '照原位置');
+      if (reg && !reg.failed) { var t = reg.T.apply(p.E, p.N), dE = t.E - at.E, dN = t.N - at.N; note += '；主要檔同一角點在 ΔE ' + dE.toFixed(3) + ' ΔN ' + dN.toFixed(3) + '，相差 ' + Math.hypot(dE, dN).toFixed(3) + ' m'; }
+      plan.d14.push({ p: p, num: n, ref: anchorCode, at: at, moved: !!conv, anchor: true });
+      plan.table.push({ kind: '套合點→參考點 .' + pad(anchorCode, 2), from: from, to: to, N: at.N, E: at.E, note: note });
+    });
+    plan.anchors = anchors; plan.skipped0 = skipped0;
+    // 4) 補點
+    var names = new Map(); M.d20.forEach(function (q) { names.set(q.name.toUpperCase(), q); });
+    var GQ = ptGrid(M.d20, 5), qMap = new Map();
+    S.d20.forEach(function (p) {
+      var at = place(p), nm = p.name, up = nm.toUpperCase(), q = names.get(up);
+      if (q) {
+        var d = Math.hypot(q.E - at.E, q.N - at.N);
+        if (d <= dupQ) { qMap.set(up, q.name); plan.table.push({ kind: '補點', from: nm, to: '', N: at.N, E: at.E, note: '不寫：主要檔同名且同一點（差 ' + (d * 100).toFixed(1) + ' cm）' }); return; }
+        var nn = /^q/i.test(nm) ? nm.replace(/^q/i, function (c) { return c + prefix; }) : prefix + nm;
+        if (names.has(nn.toUpperCase()) || nn.length > 8) { plan.table.push({ kind: '補點', from: nm, to: '', N: at.N, E: at.E, note: '不寫：改名 ' + nn + (nn.length > 8 ? ' 超過 8 個字' : ' 也已存在') + '，請手動處理' }); plan.warnings.push('補點 ' + nm + ' 改名後仍衝突，沒有寫入'); return; }
+        names.set(nn.toUpperCase(), p); qMap.set(up, nn);
+        plan.d20.push({ p: p, name: nn, at: at, moved: !!conv });
+        plan.table.push({ kind: '補點', from: nm, to: nn, N: at.N, E: at.E, note: '撞名，不是同一點（相差 ' + d.toFixed(1) + ' m），改名' });
+        return;
+      }
+      var mq = ptNear(GQ, at.E, at.N, dupQ);
+      if (mq) { qMap.set(up, mq.q.name); plan.table.push({ kind: '補點', from: nm, to: '', N: at.N, E: at.E, note: '不寫：主要檔已有同一點 ' + mq.q.name + '（差 ' + (mq.d * 100).toFixed(1) + ' cm）' }); return; }
+      names.set(up, p); qMap.set(up, nm);
+      plan.d20.push({ p: p, name: nm, at: at, moved: !!conv });
+      plan.table.push({ kind: '補點', from: nm, to: nm, N: at.N, E: at.E, note: '' });
+    });
+    // 5) 連線
+    var res = d29Resolver(S);
+    S.d29.forEach(function (l) {
+      var e = [l.top, l.mid, l.bot].map(res), label = [l.top, l.mid, l.bot].filter(Boolean).join(' → ');
+      var bad = e.filter(function (x) { return x.miss; })[0];
+      if (bad) { plan.lineTable.push({ ok: false, row: l.row, from: label, note: '端點 ' + bad.miss + ' 在來源檔找不到' }); return; }
+      var outs = e.map(function (x) { if (x.empty) return ''; return x.q ? (qMap.get(x.key) || null) : (keyMap.get(x.key) || null); });
+      var miss = e.filter(function (x, i) { return !x.empty && !outs[i]; })[0];
+      if (miss) { plan.lineTable.push({ ok: false, row: l.row, from: label, note: '端點 ' + miss.key + ' 沒有寫進主要檔' }); return; }
+      var amb = e.filter(function (x) { return x.amb; }).map(function (x) { return x.key + '（也可能是 ' + x.amb + '）'; });
+      plan.d29.push({ top: outs[0], mid: outs[1], bot: outs[2], mode: l.mode || '0' });
+      plan.lineTable.push({ ok: true, row: l.row, from: label, to: outs.filter(Boolean).join(' → '), amb: amb.length ? amb : null,
+        note: amb.length ? '一位小數有兩種讀法，依本檔慣例讀成 ' + amb.join('、') : '' });
+    });
+    if (S.d29.length && !mainSet.d29 && plan.d29.length) plan.warnings.push('主要檔沒有 D29，連線會照來源檔的格式另外建立。');
+    plan.counts = { ref: plan.d14.filter(function (r) { return !r.anchor; }).length, anchor: anchors, q: plan.d20.length, lines: plan.d29.length,
+      srcRef: S.d14.filter(function (p) { return p.ref !== 0; }).length, src0: S.d14.filter(function (p) { return p.ref === 0; }).length, srcQ: S.d20.length, srcLines: S.d29.length };
+    plan.ambLines = plan.lineTable.filter(function (x) { return x.amb; }).length;
+    return plan;
+  }
+
+  /** 空的 dBASE（沿用另一個檔的欄位定義），主要檔缺 D29 等時用 */
+  function emptyDbfLike(db) {
+    var u8 = new Uint8Array(db.hlen + 1); u8.set(db.u8.subarray(0, db.hlen)); u8[4] = u8[5] = u8[6] = u8[7] = 0; u8[db.hlen] = 0x1A;
+    return parseDbf(u8);
+  }
+
+  /** 依合併規劃產生新的 D14／D20／D29 位元組與對照表文字 */
+  function buildMerge(plan, mainSet, srcSet, now) {
+    var out = {};
+    var fieldOf = function (db, name) { return db.fields.filter(function (f) { return f.name === name; })[0]; };
+    var copyVals = function (vals, db, over) {
+      var o = {};
+      db.fields.forEach(function (f) { if (Object.prototype.hasOwnProperty.call(vals, f.name)) o[f.name] = String(vals[f.name]).trim(); });
+      Object.keys(over).forEach(function (k) { o[k] = over[k]; });
+      return o;
+    };
+    var num = function (db, f, v) { var fd = fieldOf(db, f); return fd && fd.dec ? v.toFixed(fd.dec) : v.toFixed(3); };
+    if (plan.d14.length && mainSet.d14) {
+      var db = mainSet.d14;
+      out.d14 = appendDbf(db, plan.d14.map(function (r) {
+        var over = { COT_NUMBER: String(r.num), COT_REF: String(r.ref) };
+        if (r.moved) { over.COT_Y = num(db, 'COT_Y', r.at.N); over.COT_X = num(db, 'COT_X', r.at.E); }
+        return copyVals(r.p.values, db, over);
+      }), now);
+    }
+    if (plan.d20.length) {
+      var d20 = mainSet.d20 || (srcSet.d20 && emptyDbfLike(srcSet.d20));
+      out.d20 = appendDbf(d20, plan.d20.map(function (r) {
+        var over = { CTL_NAME: r.name };
+        if (r.moved) { over.CTL_Y = num(d20, 'CTL_Y', r.at.N); over.CTL_X = num(d20, 'CTL_X', r.at.E); }
+        return copyVals(r.p.values, d20, over);
+      }), now);
+      out.d20Created = !mainSet.d20;
+    }
+    if (plan.d29.length) {
+      var d29 = mainSet.d29 || (srcSet.d29 && emptyDbfLike(srcSet.d29));
+      out.d29 = appendDbf(d29, plan.d29.map(function (l) { return { LIN_TOP: l.top, LIN_MID: l.mid || '', LIN_BOT: l.bot, LIN_MODE: l.mode || '0' }; }), now);
+      out.d29Created = !mainSet.d29;
+    }
+    var esc = function (v) { v = String(v == null ? '' : v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    out.tableCsv = '﻿' + [['類別', '來源檔點號／點名', '寫入主要檔的點號／點名', 'Y', 'X', '說明']].concat(plan.table.map(function (r) {
+      return [r.kind, r.from, r.to, r.N.toFixed(3), r.E.toFixed(3), r.note]; })).map(function (r) { return r.map(esc).join(','); }).join('\r\n') + '\r\n';
+    out.lineCsv = '﻿' + [['結果', '來源檔 D29 第幾筆', '原本的連線', '寫進主要檔的連線／原因']].concat(plan.lineTable.map(function (r) {
+      return [r.ok ? '連線' : '不連', r.row, r.from, r.ok ? r.to + (r.note ? '｜' + r.note : '') : r.note]; })).map(function (r) { return r.map(esc).join(','); }).join('\r\n') + '\r\n';
+    return out;
+  }
+
   // ───────────────────────── 資料夾掃描 ─────────────────────────
 
   /** 同一個案件的 L02/L14/L20 視為一組：同資料夾、同主檔名（例如 KC0390.L02 + KC0390.L14）。 */
@@ -2516,6 +2910,10 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.6.0","da
     basemapSampler: basemapSampler,
     worldFileText: worldFileText,
     SECTIONS_67: SECTIONS_67,
+    planMerge: planMerge,
+    buildMerge: buildMerge,
+    registerBasemaps: registerBasemaps,
+    jobFromDbf: jobFromDbf,
     PHOTO_YEARS: PHOTO_YEARS,
     probeTileUrl: probeTileUrl,
     groupPhotoYears: groupPhotoYears,
@@ -2601,6 +2999,13 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.6.0","da
       step2: '選擇範圍',
       next: function (r) { return KINDS.l2csv.next(r); }
     },
+    merge: {
+      title: '合併兩個重測檔',
+      accept: '',
+      hint: '',
+      step2: '檢查合併內容',
+      next: function () { return []; }
+    },
     basemap: {
       title: '輸出航照圖（JPG + JGW）',
       accept: '.l02,.l14,.l20,.d14',
@@ -2658,6 +3063,7 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.6.0","da
   }
   function openKind(kind) {
     state.kind = kind;
+    if (kind !== 'merge') state.mg = null;
     state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null; state.showOldFiles = false; state.fileRenames = {}; state.bm = null;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
@@ -2688,6 +3094,11 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.6.0","da
 
   function renderWork() {
     var K = KINDS[state.kind];
+    var isMerge = state.kind === 'merge';
+    $('pickPanel').classList.toggle('hidden', isMerge);
+    $('mergeArea').classList.toggle('hidden', !isMerge);
+    if (isMerge) { $('workTitle').textContent = kindTitle(); $('step2Label').textContent = K.step2; $('step3Label').textContent = '寫入主要檔'; $('resultArea').classList.add('hidden'); renderMerge(); return; }
+    $('step3Label').textContent = '存檔';
     $('workTitle').textContent = kindTitle();
     $('pickHint').textContent = K.hint;
     $('step2Label').textContent = K.step2;
@@ -4520,6 +4931,16 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.6.0","da
     e.preventDefault();
     dragDepth = 0; showOverlay(false);
     if (!e.dataTransfer) return;
+    if (state.kind === 'merge' && !$('work').classList.contains('hidden')) {
+      var slotEl = e.target && e.target.closest && e.target.closest('.mgslot');
+      if (!slotEl) { toast('請把資料夾拖到「主要檔」或「要併進來的檔」的格子裡'); return; }
+      var which = slotEl.getAttribute('data-slot');
+      collectDropped(e.dataTransfer).then(function (res) {
+        if (!res.folder) { mgLoadFiles(which, res.files.map(function (f) { return { file: f, path: f.name }; }), null, res.files[0] ? '（拖進來的檔案）' : ''); return; }
+        mgLoadFiles(which, res.files, res.dirHandle, res.folder);
+      });
+      return;
+    }
     collectDropped(e.dataTransfer).then(function (res) {
       if (res.blocked) dropBlocked(res.folder);
       else if (res.folder) { considerSaveDir(res.dirHandle, res.files); handleFolder(res.files, res.folder); }
@@ -5156,6 +5577,262 @@ window.APP_INFO = {"name":"土地重測資料轉換系統","version":"3.6.0","da
       makeBasemap(state.result, area.bbox, bmShift());
     };
     fit(); guide();
+  }
+
+  // ═════════════ 合併兩個重測檔（進階，使用者主動啟用） ═════════════
+
+  var ADV_KEY = 'chsys-adv-merge';
+  function advEnabled() { try { return localStorage.getItem(ADV_KEY) === '1'; } catch (e) { return false; } }
+  function renderAdv() { $('cardMerge').classList.toggle('hidden', !advEnabled()); }
+  $('advToggle').onclick = function () {
+    modal('<h3>⚙ 進階功能</h3>' +
+      '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:8px 0"><input type="checkbox" id="advMerge" style="width:20px;height:20px;margin-top:3px"' + (advEnabled() ? ' checked' : '') + '>' +
+      '<span><b>合併兩個重測檔</b><br><span class="muted">把另一份重測資料（例如不同時期、不同人做的同一段）的參考點、套合點、補點和連線，併進你主要用的那份。會直接改 D14、D20、D29，寫入前自動備份 .bak。不熟悉的話先不要開。</span></span></label>' +
+      '<div style="text-align:right;margin-top:10px"><button class="btn primary" id="advOk">好</button></div>');
+    $('advOk').onclick = function () {
+      try { localStorage.setItem(ADV_KEY, $('advMerge').checked ? '1' : '0'); } catch (e) {}
+      closeModal(); renderAdv(); toast($('advMerge').checked ? '首頁「其他」多了「合併兩個重測檔」' : '已關閉合併功能');
+    };
+  };
+  renderAdv();
+
+  var MG_EXT = ['D14', 'D20', 'D29', 'D2C', 'D2D'];
+  function mgState() {
+    if (!state.mg) state.mg = { main: null, src: null, opts: { dupRef: 10, dupQ: 6, anchorCode: 96, prefix: 'TS', method: 'auto', datumMain: '', datumSrc: '' }, plan: null, built: null, done: null };
+    return state.mg;
+  }
+
+  /** 從資料夾（或拖進來的檔案）挑出同一個案件的 D14、D20、D29、D2C、D2D */
+  function mgLoadFiles(which, entries, dirHandle, folderName) {
+    var list = entries.map(function (x) { return { file: x.file || x, path: x.path || (x.file || x).name }; })
+      .filter(function (x) { return MG_EXT.indexOf(Core.extName(x.file.name)) >= 0 && !/\.bak$/i.test(x.file.name); });
+    // 只看資料夾本層（或下一層），以有 D14 的主檔名為準
+    var depth = function (p) { return String(p).split('/').length; };
+    var minD = Math.min.apply(null, list.map(function (x) { return depth(x.path); }).concat([99]));
+    var byBase = {};
+    list.filter(function (x) { return depth(x.path) <= minD + 1; }).forEach(function (x) {
+      var dir = x.path.replace(/[^/]*$/, ''), base = dir + x.file.name.replace(/\.[^.]*$/, '').toUpperCase();
+      (byBase[base] = byBase[base] || {})[Core.extName(x.file.name)] = x;
+    });
+    var bases = Object.keys(byBase).filter(function (b) { return byBase[b].D14; });
+    if (!bases.length) { toast('「' + (folderName || '') + '」裡找不到 .D14，請選重測系統的案件資料夾'); return; }
+    var fn = String(folderName || '').toUpperCase();
+    bases.sort(function (a, b) { var na = /([^/]*)$/.exec(a)[1], nb = /([^/]*)$/.exec(b)[1]; return (nb === fn) - (na === fn) || depth(a) - depth(b) || a.localeCompare(b); });
+    var pick = byBase[bases[0]], label = /([^/]*)$/.exec(bases[0])[1];
+    Promise.all(MG_EXT.map(function (e) {
+      if (!pick[e]) return null;
+      return pick[e].file.arrayBuffer().then(function (b) { var u8 = new Uint8Array(b); return { ext: e, name: pick[e].file.name, bytes: u8, db: Core.parseDbf(u8) }; });
+    })).then(function (got) {
+      var job = { label: label, folder: folderName, dir: dirHandle || null, files: {}, others: bases.length - 1 };
+      got.forEach(function (g) { if (g) job.files[g.ext] = g; });
+      var g = mgState(); g[which] = job; g.plan = null; g.built = null; g.done = null;
+      if (which === 'main' && dirHandle) considerSaveDir(dirHandle);
+      renderMerge();
+    }).catch(function (e) { toast('讀檔失敗：' + (e.message || e)); });
+  }
+  function mgPick(which) {
+    if (!window.showDirectoryPicker) {
+      var inp = el('input', { type: 'file' }); inp.setAttribute('webkitdirectory', ''); inp.multiple = true;
+      inp.onchange = function () { var fs = Array.prototype.slice.call(inp.files); if (!fs.length) return;
+        mgLoadFiles(which, fs.map(function (f) { return { file: f, path: f.webkitRelativePath || f.name }; }), null, (fs[0].webkitRelativePath || '').split('/')[0]); };
+      inp.click(); return;
+    }
+    window.showDirectoryPicker({ mode: which === 'main' ? 'readwrite' : 'read' }).then(function (h) {
+      toast('讀取「' + h.name + '」中…');
+      return walkHandles([h]).then(function (files) { mgLoadFiles(which, files, h, h.name); });
+    }).catch(function (e) { if (e && e.name !== 'AbortError') toast('選資料夾失敗：' + e.message); });
+  }
+
+  function mgSet(job) { var o = {}; if (!job) return o; ['D14', 'D20', 'D29', 'D2C', 'D2D'].forEach(function (e) { if (job.files[e]) o[e.toLowerCase()] = job.files[e].db; }); return o; }
+  function mgPlan() {
+    var g = mgState(); if (!g.main || !g.src) return null;
+    if (g.plan) return g.plan;
+    var o = g.opts;
+    g.plan = Core.planMerge(mgSet(g.main), mgSet(g.src), {
+      dupRef: (+o.dupRef || 10) / 100, dupQ: (+o.dupQ || 6) / 100, anchorCode: +o.anchorCode, prefix: o.prefix, method: o.method,
+      datumMain: o.datumMain || null, datumSrc: o.datumSrc || null,
+      sectionDatumMain: Core.sectionDatum(Core.sectionCode(g.main.label)), sectionDatumSrc: Core.sectionDatum(Core.sectionCode(g.src.label))
+    });
+    return g.plan;
+  }
+  var DATUM_TXT = { TWD97: 'TWD97', TWD67: 'TWD67', free: '自由坐標' };
+  function fmtRot(sec) { var a = Math.abs(sec), d = Math.floor(a / 3600), m = Math.floor((a - d * 3600) / 60), s2 = a - d * 3600 - m * 60; return (sec < 0 ? '−' : '') + (d ? d + '° ' : '') + m + '′ ' + s2.toFixed(1) + '″'; }
+
+  function renderMerge() {
+    var g = mgState(), box = $('mergeArea');
+    var slot = function (which, title, role) {
+      var j = g[which];
+      var files = j ? MG_EXT.map(function (e) { var f = j.files[e]; return f ? '<b>' + esc(f.name) + '</b> ' + f.db.nrec + ' 筆' : '<span class="miss">沒有 .' + e + '</span>'; }).join('<br>') : '';
+      return '<div class="mgslot' + (j ? ' ok' : '') + '" data-slot="' + which + '"><h4>' + title + '</h4><div class="role">' + role + '</div>' +
+        (j ? '<div class="mgfiles">📁 ' + esc(j.folder || '') + '　案件 <b>' + esc(j.label) + '</b>' + (Core.SECTION_NAMES[Core.sectionCode(j.label)] ? '（' + esc(Core.SECTION_NAMES[Core.sectionCode(j.label)]) + '）' : '') + '<br>' + files +
+          (j.others ? '<br><span class="muted">資料夾裡還有 ' + j.others + ' 個案件，用的是 ' + esc(j.label) + '</span>' : '') + '</div>' : '') +
+        '<div style="margin-top:10px"><button class="btn ' + (j ? '' : 'primary') + '" type="button" data-pick="' + which + '">📁 ' + (j ? '換一個資料夾' : '選資料夾') + '</button> <span class="muted">或把資料夾拖到這格</span></div></div>';
+    };
+    var h = ['<div class="panel"><h3>第 1 步：選兩份重測資料</h3><div class="mgslots">' +
+      slot('main', '① 主要檔', '你主要用的那份，成果會寫進這裡（D14、D20、D29）') +
+      slot('src', '② 要併進來的檔', '另一份（不同時期、不同人做的），只讀不改') + '</div>' +
+      '<p class="muted" style="margin:10px 0 0">需要：兩邊的 D14（參考點）；有 D20（補點）、D29（連線）、D2C＋D2D（圖解底圖）會一起處理。底圖用來找出套合點、判斷兩張圖的關係。</p></div>'];
+    var plan = mgPlan();
+    if (plan) {
+      h.push(mgAnalysisHtml(plan));
+      if (!plan.blocked) h.push(mgPreviewHtml(plan), mgWriteHtml(plan));
+    }
+    box.innerHTML = h.join('');
+    setSteps(!plan ? 1 : g.done ? 3 : 2);
+    Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'), function (b) { b.onclick = function () { mgPick(b.getAttribute('data-pick')); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('.mgslot'), function (sl) {
+      sl.addEventListener('dragover', function () { sl.classList.add('over'); }); sl.addEventListener('dragleave', function () { sl.classList.remove('over'); }); sl.addEventListener('drop', function () { sl.classList.remove('over'); });
+    });
+    if (!plan) return;
+    var reopt = function (k, v) { g.opts[k] = v; g.plan = null; g.built = null; g.done = null; renderMerge(); };
+    Array.prototype.forEach.call(box.querySelectorAll('[data-opt]'), function (x) { x.onchange = function () { reopt(x.getAttribute('data-opt'), x.value); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('input[name=mgMethod]'), function (x) { x.onchange = function () { reopt('method', x.value); }; });
+    if (plan.blocked) return;
+    $('mgCsv').onclick = function () { var b = mgBuild(); downloadAll([{ name: g.main.label + '_合併對照表.csv', content: b.tableCsv }, { name: g.main.label + '_連線對照表.csv', content: b.lineCsv }]); };
+    $('mgDl').onclick = function () { var b = mgBuild(); downloadAll(mgFiles(b)); };
+    if ($('mgWrite')) $('mgWrite').onclick = mgWrite;
+  }
+
+  function mgAnalysisHtml(plan) {
+    var g = mgState(), r = plan.reg, o = g.opts;
+    var dsel = function (k, cur) { return '<select data-opt="' + k + '">' + [['', '自動'], ['TWD97', 'TWD97'], ['TWD67', 'TWD67'], ['free', '自由坐標']].map(function (x) { return '<option value="' + x[0] + '"' + (o[k] === x[0] ? ' selected' : '') + '>' + x[1] + (x[0] === '' ? '（' + DATUM_TXT[cur] + '）' : '') + '</option>'; }).join('') + '</select>'; };
+    var h = '<div class="panel"><h3>第 2 步：兩份資料的關係</h3><table class="mgtable"><tr><th></th><th>主要檔 ' + esc(g.main.label) + '</th><th>要併進來 ' + esc(g.src.label) + '</th></tr>' +
+      '<tr><td>坐標系統</td><td>' + dsel('datumMain', plan.datum.main) + '</td><td>' + dsel('datumSrc', plan.datum.src) + '</td></tr></table>';
+    if (r && !r.failed) {
+      var dc = r.T.apply(r.T.sx, r.T.sy);
+      h += '<div>兩張底圖是同一張圖：' + r.matched + '／' + r.total + ' 個底圖點（' + (r.inliers * 100).toFixed(1) + '%）換過去後差不到 2 cm。' +
+        '<br>來源圖 → 主要圖：旋轉 <b>' + fmtRot(r.T.rotSec) + '</b>，圖中心平移 ΔE <b>' + (dc.E - r.T.sx).toFixed(3) + '</b>、ΔN <b>' + (dc.N - r.T.sy).toFixed(3) + '</b> m' +
+        (r.how === 'shape' ? '（用圖形比對找到的）' : r.how === '67→97' ? '（約等於 67→97 的差，加上兩次套合不同）' : '') + '</div>';
+    } else if (r && r.failed) h += '<div class="warnTxt">兩張底圖對不起來（' + (r.inliers * 100).toFixed(0) + '% 重合），可能不是同一張圖。</div>';
+    else h += '<div class="muted">至少一邊沒有底圖（D2C／D2D），不能判斷套合點與兩張圖的關係。</div>';
+    if (plan.blocked) return h + '<div class="blocked" style="margin-top:10px">' + esc(plan.blocked) + '</div></div>';
+    var M = [['asis', '照原坐標寫入', '兩份是同一個坐標系統時用：參考點是實測的，坐標不動；套合點保留來源那位判斷的位置，可以和主要檔比差多少。'],
+      ['formula', '67 ↔ 97 公式換算', '一份 67、一份 97 時用：用近似公式（誤差約 1～2 m）換成主要檔的坐標；套合點一樣可以比差多少。'],
+      ['basemap', '照兩張底圖的關係換算', '自由坐標只能用這個：依兩張圖的旋轉、平移換過去。換完後套合點會剛好落在主要檔底圖上（看不出兩人差距）。']];
+    h += '<h4 style="margin:14px 0 4px">換算方式</h4><div class="mgmethod">' + M.map(function (m) {
+      var ok = plan.methods[m[0]];
+      return '<label class="' + (ok ? '' : 'dis') + '"><input type="radio" name="mgMethod" value="' + m[0] + '"' + (plan.method === m[0] ? ' checked' : '') + (ok ? '' : ' disabled') + '> <b>' + m[1] + '</b>' + (plan.method === m[0] && o.method === 'auto' ? ' <span class="advtag">自動選的</span>' : '') + '<span class="muted">' + m[2] + '</span></label>';
+    }).join('') + '</div>';
+    h += '<h4 style="margin:14px 0 4px">規則</h4><div class="mgopts">' +
+      '<label>參考點重複：<input type="number" min="1" max="100" data-opt="dupRef" value="' + esc(o.dupRef) + '"> cm 內不寫</label>' +
+      '<label>補點同一點：<input type="number" min="1" max="100" data-opt="dupQ" value="' + esc(o.dupQ) + '"> cm 內不寫</label>' +
+      '<label>套合點編碼：<input type="number" min="1" max="99" data-opt="anchorCode" value="' + esc(o.anchorCode) + '"></label>' +
+      '<label>補點撞名加：Q<input type="text" maxlength="4" data-opt="prefix" value="' + esc(o.prefix) + '" style="width:48px">50</label></div>' +
+      '<div class="muted" style="margin-top:6px">參考點從主要檔參考點最大號（' + plan.maxRef + '）＋1 開始，同一個原整數對到同一個新整數，編碼不變；套合點＝來源 00 界址點中落在來源底圖上的點；其他 00 點、99998／99999 不寫。</div></div>';
+    return h;
+  }
+
+  function mgPreviewHtml(plan) {
+    var c = plan.counts, g = mgState();
+    var rows = function (kind) { return plan.table.filter(function (r) { return r.kind.indexOf(kind) === 0; }); };
+    var notW = function (kind) { return rows(kind).filter(function (r) { return !r.to; }); };
+    var renamed = plan.d20.filter(function (r) { return r.name !== r.p.name; }).map(function (r) { return r.p.name + '→' + r.name; });
+    var refR = plan.d14.filter(function (r) { return !r.anchor; }).map(function (r) { return r.num; }), anR = plan.d14.filter(function (r) { return r.anchor; }).map(function (r) { return r.num; });
+    var range = function (a) { return a.length ? Math.min.apply(null, a) + '～' + Math.max.apply(null, a) : '—'; };
+    var t = '<div class="panel"><h3>第 3 步：會寫進主要檔的內容</h3><table class="mgtable"><tr><th>項目</th><th>來源有</th><th>寫入</th><th>說明</th></tr>' +
+      '<tr><td>參考點（D14）</td><td class="n">' + c.srcRef + '</td><td class="n"><b>' + c.ref + '</b></td><td>點號 ' + range(refR) + '，編碼不變' + (notW('參考點').length ? '；' + notW('參考點').length + ' 點重複不寫' : '') + '</td></tr>' +
+      '<tr><td>套合點 → 參考點 .' + pad2(g.opts.anchorCode) + '</td><td class="n">' + c.src0 + '（00 點）</td><td class="n"><b>' + c.anchor + '</b></td><td>點號 ' + range(anR) + '；不在來源底圖上的 00 點 ' + plan.skipped0 + ' 點不寫</td></tr>' +
+      '<tr><td>補點（D20）</td><td class="n">' + c.srcQ + '</td><td class="n"><b>' + c.q + '</b></td><td>' + (renamed.length ? '撞名改名：' + esc(renamed.join('、')) : '沒有撞名') + (notW('補點').length ? '；' + notW('補點').length + ' 點同一點不寫' : '') + '</td></tr>' +
+      '<tr><td>連線（D29）</td><td class="n">' + c.srcLines + '</td><td class="n"><b>' + c.lines + '</b></td><td>' + (c.srcLines - c.lines ? (c.srcLines - c.lines) + ' 條有端點沒寫入，不連' : '全部都連') + (plan.ambLines ? '；<span class="warnTxt">' + plan.ambLines + ' 條點號有兩種讀法，請看下面</span>' : '') + '</td></tr></table>';
+    if (plan.warnings.length) t += '<ul class="report">' + plan.warnings.map(function (w) { return '<li class="warn"><span class="lv">注意</span><span>' + esc(w) + '</span></li>'; }).join('') + '</ul>';
+    var amb = plan.lineTable.filter(function (x) { return x.amb; }), bad = plan.lineTable.filter(function (x) { return !x.ok; });
+    if (amb.length) t += '<h4 style="margin:12px 0 2px">點號有兩種讀法的連線（來源檔把編碼只寫一位，例如 39.5）</h4><div class="mglist">' + amb.map(function (x) { return '#' + x.row + '　' + esc(x.from) + '　→　' + esc(x.to) + '　<span class="muted">' + esc(x.note) + '</span>'; }).join('<br>') + '</div>';
+    if (bad.length) t += '<h4 style="margin:12px 0 2px">不連的線</h4><div class="mglist">' + bad.map(function (x) { return '#' + x.row + '　' + esc(x.from) + '　<span class="muted">' + esc(x.note) + '</span>'; }).join('<br>') + '</div>';
+    t += '<div class="mgmap">' + mgMapSvg(plan) + '</div><div class="legend" style="margin-top:6px"><span><i style="background:#9fb3c8"></i>主要檔底圖</span><span><i style="background:#e5484d"></i>參考點與連線</span><span><i style="background:#8b3dff"></i>套合點</span><span><i style="background:#11845b"></i>補點</span></div>' +
+      '<div style="margin-top:10px"><button class="btn" id="mgCsv" type="button">⬇ 下載對照表（CSV）</button></div></div>';
+    return t;
+  }
+  function pad2(n) { n = +n || 0; return (n < 10 ? '0' : '') + n; }
+  function mgMapSvg(plan) {
+    var g = mgState(), M = Core.jobFromDbf(mgSet(g.main));
+    var P = plan.d14.map(function (r) { return { E: r.at.E, N: r.at.N, a: r.anchor }; }).concat(plan.d20.map(function (r) { return { E: r.at.E, N: r.at.N, q: 1 }; }));
+    if (!P.length) return '<div class="muted" style="padding:20px">沒有要寫入的點</div>';
+    var minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
+    P.forEach(function (p) { minE = Math.min(minE, p.E); maxE = Math.max(maxE, p.E); minN = Math.min(minN, p.N); maxN = Math.max(maxN, p.N); });
+    var pad = Math.max(20, (maxE - minE) * 0.05); minE -= pad; maxE += pad; minN -= pad; maxN += pad;
+    var W = 1000, s = W / (maxE - minE), H = Math.max(200, Math.round((maxN - minN) * s));
+    var X = function (E) { return ((E - minE) * s).toFixed(1); }, Y = function (N) { return ((maxN - N) * s).toFixed(1); };
+    var inBox = function (p) { return p.E > minE && p.E < maxE && p.N > minN && p.N < maxN; };
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">'];
+    out.push('<g stroke="#9fb3c8" stroke-width="0.8">');
+    M.segs.forEach(function (sg) { if (inBox(sg[0]) || inBox(sg[1])) out.push('<line x1="' + X(sg[0].E) + '" y1="' + Y(sg[0].N) + '" x2="' + X(sg[1].E) + '" y2="' + Y(sg[1].N) + '"/>'); });
+    out.push('</g>');
+    var at = {}; plan.d14.forEach(function (r) { at[r.num + '.' + pad2(r.ref)] = r.at; }); plan.d20.forEach(function (r) { at[r.name.toUpperCase()] = r.at; });
+    var key = function (t) { t = String(t || '').trim(); if (/^q/i.test(t)) return t.toUpperCase(); var m = /^(\d+)\.(\d\d)$/.exec(t); return m ? +m[1] + '.' + m[2] : t; };
+    out.push('<g stroke="#e5484d" stroke-width="1.6">');
+    plan.d29.forEach(function (l) { var a = at[key(l.top)], b = at[key(l.bot)]; if (a && b) out.push('<line x1="' + X(a.E) + '" y1="' + Y(a.N) + '" x2="' + X(b.E) + '" y2="' + Y(b.N) + '"/>'); });
+    out.push('</g>');
+    P.forEach(function (p) { out.push('<circle cx="' + X(p.E) + '" cy="' + Y(p.N) + '" r="' + (p.a ? 3.6 : 2.4) + '" fill="' + (p.q ? '#11845b' : p.a ? '#8b3dff' : '#e5484d') + '"/>'); });
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  function mgBuild() { var g = mgState(); if (!g.built) g.built = Core.buildMerge(g.plan, mgSet(g.main), mgSet(g.src)); return g.built; }
+  function mgFiles(b) {
+    var g = mgState(), base = g.main.label, f = [];
+    if (b.d14) f.push({ name: g.main.files.D14.name, content: new Blob([b.d14]) });
+    if (b.d20) f.push({ name: g.main.files.D20 ? g.main.files.D20.name : base + '.D20', content: new Blob([b.d20]) });
+    if (b.d29) f.push({ name: g.main.files.D29 ? g.main.files.D29.name : base + '.D29', content: new Blob([b.d29]) });
+    f.push({ name: base + '_合併對照表.csv', content: b.tableCsv }, { name: base + '_連線對照表.csv', content: b.lineCsv });
+    return f;
+  }
+  function mgWriteHtml(plan) {
+    var g = mgState();
+    var nothing = !plan.d14.length && !plan.d20.length && !plan.d29.length;
+    return '<div class="panel"><h3>第 4 步：寫入主要檔</h3>' +
+      (g.done ? '<div class="status ok" style="margin-bottom:10px"><div class="si">✓</div><div><div class="st">已寫入 ' + esc(g.main.folder || '') + '</div><div class="ss">' + esc(g.done) + '</div></div></div>' : '') +
+      '<ol class="next"><li><div>寫入前先<b>關掉重測系統</b>（至少關掉這個案件）。</div></li><li><div>按下面的按鈕，原本的 D14、D20、D29 會先備份成 .bak，再寫入新檔；對照表也會一起存進去。</div></li><li><div>打開重測系統檢查；有問題可以用 .bak 還原。</div></li></ol>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">' +
+      (window.showDirectoryPicker ? '<button class="btn go" id="mgWrite" type="button"' + (nothing || g.done ? ' disabled' : '') + '>💾 寫入主要檔（先備份 .bak）</button>' : '') +
+      '<button class="btn" id="mgDl" type="button"' + (nothing ? ' disabled' : '') + '>⬇ 只下載新檔，自己取代</button></div></div>';
+  }
+
+  /** 寫回主要檔資料夾：確認檔案沒變 → 原檔另存 .bak → 寫新檔 → 存對照表 */
+  function mgWrite() {
+    var g = mgState(), b = mgBuild();
+    var jobs = [];
+    [['D14', b.d14], ['D20', b.d20], ['D29', b.d29]].forEach(function (x) {
+      if (!x[1]) return;
+      var src = g.main.files[x[0]];
+      jobs.push({ ext: x[0], name: src ? src.name : g.main.label + '.' + x[0], orig: src ? src.bytes : null, data: x[1] });
+    });
+    var go = function (dir) {
+      return Promise.all(jobs.map(function (j) {
+        return dir.getFileHandle(j.name, { create: !j.orig }).then(function (h) {
+          return h.getFile().then(function (f) { return f.arrayBuffer(); }).then(function (buf) {
+            var cur = new Uint8Array(buf);
+            if (j.orig && !(cur.length === j.orig.length && cur.every(function (v, i) { return v === j.orig[i]; }))) throw new Error(j.name + ' 和剛剛讀進來的不一樣（可能被改過，或選錯資料夾），請重新選主要檔再試');
+            j.h = h;
+          });
+        });
+      })).then(function () {
+        return jobs.reduce(function (p, j) {
+          return p.then(function () {
+            if (!j.orig) return null;
+            var bak = j.name + '.bak';
+            return dir.getFileHandle(bak).then(function () { bak = j.name + '.' + stampNow() + '.bak'; }, function () {})
+              .then(function () { return dir.getFileHandle(bak, { create: true }); })
+              .then(function (bh) { j.bak = bak; return bh.createWritable().then(function (w) { return w.write(j.orig).then(function () { return w.close(); }); }); });
+          }).then(function () { return j.h.createWritable().then(function (w) { return w.write(j.data).then(function () { return w.close(); }); }); });
+        }, Promise.resolve());
+      }).then(function () {
+        var csvs = [[g.main.label + '_合併對照表.csv', b.tableCsv], [g.main.label + '_連線對照表.csv', b.lineCsv]];
+        return Promise.all(csvs.map(function (c) { return dir.getFileHandle(c[0], { create: true }).then(function (h) { return h.createWritable().then(function (w) { return w.write(c[1]).then(function () { return w.close(); }); }); }); }));
+      }).then(function () {
+        g.done = jobs.map(function (j) { return j.name + (j.bak ? '（原檔備份 ' + j.bak + '）' : '（新建）'); }).join('、') + '；對照表也存進去了。';
+        // 寫入後主要檔已經變了：更新記憶中的內容，避免重複寫入
+        jobs.forEach(function (j) { g.main.files[j.ext] = { ext: j.ext, name: j.name, bytes: j.data, db: Core.parseDbf(j.data) }; });
+        g.built = null; renderMerge();
+        toast('✓ 已寫入主要檔');
+      });
+    };
+    var fail = function (e) { if (e && e.name === 'AbortError') return; modal('<h3>❌ 沒有寫入</h3><p>' + esc(e.message || e) + '</p><div style="text-align:right"><button class="btn primary" id="mgErr">知道了</button></div>'); $('mgErr').onclick = closeModal; };
+    if (g.main.dir && g.main.dir.getFileHandle) {
+      ensurePermission(g.main.dir).then(function () { return go(g.main.dir); }).catch(fail);
+    } else {
+      toast('請選主要檔 ' + g.main.label + ' 所在的資料夾');
+      window.showDirectoryPicker({ mode: 'readwrite' }).then(go).catch(fail);
+    }
   }
 
   // ═════════════ 版本、更新歷程、新版本提醒 ═════════════

@@ -1839,6 +1839,371 @@
     return [f(res), '0', '0', f(-res), f(ulE), f(ulN)].join('\r\n') + '\r\n';
   }
 
+  // ═════════════ 7. 合併兩個重測檔（把來源檔的成果併進主要檔） ═════════════
+  //
+  // 讀兩份重測資料（D14 參考點、D20 補點、D29 連線、D2C/D2D 圖解底圖），
+  //   1. 判斷坐標系統（97／67／自由坐標）與兩張底圖的關係（同一張圖時算出旋轉、平移）
+  //   2. 依規則規劃要寫進主要檔的點與連線：
+  //      參考點（編碼不是 00）：和主要檔 dupRef 內重複的不寫；其餘依原整數對到新整數（主要檔參考點最大號＋1 起），編碼不變
+  //      00 界址點：落在來源底圖 D2C 點上的（套合點）→ 參考點，編碼 anchorCode；其他 00 點不寫；99998、99999 不寫
+  //      補點：同名且 dupQ 內＝同一點不寫；同名不同點 → Q 後面加前綴（Q50 → QTS50）；不同名但 dupQ 內有點＝同一點不寫
+  //      連線：兩端都有寫入的才連，點號換成新點號
+
+  function jobFromDbf(set) {
+    var o = { d14: [], d20: [], d2c: [], d2cByNum: {}, segs: [], d29: [] };
+    if (set.d14) set.d14.records.forEach(function (r, i) {
+      if (r.deleted) return;
+      var v = r.values, N = parseFloat(v.COT_Y), E = parseFloat(v.COT_X);
+      if (!isFinite(N) || !isFinite(E) || (N === 0 && E === 0)) return;
+      o.d14.push({ n: parseInt(v.COT_NUMBER, 10), ref: parseInt(v.COT_REF, 10) || 0, N: N, E: E, values: v, row: i });
+    });
+    if (set.d20) set.d20.records.forEach(function (r) {
+      if (r.deleted) return;
+      var v = r.values, N = parseFloat(v.CTL_Y), E = parseFloat(v.CTL_X);
+      if (!isFinite(N) || !isFinite(E)) return;
+      o.d20.push({ name: v.CTL_NAME.trim(), N: N, E: E, values: v });
+    });
+    if (set.d2c) set.d2c.records.forEach(function (r) {
+      if (r.deleted) return;
+      var p = { n: parseInt(r.values.COT_NUMBER, 10), N: parseFloat(r.values.COT_Y), E: parseFloat(r.values.COT_X) };
+      if (!isFinite(p.N) || !isFinite(p.E)) return;
+      o.d2c.push(p); o.d2cByNum[p.n] = p;
+    });
+    if (set.d2d) set.d2d.records.forEach(function (r) {
+      if (r.deleted) return;
+      var a = o.d2cByNum[parseInt(r.values.LIN_TOP, 10)], b = o.d2cByNum[parseInt(r.values.LIN_BOT, 10)];
+      if (a && b) o.segs.push([a, b]);
+    });
+    if (set.d29) set.d29.records.forEach(function (r, i) {
+      if (r.deleted) return;
+      o.d29.push({ top: r.values.LIN_TOP.trim(), mid: r.values.LIN_MID.trim(), bot: r.values.LIN_BOT.trim(), mode: (r.values.LIN_MODE || '').trim(), row: i + 1 });
+    });
+    return o;
+  }
+
+  /** 坐標系統：TM2 範圍（97 或 67，數值上分不出來）或自由坐標 */
+  function frameOf(points) {
+    var tm2 = 0, n = 0;
+    points.forEach(function (p) { n++; if (p.N > 2400000 && p.N < 2850000 && p.E > 90000 && p.E < 380000) tm2++; });
+    if (!n) return null;
+    return tm2 / n > 0.8 ? 'tm2' : 'free';
+  }
+
+  // ─── 最近鄰格網 ───
+  function ptGrid(ps, cell) {
+    var g = new Map();
+    ps.forEach(function (p) { var k = Math.floor(p.E / cell) + ',' + Math.floor(p.N / cell); var a = g.get(k); if (a) a.push(p); else g.set(k, [p]); });
+    return { g: g, cell: cell };
+  }
+  function ptNear(G, E, N, rad) {
+    var cx = Math.floor(E / G.cell), cy = Math.floor(N / G.cell), R = Math.ceil(rad / G.cell), best = null, bd = rad;
+    for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) {
+      var a = G.g.get((cx + i) + ',' + (cy + j)); if (!a) continue;
+      for (var k = 0; k < a.length; k++) { var d = Math.hypot(a[k].E - E, a[k].N - N); if (d <= bd) { bd = d; best = a[k]; } }
+    }
+    return best ? { q: best, d: bd } : null;
+  }
+  function dedupePts(ps, tol) {
+    var G = ptGrid([], 1), out = [];
+    ps.forEach(function (p) { if (!ptNear(G, p.E, p.N, tol)) { out.push(p); var k = Math.floor(p.E) + ',' + Math.floor(p.N); var a = G.g.get(k); if (a) a.push(p); else G.g.set(k, [p]); } });
+    return out;
+  }
+
+  /** 相似轉換（四參數）最小二乘：pairs [{s:{E,N}, t:{E,N}}]；fixScale：比例固定 1 */
+  function fitSimilarity(P, fixScale) {
+    var n = P.length, sx = 0, sy = 0, tx = 0, ty = 0;
+    P.forEach(function (p) { sx += p.s.E; sy += p.s.N; tx += p.t.E; ty += p.t.N; });
+    sx /= n; sy /= n; tx /= n; ty /= n;
+    var a = 0, b = 0, d = 0;
+    P.forEach(function (p) { var x = p.s.E - sx, y = p.s.N - sy, X = p.t.E - tx, Y = p.t.N - ty; a += x * X + y * Y; b += x * Y - y * X; d += x * x + y * y; });
+    a /= d; b /= d;
+    if (fixScale) { var k = Math.hypot(a, b); a /= k; b /= k; }
+    return makeSim(a, b, sx, sy, tx, ty);
+  }
+  function makeSim(a, b, sx, sy, tx, ty) {
+    return { a: a, b: b, sx: sx, sy: sy, tx: tx, ty: ty, scale: Math.hypot(a, b), rotSec: Math.atan2(b, a) * 206264.806,
+      apply: function (E, N) { return { E: tx + a * (E - sx) - b * (N - sy), N: ty + b * (E - sx) + a * (N - sy) }; } };
+  }
+
+  /** 從起始轉換做 ICP（最近點反覆配對＋四參數），回傳 { T, inliers（≤2 cm 的比例）, n } */
+  function icpRefine(S, GM, T0, iters) {
+    var T = T0, rad = 8;
+    for (var it = 0; it < (iters || 25); it++) {
+      var P = [];
+      S.forEach(function (p) { var t = T.apply(p.E, p.N), m = ptNear(GM, t.E, t.N, rad); if (m) P.push({ s: p, t: m.q, d: m.d }); });
+      if (P.length < 6) return { T: T, inliers: 0, n: 0 };
+      var ds = P.map(function (x) { return x.d; }).sort(function (x, y) { return x - y; }), med = ds[ds.length >> 1];
+      var keep = P.filter(function (x) { return x.d <= Math.max(3 * med, 0.02); });
+      T = fitSimilarity(keep, true);
+      var nr = Math.max(0.3, Math.min(rad, 5 * med));
+      if (nr === rad && med < 0.001) break;
+      rad = nr;
+    }
+    var ok = 0; S.forEach(function (p) { var t = T.apply(p.E, p.N), m = ptNear(GM, t.E, t.N, 0.02); if (m) ok++; });
+    return { T: T, inliers: ok / S.length, n: ok };
+  }
+
+  /** 平移投票：起始轉換套上後，和主要底圖 20 m 內的點投票找最常見的位移 */
+  function voteShift(S, GM, T0) {
+    var vote = new Map(), best = null;
+    S.forEach(function (p) {
+      var t = T0.apply(p.E, p.N), cx = Math.floor(t.E / GM.cell), cy = Math.floor(t.N / GM.cell), R = Math.ceil(20 / GM.cell);
+      for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) {
+        var a = GM.g.get((cx + i) + ',' + (cy + j)); if (!a) continue;
+        a.forEach(function (q) { var dE = q.E - t.E, dN = q.N - t.N; if (Math.hypot(dE, dN) > 20) return;
+          var k = Math.round(dE / 0.1) + ',' + Math.round(dN / 0.1), c = (vote.get(k) || 0) + 1; vote.set(k, c);
+          if (!best || c > best.c) best = { c: c, k: k }; });
+      }
+    });
+    if (!best) return T0;
+    var d = best.k.split(',').map(Number);
+    return makeSim(T0.a, T0.b, T0.sx, T0.sy, T0.tx + d[0] * 0.1, T0.ty + d[1] * 0.1);
+  }
+
+  /** 自由坐標：用「到最近兩點的距離」當特徵，配對後隨機試轉換（只轉不縮），挑重合最多的 */
+  function descriptorMatch(S, M, GM) {
+    function desc(ps, G) {
+      return ps.map(function (p) {
+        var near = [];
+        [2, 5, 12, 30].some(function (rad) {
+          near = []; var cx = Math.floor(p.E / G.cell), cy = Math.floor(p.N / G.cell), R = Math.ceil(rad / G.cell);
+          for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) { var a = G.g.get((cx + i) + ',' + (cy + j)); if (a) a.forEach(function (q) { var d = Math.hypot(q.E - p.E, q.N - p.N); if (d > 0.05 && d <= rad) near.push({ q: q, d: d }); }); }
+          return near.length >= 2;
+        });
+        near.sort(function (x, y) { return x.d - y.d; });
+        return near.length >= 2 ? { p: p, n1: near[0].q, d1: near[0].d, d2: near[1].d } : null;
+      }).filter(Boolean);
+    }
+    var GS = ptGrid(S, 5), DS = desc(S, GS), DM = desc(M, GM);
+    var idx = new Map(); DM.forEach(function (d) { var k = Math.round(d.d1 / 0.02) + ',' + Math.round(d.d2 / 0.02); var a = idx.get(k); if (a) a.push(d); else idx.set(k, [d]); });
+    var sample = S.filter(function (_, i) { return i % Math.max(1, Math.floor(S.length / 300)) === 0; });
+    var best = null, tries = 0;
+    var step = Math.max(1, Math.floor(DS.length / 400));
+    for (var i = 0; i < DS.length && tries < 3000; i += step) {
+      var ds = DS[i], cands = [];
+      for (var a = -1; a <= 1; a++) for (var b = -1; b <= 1; b++) { var c = idx.get((Math.round(ds.d1 / 0.02) + a) + ',' + (Math.round(ds.d2 / 0.02) + b)); if (c) cands = cands.concat(c); }
+      cands.slice(0, 6).forEach(function (dm) {
+        tries++;
+        var th = Math.atan2(dm.n1.N - dm.p.N, dm.n1.E - dm.p.E) - Math.atan2(ds.n1.N - ds.p.N, ds.n1.E - ds.p.E);
+        var T = makeSim(Math.cos(th), Math.sin(th), ds.p.E, ds.p.N, dm.p.E, dm.p.N);
+        var ok = 0; sample.forEach(function (p) { var t = T.apply(p.E, p.N); if (ptNear(GM, t.E, t.N, 0.1)) ok++; });
+        if (!best || ok > best.ok) best = { ok: ok, T: T };
+      });
+    }
+    return best && best.ok >= Math.max(5, sample.length * 0.2) ? best.T : null;
+  }
+
+  /**
+   * 兩張底圖的關係：來源 D2C → 主要 D2C 的相似轉換。
+   * hints：要試的起點（同坐標、67→97、97→67），都不行再用特徵配對（自由坐標）。
+   * 回傳 { T, inliers, matched, how } 或 null
+   */
+  function registerBasemaps(srcPts, mainPts) {
+    var S = dedupePts(srcPts, 0.001), M = dedupePts(mainPts, 0.001);
+    if (S.length < 10 || M.length < 10) return null;
+    var GM = ptGrid(M, 5);
+    var sub = S.filter(function (_, i) { return i % Math.max(1, Math.floor(S.length / 1500)) === 0; });
+    var c = S.reduce(function (o, p) { o.E += p.E / S.length; o.N += p.N / S.length; return o; }, { E: 0, N: 0 });
+    var I = makeSim(1, 0, 0, 0, 0, 0);
+    var q67 = twd67to97(c.N, c.E), q97 = twd97to67(c.N, c.E);
+    var starts = [['same', I], ['67→97', makeSim(1, 0, 0, 0, q67[1] - c.E, q67[0] - c.N)], ['97→67', makeSim(1, 0, 0, 0, q97[1] - c.E, q97[0] - c.N)]];
+    var best = null;
+    starts.forEach(function (st) {
+      var T0 = voteShift(sub, GM, st[1]), r = icpRefine(sub, GM, T0);
+      if (!best || r.inliers > best.inliers) best = { T: r.T, inliers: r.inliers, how: st[0] };
+    });
+    if (!best || best.inliers < 0.5) {
+      var Td = descriptorMatch(S, M, GM);
+      if (Td) { var r2 = icpRefine(sub, GM, Td); if (!best || r2.inliers > best.inliers) best = { T: r2.T, inliers: r2.inliers, how: 'shape' }; }
+    }
+    if (!best || best.inliers < 0.3) return best ? { T: best.T, inliers: best.inliers, how: best.how, failed: true } : null;
+    var fin = icpRefine(S, GM, best.T, 10);
+    return { T: fin.T, inliers: fin.inliers, matched: fin.n, total: S.length, how: best.how };
+  }
+
+  /** D29 端點文字 → 點的鍵（點號.兩位編碼 或 補點名）；一位小數依本檔慣例（多數是 X.0d 或 X.d0） */
+  function d29Resolver(job) {
+    var keys = new Map(); job.d14.forEach(function (p) { keys.set(p.n + '.' + pad(p.ref, 2), p); });
+    var q = new Map(); job.d20.forEach(function (p) { q.set(p.name.toUpperCase(), p); });
+    var zeroD = 0, dZero = 0;
+    job.d29.forEach(function (l) { [l.top, l.mid, l.bot].forEach(function (t) { var m = /^(\d+)\.(\d)$/.exec(t); if (!m) return;
+      var a = keys.has(+m[1] + '.0' + m[2]), b = keys.has(+m[1] + '.' + m[2] + '0'); if (a && !b) zeroD++; if (b && !a) dZero++; }); });
+    var prefer0d = zeroD >= dZero;
+    return function (t) {
+      t = String(t || '').trim(); if (!t) return { empty: true };
+      var m;
+      if (/^q/i.test(t)) return q.has(t.toUpperCase()) ? { key: t.toUpperCase(), q: true } : { miss: t };
+      if ((m = /^(\d+)$/.exec(t))) return keys.has(+m[1] + '.00') ? { key: +m[1] + '.00' } : { miss: t };
+      if ((m = /^(\d+)\.(\d\d)$/.exec(t))) return keys.has(+m[1] + '.' + m[2]) ? { key: +m[1] + '.' + m[2] } : { miss: t };
+      if ((m = /^(\d+)\.(\d)$/.exec(t))) {
+        var a = +m[1] + '.0' + m[2], b = +m[1] + '.' + m[2] + '0', first = prefer0d ? a : b, second = prefer0d ? b : a;
+        if (keys.has(first)) return { key: first, amb: keys.has(second) ? second : null };
+        if (keys.has(second)) return { key: second };
+      }
+      return { miss: t };
+    };
+  }
+
+  /**
+   * 規劃合併。main／src：{ d14, d20, d29, d2c, d2d }（parseDbf 結果，可缺）。
+   * opts：{ dupRef 0.10, dupQ 0.06, anchorCode 96, prefix 'TS', method 'auto'|'asis'|'formula'|'basemap', datumMain, datumSrc }
+   */
+  function planMerge(mainSet, srcSet, opts) {
+    opts = opts || {};
+    var dupRef = opts.dupRef == null ? 0.10 : opts.dupRef, dupQ = opts.dupQ == null ? 0.06 : opts.dupQ;
+    var anchorCode = opts.anchorCode == null ? 96 : +opts.anchorCode, prefix = opts.prefix == null ? 'TS' : String(opts.prefix);
+    var M = jobFromDbf(mainSet), S = jobFromDbf(srcSet);
+    var plan = { warnings: [], d14: [], d20: [], d29: [], table: [], lineTable: [] };
+
+    // 1) 坐標系統與底圖關係
+    var fM = frameOf(M.d14.concat(M.d2c)), fS = frameOf(S.d14.concat(S.d2c));
+    var reg = M.d2c.length && S.d2c.length ? registerBasemaps(S.d2c, M.d2c) : null;
+    plan.frames = { main: fM, src: fS };
+    plan.reg = reg;
+    // 坐標系統：使用者指定 > 段號（67 段清單）＋底圖關係
+    var dM = opts.datumMain || (fM === 'free' ? 'free' : null), dS = opts.datumSrc || (fS === 'free' ? 'free' : null);
+    if (!dS && !dM && reg && !reg.failed) {
+      if (reg.how === '67→97') { dS = 'TWD67'; dM = 'TWD97'; } else if (reg.how === '97→67') { dS = 'TWD97'; dM = 'TWD67'; }
+    }
+    dM = dM || opts.sectionDatumMain || 'TWD97'; dS = dS || opts.sectionDatumSrc || dM;
+    plan.datum = { main: dM, src: dS };
+    var same = dM === dS && dM !== 'free';
+    var canFormula = (dM === 'TWD97' && dS === 'TWD67') || (dM === 'TWD67' && dS === 'TWD97');
+    var canBasemap = reg && !reg.failed;
+    var method = opts.method && opts.method !== 'auto' ? opts.method : (same ? 'asis' : canFormula ? 'formula' : canBasemap ? 'basemap' : null);
+    if (method === 'formula' && !canFormula) method = null;
+    if (method === 'basemap' && !canBasemap) method = null;
+    plan.method = method; plan.methods = { asis: same, formula: canFormula, basemap: !!canBasemap };
+    if (!method) { plan.blocked = dS === 'free' || dM === 'free' ? '兩份資料坐標系統不同（自由坐標），而且兩張底圖對不起來，沒辦法換算。' : '沒辦法決定換算方式。'; return plan; }
+    var conv = method === 'asis' ? null : method === 'formula'
+      ? function (N, E) { var q = dS === 'TWD67' ? twd67to97(N, E) : twd97to67(N, E); return { N: q[0], E: q[1] }; }
+      : function (N, E) { var t = reg.T.apply(E, N); return { N: t.N, E: t.E }; };
+    var place = function (p) { return conv ? conv(p.N, p.E) : { N: p.N, E: p.E }; };
+
+    // 2) 參考點
+    var GM = ptGrid(M.d14.map(function (p) { return { E: p.E, N: p.N, p: p }; }), 5);
+    var maxRef = 0, maxAll = 0;
+    M.d14.forEach(function (p) { if (p.ref !== 0 && p.n > maxRef) maxRef = p.n; if (p.n > maxAll) maxAll = p.n; });
+    plan.maxRef = maxRef;
+    var next = maxRef, intMap = new Map(), keyMap = new Map();
+    var fmt = function (n, r) { return n + '.' + pad(r, 2); };
+    var newNum = function () { next += 1; return next; };
+    S.d14.filter(function (p) { return p.ref !== 0; }).sort(function (a, b) { return a.n - b.n || a.ref - b.ref; }).forEach(function (p) {
+      var at = place(p), m = ptNear(GM, at.E, at.N, dupRef), from = fmt(p.n, p.ref);
+      if (m) { plan.table.push({ kind: '參考點', from: from, to: '', N: at.N, E: at.E, note: '不寫：主要檔 ' + Math.round(dupRef * 100) + ' cm 內已有 ' + fmt(m.q.p.n, m.q.p.ref) + '（差 ' + (m.d * 100).toFixed(1) + ' cm）' }); return; }
+      if (!intMap.has(p.n)) intMap.set(p.n, newNum());
+      var n = intMap.get(p.n), to = fmt(n, p.ref);
+      keyMap.set(from, to);
+      plan.d14.push({ p: p, num: n, ref: p.ref, at: at, moved: !!conv });
+      plan.table.push({ kind: '參考點', from: from, to: to, N: at.N, E: at.E, note: conv ? '坐標已換算' : '' });
+    });
+    // 3) 00 界址點：套合點（在來源底圖 D2C 點上）→ 參考點 anchorCode
+    var GSb = ptGrid(S.d2c, 5), anchors = 0, skipped0 = 0;
+    var anchorUsed = M.d14.some(function (p) { return p.ref === anchorCode; }) || S.d14.some(function (p) { return p.ref === anchorCode; });
+    if (anchorUsed) plan.warnings.push('編碼 ' + pad(anchorCode, 2) + ' 已經有人用過，套合點會和它們混在一起，建議換一個編碼。');
+    S.d14.filter(function (p) { return p.ref === 0; }).sort(function (a, b) { return a.n - b.n; }).forEach(function (p) {
+      var from = fmt(p.n, 0), at = place(p);
+      if (p.n >= 99998) { plan.table.push({ kind: '界址點 00', from: from, to: '', N: at.N, E: at.E, note: '不寫：虛擬測站' }); skipped0++; return; }
+      if (!ptNear(GSb, p.E, p.N, 0.001)) { plan.table.push({ kind: '界址點 00', from: from, to: '', N: at.N, E: at.E, note: '不寫：不在來源底圖上' }); skipped0++; return; }
+      var m = ptNear(GM, at.E, at.N, dupRef);
+      if (m) { plan.table.push({ kind: '套合點', from: from, to: '', N: at.N, E: at.E, note: '不寫：主要檔 ' + Math.round(dupRef * 100) + ' cm 內已有 ' + fmt(m.q.p.n, m.q.p.ref) }); return; }
+      var n = newNum(), to = fmt(n, anchorCode);
+      keyMap.set(from, to); anchors++;
+      var note = '來源檔的套合點（原 00 界址點），坐標' + (conv ? '已換算' : '照原位置');
+      if (reg && !reg.failed) { var t = reg.T.apply(p.E, p.N), dE = t.E - at.E, dN = t.N - at.N; note += '；主要檔同一角點在 ΔE ' + dE.toFixed(3) + ' ΔN ' + dN.toFixed(3) + '，相差 ' + Math.hypot(dE, dN).toFixed(3) + ' m'; }
+      plan.d14.push({ p: p, num: n, ref: anchorCode, at: at, moved: !!conv, anchor: true });
+      plan.table.push({ kind: '套合點→參考點 .' + pad(anchorCode, 2), from: from, to: to, N: at.N, E: at.E, note: note });
+    });
+    plan.anchors = anchors; plan.skipped0 = skipped0;
+    // 4) 補點
+    var names = new Map(); M.d20.forEach(function (q) { names.set(q.name.toUpperCase(), q); });
+    var GQ = ptGrid(M.d20, 5), qMap = new Map();
+    S.d20.forEach(function (p) {
+      var at = place(p), nm = p.name, up = nm.toUpperCase(), q = names.get(up);
+      if (q) {
+        var d = Math.hypot(q.E - at.E, q.N - at.N);
+        if (d <= dupQ) { qMap.set(up, q.name); plan.table.push({ kind: '補點', from: nm, to: '', N: at.N, E: at.E, note: '不寫：主要檔同名且同一點（差 ' + (d * 100).toFixed(1) + ' cm）' }); return; }
+        var nn = /^q/i.test(nm) ? nm.replace(/^q/i, function (c) { return c + prefix; }) : prefix + nm;
+        if (names.has(nn.toUpperCase()) || nn.length > 8) { plan.table.push({ kind: '補點', from: nm, to: '', N: at.N, E: at.E, note: '不寫：改名 ' + nn + (nn.length > 8 ? ' 超過 8 個字' : ' 也已存在') + '，請手動處理' }); plan.warnings.push('補點 ' + nm + ' 改名後仍衝突，沒有寫入'); return; }
+        names.set(nn.toUpperCase(), p); qMap.set(up, nn);
+        plan.d20.push({ p: p, name: nn, at: at, moved: !!conv });
+        plan.table.push({ kind: '補點', from: nm, to: nn, N: at.N, E: at.E, note: '撞名，不是同一點（相差 ' + d.toFixed(1) + ' m），改名' });
+        return;
+      }
+      var mq = ptNear(GQ, at.E, at.N, dupQ);
+      if (mq) { qMap.set(up, mq.q.name); plan.table.push({ kind: '補點', from: nm, to: '', N: at.N, E: at.E, note: '不寫：主要檔已有同一點 ' + mq.q.name + '（差 ' + (mq.d * 100).toFixed(1) + ' cm）' }); return; }
+      names.set(up, p); qMap.set(up, nm);
+      plan.d20.push({ p: p, name: nm, at: at, moved: !!conv });
+      plan.table.push({ kind: '補點', from: nm, to: nm, N: at.N, E: at.E, note: '' });
+    });
+    // 5) 連線
+    var res = d29Resolver(S);
+    S.d29.forEach(function (l) {
+      var e = [l.top, l.mid, l.bot].map(res), label = [l.top, l.mid, l.bot].filter(Boolean).join(' → ');
+      var bad = e.filter(function (x) { return x.miss; })[0];
+      if (bad) { plan.lineTable.push({ ok: false, row: l.row, from: label, note: '端點 ' + bad.miss + ' 在來源檔找不到' }); return; }
+      var outs = e.map(function (x) { if (x.empty) return ''; return x.q ? (qMap.get(x.key) || null) : (keyMap.get(x.key) || null); });
+      var miss = e.filter(function (x, i) { return !x.empty && !outs[i]; })[0];
+      if (miss) { plan.lineTable.push({ ok: false, row: l.row, from: label, note: '端點 ' + miss.key + ' 沒有寫進主要檔' }); return; }
+      var amb = e.filter(function (x) { return x.amb; }).map(function (x) { return x.key + '（也可能是 ' + x.amb + '）'; });
+      plan.d29.push({ top: outs[0], mid: outs[1], bot: outs[2], mode: l.mode || '0' });
+      plan.lineTable.push({ ok: true, row: l.row, from: label, to: outs.filter(Boolean).join(' → '), amb: amb.length ? amb : null,
+        note: amb.length ? '一位小數有兩種讀法，依本檔慣例讀成 ' + amb.join('、') : '' });
+    });
+    if (S.d29.length && !mainSet.d29 && plan.d29.length) plan.warnings.push('主要檔沒有 D29，連線會照來源檔的格式另外建立。');
+    plan.counts = { ref: plan.d14.filter(function (r) { return !r.anchor; }).length, anchor: anchors, q: plan.d20.length, lines: plan.d29.length,
+      srcRef: S.d14.filter(function (p) { return p.ref !== 0; }).length, src0: S.d14.filter(function (p) { return p.ref === 0; }).length, srcQ: S.d20.length, srcLines: S.d29.length };
+    plan.ambLines = plan.lineTable.filter(function (x) { return x.amb; }).length;
+    return plan;
+  }
+
+  /** 空的 dBASE（沿用另一個檔的欄位定義），主要檔缺 D29 等時用 */
+  function emptyDbfLike(db) {
+    var u8 = new Uint8Array(db.hlen + 1); u8.set(db.u8.subarray(0, db.hlen)); u8[4] = u8[5] = u8[6] = u8[7] = 0; u8[db.hlen] = 0x1A;
+    return parseDbf(u8);
+  }
+
+  /** 依合併規劃產生新的 D14／D20／D29 位元組與對照表文字 */
+  function buildMerge(plan, mainSet, srcSet, now) {
+    var out = {};
+    var fieldOf = function (db, name) { return db.fields.filter(function (f) { return f.name === name; })[0]; };
+    var copyVals = function (vals, db, over) {
+      var o = {};
+      db.fields.forEach(function (f) { if (Object.prototype.hasOwnProperty.call(vals, f.name)) o[f.name] = String(vals[f.name]).trim(); });
+      Object.keys(over).forEach(function (k) { o[k] = over[k]; });
+      return o;
+    };
+    var num = function (db, f, v) { var fd = fieldOf(db, f); return fd && fd.dec ? v.toFixed(fd.dec) : v.toFixed(3); };
+    if (plan.d14.length && mainSet.d14) {
+      var db = mainSet.d14;
+      out.d14 = appendDbf(db, plan.d14.map(function (r) {
+        var over = { COT_NUMBER: String(r.num), COT_REF: String(r.ref) };
+        if (r.moved) { over.COT_Y = num(db, 'COT_Y', r.at.N); over.COT_X = num(db, 'COT_X', r.at.E); }
+        return copyVals(r.p.values, db, over);
+      }), now);
+    }
+    if (plan.d20.length) {
+      var d20 = mainSet.d20 || (srcSet.d20 && emptyDbfLike(srcSet.d20));
+      out.d20 = appendDbf(d20, plan.d20.map(function (r) {
+        var over = { CTL_NAME: r.name };
+        if (r.moved) { over.CTL_Y = num(d20, 'CTL_Y', r.at.N); over.CTL_X = num(d20, 'CTL_X', r.at.E); }
+        return copyVals(r.p.values, d20, over);
+      }), now);
+      out.d20Created = !mainSet.d20;
+    }
+    if (plan.d29.length) {
+      var d29 = mainSet.d29 || (srcSet.d29 && emptyDbfLike(srcSet.d29));
+      out.d29 = appendDbf(d29, plan.d29.map(function (l) { return { LIN_TOP: l.top, LIN_MID: l.mid || '', LIN_BOT: l.bot, LIN_MODE: l.mode || '0' }; }), now);
+      out.d29Created = !mainSet.d29;
+    }
+    var esc = function (v) { v = String(v == null ? '' : v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    out.tableCsv = '﻿' + [['類別', '來源檔點號／點名', '寫入主要檔的點號／點名', 'Y', 'X', '說明']].concat(plan.table.map(function (r) {
+      return [r.kind, r.from, r.to, r.N.toFixed(3), r.E.toFixed(3), r.note]; })).map(function (r) { return r.map(esc).join(','); }).join('\r\n') + '\r\n';
+    out.lineCsv = '﻿' + [['結果', '來源檔 D29 第幾筆', '原本的連線', '寫進主要檔的連線／原因']].concat(plan.lineTable.map(function (r) {
+      return [r.ok ? '連線' : '不連', r.row, r.from, r.ok ? r.to + (r.note ? '｜' + r.note : '') : r.note]; })).map(function (r) { return r.map(esc).join(','); }).join('\r\n') + '\r\n';
+    return out;
+  }
+
   // ───────────────────────── 資料夾掃描 ─────────────────────────
 
   /** 同一個案件的 L02/L14/L20 視為一組：同資料夾、同主檔名（例如 KC0390.L02 + KC0390.L14）。 */
@@ -1956,6 +2321,10 @@
     basemapSampler: basemapSampler,
     worldFileText: worldFileText,
     SECTIONS_67: SECTIONS_67,
+    planMerge: planMerge,
+    buildMerge: buildMerge,
+    registerBasemaps: registerBasemaps,
+    jobFromDbf: jobFromDbf,
     PHOTO_YEARS: PHOTO_YEARS,
     probeTileUrl: probeTileUrl,
     groupPhotoYears: groupPhotoYears,

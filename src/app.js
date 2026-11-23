@@ -62,6 +62,13 @@
       step2: '選擇範圍',
       next: function (r) { return KINDS.l2csv.next(r); }
     },
+    merge: {
+      title: '合併兩個重測檔',
+      accept: '',
+      hint: '',
+      step2: '檢查合併內容',
+      next: function () { return []; }
+    },
     basemap: {
       title: '輸出航照圖（JPG + JGW）',
       accept: '.l02,.l14,.l20,.d14',
@@ -119,6 +126,7 @@
   }
   function openKind(kind) {
     state.kind = kind;
+    if (kind !== 'merge') state.mg = null;
     state.inputs = []; state.result = null; state.opts.outName = ''; state.decisions = {}; state.reviewFilter = null; state.lOff = {}; state.codes = {}; state.askAs = {}; state.coa = null; state.dbf = null; state.dbfEdits = {}; state.dbfDone = null; state.showOldFiles = false; state.fileRenames = {}; state.bm = null;
     $('home').classList.add('hidden'); $('work').classList.remove('hidden');
     renderWork();
@@ -149,6 +157,11 @@
 
   function renderWork() {
     var K = KINDS[state.kind];
+    var isMerge = state.kind === 'merge';
+    $('pickPanel').classList.toggle('hidden', isMerge);
+    $('mergeArea').classList.toggle('hidden', !isMerge);
+    if (isMerge) { $('workTitle').textContent = kindTitle(); $('step2Label').textContent = K.step2; $('step3Label').textContent = '寫入主要檔'; $('resultArea').classList.add('hidden'); renderMerge(); return; }
+    $('step3Label').textContent = '存檔';
     $('workTitle').textContent = kindTitle();
     $('pickHint').textContent = K.hint;
     $('step2Label').textContent = K.step2;
@@ -1981,6 +1994,16 @@
     e.preventDefault();
     dragDepth = 0; showOverlay(false);
     if (!e.dataTransfer) return;
+    if (state.kind === 'merge' && !$('work').classList.contains('hidden')) {
+      var slotEl = e.target && e.target.closest && e.target.closest('.mgslot');
+      if (!slotEl) { toast('請把資料夾拖到「主要檔」或「要併進來的檔」的格子裡'); return; }
+      var which = slotEl.getAttribute('data-slot');
+      collectDropped(e.dataTransfer).then(function (res) {
+        if (!res.folder) { mgLoadFiles(which, res.files.map(function (f) { return { file: f, path: f.name }; }), null, res.files[0] ? '（拖進來的檔案）' : ''); return; }
+        mgLoadFiles(which, res.files, res.dirHandle, res.folder);
+      });
+      return;
+    }
     collectDropped(e.dataTransfer).then(function (res) {
       if (res.blocked) dropBlocked(res.folder);
       else if (res.folder) { considerSaveDir(res.dirHandle, res.files); handleFolder(res.files, res.folder); }
@@ -2617,6 +2640,262 @@
       makeBasemap(state.result, area.bbox, bmShift());
     };
     fit(); guide();
+  }
+
+  // ═════════════ 合併兩個重測檔（進階，使用者主動啟用） ═════════════
+
+  var ADV_KEY = 'chsys-adv-merge';
+  function advEnabled() { try { return localStorage.getItem(ADV_KEY) === '1'; } catch (e) { return false; } }
+  function renderAdv() { $('cardMerge').classList.toggle('hidden', !advEnabled()); }
+  $('advToggle').onclick = function () {
+    modal('<h3>⚙ 進階功能</h3>' +
+      '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:8px 0"><input type="checkbox" id="advMerge" style="width:20px;height:20px;margin-top:3px"' + (advEnabled() ? ' checked' : '') + '>' +
+      '<span><b>合併兩個重測檔</b><br><span class="muted">把另一份重測資料（例如不同時期、不同人做的同一段）的參考點、套合點、補點和連線，併進你主要用的那份。會直接改 D14、D20、D29，寫入前自動備份 .bak。不熟悉的話先不要開。</span></span></label>' +
+      '<div style="text-align:right;margin-top:10px"><button class="btn primary" id="advOk">好</button></div>');
+    $('advOk').onclick = function () {
+      try { localStorage.setItem(ADV_KEY, $('advMerge').checked ? '1' : '0'); } catch (e) {}
+      closeModal(); renderAdv(); toast($('advMerge').checked ? '首頁「其他」多了「合併兩個重測檔」' : '已關閉合併功能');
+    };
+  };
+  renderAdv();
+
+  var MG_EXT = ['D14', 'D20', 'D29', 'D2C', 'D2D'];
+  function mgState() {
+    if (!state.mg) state.mg = { main: null, src: null, opts: { dupRef: 10, dupQ: 6, anchorCode: 96, prefix: 'TS', method: 'auto', datumMain: '', datumSrc: '' }, plan: null, built: null, done: null };
+    return state.mg;
+  }
+
+  /** 從資料夾（或拖進來的檔案）挑出同一個案件的 D14、D20、D29、D2C、D2D */
+  function mgLoadFiles(which, entries, dirHandle, folderName) {
+    var list = entries.map(function (x) { return { file: x.file || x, path: x.path || (x.file || x).name }; })
+      .filter(function (x) { return MG_EXT.indexOf(Core.extName(x.file.name)) >= 0 && !/\.bak$/i.test(x.file.name); });
+    // 只看資料夾本層（或下一層），以有 D14 的主檔名為準
+    var depth = function (p) { return String(p).split('/').length; };
+    var minD = Math.min.apply(null, list.map(function (x) { return depth(x.path); }).concat([99]));
+    var byBase = {};
+    list.filter(function (x) { return depth(x.path) <= minD + 1; }).forEach(function (x) {
+      var dir = x.path.replace(/[^/]*$/, ''), base = dir + x.file.name.replace(/\.[^.]*$/, '').toUpperCase();
+      (byBase[base] = byBase[base] || {})[Core.extName(x.file.name)] = x;
+    });
+    var bases = Object.keys(byBase).filter(function (b) { return byBase[b].D14; });
+    if (!bases.length) { toast('「' + (folderName || '') + '」裡找不到 .D14，請選重測系統的案件資料夾'); return; }
+    var fn = String(folderName || '').toUpperCase();
+    bases.sort(function (a, b) { var na = /([^/]*)$/.exec(a)[1], nb = /([^/]*)$/.exec(b)[1]; return (nb === fn) - (na === fn) || depth(a) - depth(b) || a.localeCompare(b); });
+    var pick = byBase[bases[0]], label = /([^/]*)$/.exec(bases[0])[1];
+    Promise.all(MG_EXT.map(function (e) {
+      if (!pick[e]) return null;
+      return pick[e].file.arrayBuffer().then(function (b) { var u8 = new Uint8Array(b); return { ext: e, name: pick[e].file.name, bytes: u8, db: Core.parseDbf(u8) }; });
+    })).then(function (got) {
+      var job = { label: label, folder: folderName, dir: dirHandle || null, files: {}, others: bases.length - 1 };
+      got.forEach(function (g) { if (g) job.files[g.ext] = g; });
+      var g = mgState(); g[which] = job; g.plan = null; g.built = null; g.done = null;
+      if (which === 'main' && dirHandle) considerSaveDir(dirHandle);
+      renderMerge();
+    }).catch(function (e) { toast('讀檔失敗：' + (e.message || e)); });
+  }
+  function mgPick(which) {
+    if (!window.showDirectoryPicker) {
+      var inp = el('input', { type: 'file' }); inp.setAttribute('webkitdirectory', ''); inp.multiple = true;
+      inp.onchange = function () { var fs = Array.prototype.slice.call(inp.files); if (!fs.length) return;
+        mgLoadFiles(which, fs.map(function (f) { return { file: f, path: f.webkitRelativePath || f.name }; }), null, (fs[0].webkitRelativePath || '').split('/')[0]); };
+      inp.click(); return;
+    }
+    window.showDirectoryPicker({ mode: which === 'main' ? 'readwrite' : 'read' }).then(function (h) {
+      toast('讀取「' + h.name + '」中…');
+      return walkHandles([h]).then(function (files) { mgLoadFiles(which, files, h, h.name); });
+    }).catch(function (e) { if (e && e.name !== 'AbortError') toast('選資料夾失敗：' + e.message); });
+  }
+
+  function mgSet(job) { var o = {}; if (!job) return o; ['D14', 'D20', 'D29', 'D2C', 'D2D'].forEach(function (e) { if (job.files[e]) o[e.toLowerCase()] = job.files[e].db; }); return o; }
+  function mgPlan() {
+    var g = mgState(); if (!g.main || !g.src) return null;
+    if (g.plan) return g.plan;
+    var o = g.opts;
+    g.plan = Core.planMerge(mgSet(g.main), mgSet(g.src), {
+      dupRef: (+o.dupRef || 10) / 100, dupQ: (+o.dupQ || 6) / 100, anchorCode: +o.anchorCode, prefix: o.prefix, method: o.method,
+      datumMain: o.datumMain || null, datumSrc: o.datumSrc || null,
+      sectionDatumMain: Core.sectionDatum(Core.sectionCode(g.main.label)), sectionDatumSrc: Core.sectionDatum(Core.sectionCode(g.src.label))
+    });
+    return g.plan;
+  }
+  var DATUM_TXT = { TWD97: 'TWD97', TWD67: 'TWD67', free: '自由坐標' };
+  function fmtRot(sec) { var a = Math.abs(sec), d = Math.floor(a / 3600), m = Math.floor((a - d * 3600) / 60), s2 = a - d * 3600 - m * 60; return (sec < 0 ? '−' : '') + (d ? d + '° ' : '') + m + '′ ' + s2.toFixed(1) + '″'; }
+
+  function renderMerge() {
+    var g = mgState(), box = $('mergeArea');
+    var slot = function (which, title, role) {
+      var j = g[which];
+      var files = j ? MG_EXT.map(function (e) { var f = j.files[e]; return f ? '<b>' + esc(f.name) + '</b> ' + f.db.nrec + ' 筆' : '<span class="miss">沒有 .' + e + '</span>'; }).join('<br>') : '';
+      return '<div class="mgslot' + (j ? ' ok' : '') + '" data-slot="' + which + '"><h4>' + title + '</h4><div class="role">' + role + '</div>' +
+        (j ? '<div class="mgfiles">📁 ' + esc(j.folder || '') + '　案件 <b>' + esc(j.label) + '</b>' + (Core.SECTION_NAMES[Core.sectionCode(j.label)] ? '（' + esc(Core.SECTION_NAMES[Core.sectionCode(j.label)]) + '）' : '') + '<br>' + files +
+          (j.others ? '<br><span class="muted">資料夾裡還有 ' + j.others + ' 個案件，用的是 ' + esc(j.label) + '</span>' : '') + '</div>' : '') +
+        '<div style="margin-top:10px"><button class="btn ' + (j ? '' : 'primary') + '" type="button" data-pick="' + which + '">📁 ' + (j ? '換一個資料夾' : '選資料夾') + '</button> <span class="muted">或把資料夾拖到這格</span></div></div>';
+    };
+    var h = ['<div class="panel"><h3>第 1 步：選兩份重測資料</h3><div class="mgslots">' +
+      slot('main', '① 主要檔', '你主要用的那份，成果會寫進這裡（D14、D20、D29）') +
+      slot('src', '② 要併進來的檔', '另一份（不同時期、不同人做的），只讀不改') + '</div>' +
+      '<p class="muted" style="margin:10px 0 0">需要：兩邊的 D14（參考點）；有 D20（補點）、D29（連線）、D2C＋D2D（圖解底圖）會一起處理。底圖用來找出套合點、判斷兩張圖的關係。</p></div>'];
+    var plan = mgPlan();
+    if (plan) {
+      h.push(mgAnalysisHtml(plan));
+      if (!plan.blocked) h.push(mgPreviewHtml(plan), mgWriteHtml(plan));
+    }
+    box.innerHTML = h.join('');
+    setSteps(!plan ? 1 : g.done ? 3 : 2);
+    Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'), function (b) { b.onclick = function () { mgPick(b.getAttribute('data-pick')); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('.mgslot'), function (sl) {
+      sl.addEventListener('dragover', function () { sl.classList.add('over'); }); sl.addEventListener('dragleave', function () { sl.classList.remove('over'); }); sl.addEventListener('drop', function () { sl.classList.remove('over'); });
+    });
+    if (!plan) return;
+    var reopt = function (k, v) { g.opts[k] = v; g.plan = null; g.built = null; g.done = null; renderMerge(); };
+    Array.prototype.forEach.call(box.querySelectorAll('[data-opt]'), function (x) { x.onchange = function () { reopt(x.getAttribute('data-opt'), x.value); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('input[name=mgMethod]'), function (x) { x.onchange = function () { reopt('method', x.value); }; });
+    if (plan.blocked) return;
+    $('mgCsv').onclick = function () { var b = mgBuild(); downloadAll([{ name: g.main.label + '_合併對照表.csv', content: b.tableCsv }, { name: g.main.label + '_連線對照表.csv', content: b.lineCsv }]); };
+    $('mgDl').onclick = function () { var b = mgBuild(); downloadAll(mgFiles(b)); };
+    if ($('mgWrite')) $('mgWrite').onclick = mgWrite;
+  }
+
+  function mgAnalysisHtml(plan) {
+    var g = mgState(), r = plan.reg, o = g.opts;
+    var dsel = function (k, cur) { return '<select data-opt="' + k + '">' + [['', '自動'], ['TWD97', 'TWD97'], ['TWD67', 'TWD67'], ['free', '自由坐標']].map(function (x) { return '<option value="' + x[0] + '"' + (o[k] === x[0] ? ' selected' : '') + '>' + x[1] + (x[0] === '' ? '（' + DATUM_TXT[cur] + '）' : '') + '</option>'; }).join('') + '</select>'; };
+    var h = '<div class="panel"><h3>第 2 步：兩份資料的關係</h3><table class="mgtable"><tr><th></th><th>主要檔 ' + esc(g.main.label) + '</th><th>要併進來 ' + esc(g.src.label) + '</th></tr>' +
+      '<tr><td>坐標系統</td><td>' + dsel('datumMain', plan.datum.main) + '</td><td>' + dsel('datumSrc', plan.datum.src) + '</td></tr></table>';
+    if (r && !r.failed) {
+      var dc = r.T.apply(r.T.sx, r.T.sy);
+      h += '<div>兩張底圖是同一張圖：' + r.matched + '／' + r.total + ' 個底圖點（' + (r.inliers * 100).toFixed(1) + '%）換過去後差不到 2 cm。' +
+        '<br>來源圖 → 主要圖：旋轉 <b>' + fmtRot(r.T.rotSec) + '</b>，圖中心平移 ΔE <b>' + (dc.E - r.T.sx).toFixed(3) + '</b>、ΔN <b>' + (dc.N - r.T.sy).toFixed(3) + '</b> m' +
+        (r.how === 'shape' ? '（用圖形比對找到的）' : r.how === '67→97' ? '（約等於 67→97 的差，加上兩次套合不同）' : '') + '</div>';
+    } else if (r && r.failed) h += '<div class="warnTxt">兩張底圖對不起來（' + (r.inliers * 100).toFixed(0) + '% 重合），可能不是同一張圖。</div>';
+    else h += '<div class="muted">至少一邊沒有底圖（D2C／D2D），不能判斷套合點與兩張圖的關係。</div>';
+    if (plan.blocked) return h + '<div class="blocked" style="margin-top:10px">' + esc(plan.blocked) + '</div></div>';
+    var M = [['asis', '照原坐標寫入', '兩份是同一個坐標系統時用：參考點是實測的，坐標不動；套合點保留來源那位判斷的位置，可以和主要檔比差多少。'],
+      ['formula', '67 ↔ 97 公式換算', '一份 67、一份 97 時用：用近似公式（誤差約 1～2 m）換成主要檔的坐標；套合點一樣可以比差多少。'],
+      ['basemap', '照兩張底圖的關係換算', '自由坐標只能用這個：依兩張圖的旋轉、平移換過去。換完後套合點會剛好落在主要檔底圖上（看不出兩人差距）。']];
+    h += '<h4 style="margin:14px 0 4px">換算方式</h4><div class="mgmethod">' + M.map(function (m) {
+      var ok = plan.methods[m[0]];
+      return '<label class="' + (ok ? '' : 'dis') + '"><input type="radio" name="mgMethod" value="' + m[0] + '"' + (plan.method === m[0] ? ' checked' : '') + (ok ? '' : ' disabled') + '> <b>' + m[1] + '</b>' + (plan.method === m[0] && o.method === 'auto' ? ' <span class="advtag">自動選的</span>' : '') + '<span class="muted">' + m[2] + '</span></label>';
+    }).join('') + '</div>';
+    h += '<h4 style="margin:14px 0 4px">規則</h4><div class="mgopts">' +
+      '<label>參考點重複：<input type="number" min="1" max="100" data-opt="dupRef" value="' + esc(o.dupRef) + '"> cm 內不寫</label>' +
+      '<label>補點同一點：<input type="number" min="1" max="100" data-opt="dupQ" value="' + esc(o.dupQ) + '"> cm 內不寫</label>' +
+      '<label>套合點編碼：<input type="number" min="1" max="99" data-opt="anchorCode" value="' + esc(o.anchorCode) + '"></label>' +
+      '<label>補點撞名加：Q<input type="text" maxlength="4" data-opt="prefix" value="' + esc(o.prefix) + '" style="width:48px">50</label></div>' +
+      '<div class="muted" style="margin-top:6px">參考點從主要檔參考點最大號（' + plan.maxRef + '）＋1 開始，同一個原整數對到同一個新整數，編碼不變；套合點＝來源 00 界址點中落在來源底圖上的點；其他 00 點、99998／99999 不寫。</div></div>';
+    return h;
+  }
+
+  function mgPreviewHtml(plan) {
+    var c = plan.counts, g = mgState();
+    var rows = function (kind) { return plan.table.filter(function (r) { return r.kind.indexOf(kind) === 0; }); };
+    var notW = function (kind) { return rows(kind).filter(function (r) { return !r.to; }); };
+    var renamed = plan.d20.filter(function (r) { return r.name !== r.p.name; }).map(function (r) { return r.p.name + '→' + r.name; });
+    var refR = plan.d14.filter(function (r) { return !r.anchor; }).map(function (r) { return r.num; }), anR = plan.d14.filter(function (r) { return r.anchor; }).map(function (r) { return r.num; });
+    var range = function (a) { return a.length ? Math.min.apply(null, a) + '～' + Math.max.apply(null, a) : '—'; };
+    var t = '<div class="panel"><h3>第 3 步：會寫進主要檔的內容</h3><table class="mgtable"><tr><th>項目</th><th>來源有</th><th>寫入</th><th>說明</th></tr>' +
+      '<tr><td>參考點（D14）</td><td class="n">' + c.srcRef + '</td><td class="n"><b>' + c.ref + '</b></td><td>點號 ' + range(refR) + '，編碼不變' + (notW('參考點').length ? '；' + notW('參考點').length + ' 點重複不寫' : '') + '</td></tr>' +
+      '<tr><td>套合點 → 參考點 .' + pad2(g.opts.anchorCode) + '</td><td class="n">' + c.src0 + '（00 點）</td><td class="n"><b>' + c.anchor + '</b></td><td>點號 ' + range(anR) + '；不在來源底圖上的 00 點 ' + plan.skipped0 + ' 點不寫</td></tr>' +
+      '<tr><td>補點（D20）</td><td class="n">' + c.srcQ + '</td><td class="n"><b>' + c.q + '</b></td><td>' + (renamed.length ? '撞名改名：' + esc(renamed.join('、')) : '沒有撞名') + (notW('補點').length ? '；' + notW('補點').length + ' 點同一點不寫' : '') + '</td></tr>' +
+      '<tr><td>連線（D29）</td><td class="n">' + c.srcLines + '</td><td class="n"><b>' + c.lines + '</b></td><td>' + (c.srcLines - c.lines ? (c.srcLines - c.lines) + ' 條有端點沒寫入，不連' : '全部都連') + (plan.ambLines ? '；<span class="warnTxt">' + plan.ambLines + ' 條點號有兩種讀法，請看下面</span>' : '') + '</td></tr></table>';
+    if (plan.warnings.length) t += '<ul class="report">' + plan.warnings.map(function (w) { return '<li class="warn"><span class="lv">注意</span><span>' + esc(w) + '</span></li>'; }).join('') + '</ul>';
+    var amb = plan.lineTable.filter(function (x) { return x.amb; }), bad = plan.lineTable.filter(function (x) { return !x.ok; });
+    if (amb.length) t += '<h4 style="margin:12px 0 2px">點號有兩種讀法的連線（來源檔把編碼只寫一位，例如 39.5）</h4><div class="mglist">' + amb.map(function (x) { return '#' + x.row + '　' + esc(x.from) + '　→　' + esc(x.to) + '　<span class="muted">' + esc(x.note) + '</span>'; }).join('<br>') + '</div>';
+    if (bad.length) t += '<h4 style="margin:12px 0 2px">不連的線</h4><div class="mglist">' + bad.map(function (x) { return '#' + x.row + '　' + esc(x.from) + '　<span class="muted">' + esc(x.note) + '</span>'; }).join('<br>') + '</div>';
+    t += '<div class="mgmap">' + mgMapSvg(plan) + '</div><div class="legend" style="margin-top:6px"><span><i style="background:#9fb3c8"></i>主要檔底圖</span><span><i style="background:#e5484d"></i>參考點與連線</span><span><i style="background:#8b3dff"></i>套合點</span><span><i style="background:#11845b"></i>補點</span></div>' +
+      '<div style="margin-top:10px"><button class="btn" id="mgCsv" type="button">⬇ 下載對照表（CSV）</button></div></div>';
+    return t;
+  }
+  function pad2(n) { n = +n || 0; return (n < 10 ? '0' : '') + n; }
+  function mgMapSvg(plan) {
+    var g = mgState(), M = Core.jobFromDbf(mgSet(g.main));
+    var P = plan.d14.map(function (r) { return { E: r.at.E, N: r.at.N, a: r.anchor }; }).concat(plan.d20.map(function (r) { return { E: r.at.E, N: r.at.N, q: 1 }; }));
+    if (!P.length) return '<div class="muted" style="padding:20px">沒有要寫入的點</div>';
+    var minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
+    P.forEach(function (p) { minE = Math.min(minE, p.E); maxE = Math.max(maxE, p.E); minN = Math.min(minN, p.N); maxN = Math.max(maxN, p.N); });
+    var pad = Math.max(20, (maxE - minE) * 0.05); minE -= pad; maxE += pad; minN -= pad; maxN += pad;
+    var W = 1000, s = W / (maxE - minE), H = Math.max(200, Math.round((maxN - minN) * s));
+    var X = function (E) { return ((E - minE) * s).toFixed(1); }, Y = function (N) { return ((maxN - N) * s).toFixed(1); };
+    var inBox = function (p) { return p.E > minE && p.E < maxE && p.N > minN && p.N < maxN; };
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">'];
+    out.push('<g stroke="#9fb3c8" stroke-width="0.8">');
+    M.segs.forEach(function (sg) { if (inBox(sg[0]) || inBox(sg[1])) out.push('<line x1="' + X(sg[0].E) + '" y1="' + Y(sg[0].N) + '" x2="' + X(sg[1].E) + '" y2="' + Y(sg[1].N) + '"/>'); });
+    out.push('</g>');
+    var at = {}; plan.d14.forEach(function (r) { at[r.num + '.' + pad2(r.ref)] = r.at; }); plan.d20.forEach(function (r) { at[r.name.toUpperCase()] = r.at; });
+    var key = function (t) { t = String(t || '').trim(); if (/^q/i.test(t)) return t.toUpperCase(); var m = /^(\d+)\.(\d\d)$/.exec(t); return m ? +m[1] + '.' + m[2] : t; };
+    out.push('<g stroke="#e5484d" stroke-width="1.6">');
+    plan.d29.forEach(function (l) { var a = at[key(l.top)], b = at[key(l.bot)]; if (a && b) out.push('<line x1="' + X(a.E) + '" y1="' + Y(a.N) + '" x2="' + X(b.E) + '" y2="' + Y(b.N) + '"/>'); });
+    out.push('</g>');
+    P.forEach(function (p) { out.push('<circle cx="' + X(p.E) + '" cy="' + Y(p.N) + '" r="' + (p.a ? 3.6 : 2.4) + '" fill="' + (p.q ? '#11845b' : p.a ? '#8b3dff' : '#e5484d') + '"/>'); });
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  function mgBuild() { var g = mgState(); if (!g.built) g.built = Core.buildMerge(g.plan, mgSet(g.main), mgSet(g.src)); return g.built; }
+  function mgFiles(b) {
+    var g = mgState(), base = g.main.label, f = [];
+    if (b.d14) f.push({ name: g.main.files.D14.name, content: new Blob([b.d14]) });
+    if (b.d20) f.push({ name: g.main.files.D20 ? g.main.files.D20.name : base + '.D20', content: new Blob([b.d20]) });
+    if (b.d29) f.push({ name: g.main.files.D29 ? g.main.files.D29.name : base + '.D29', content: new Blob([b.d29]) });
+    f.push({ name: base + '_合併對照表.csv', content: b.tableCsv }, { name: base + '_連線對照表.csv', content: b.lineCsv });
+    return f;
+  }
+  function mgWriteHtml(plan) {
+    var g = mgState();
+    var nothing = !plan.d14.length && !plan.d20.length && !plan.d29.length;
+    return '<div class="panel"><h3>第 4 步：寫入主要檔</h3>' +
+      (g.done ? '<div class="status ok" style="margin-bottom:10px"><div class="si">✓</div><div><div class="st">已寫入 ' + esc(g.main.folder || '') + '</div><div class="ss">' + esc(g.done) + '</div></div></div>' : '') +
+      '<ol class="next"><li><div>寫入前先<b>關掉重測系統</b>（至少關掉這個案件）。</div></li><li><div>按下面的按鈕，原本的 D14、D20、D29 會先備份成 .bak，再寫入新檔；對照表也會一起存進去。</div></li><li><div>打開重測系統檢查；有問題可以用 .bak 還原。</div></li></ol>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">' +
+      (window.showDirectoryPicker ? '<button class="btn go" id="mgWrite" type="button"' + (nothing || g.done ? ' disabled' : '') + '>💾 寫入主要檔（先備份 .bak）</button>' : '') +
+      '<button class="btn" id="mgDl" type="button"' + (nothing ? ' disabled' : '') + '>⬇ 只下載新檔，自己取代</button></div></div>';
+  }
+
+  /** 寫回主要檔資料夾：確認檔案沒變 → 原檔另存 .bak → 寫新檔 → 存對照表 */
+  function mgWrite() {
+    var g = mgState(), b = mgBuild();
+    var jobs = [];
+    [['D14', b.d14], ['D20', b.d20], ['D29', b.d29]].forEach(function (x) {
+      if (!x[1]) return;
+      var src = g.main.files[x[0]];
+      jobs.push({ ext: x[0], name: src ? src.name : g.main.label + '.' + x[0], orig: src ? src.bytes : null, data: x[1] });
+    });
+    var go = function (dir) {
+      return Promise.all(jobs.map(function (j) {
+        return dir.getFileHandle(j.name, { create: !j.orig }).then(function (h) {
+          return h.getFile().then(function (f) { return f.arrayBuffer(); }).then(function (buf) {
+            var cur = new Uint8Array(buf);
+            if (j.orig && !(cur.length === j.orig.length && cur.every(function (v, i) { return v === j.orig[i]; }))) throw new Error(j.name + ' 和剛剛讀進來的不一樣（可能被改過，或選錯資料夾），請重新選主要檔再試');
+            j.h = h;
+          });
+        });
+      })).then(function () {
+        return jobs.reduce(function (p, j) {
+          return p.then(function () {
+            if (!j.orig) return null;
+            var bak = j.name + '.bak';
+            return dir.getFileHandle(bak).then(function () { bak = j.name + '.' + stampNow() + '.bak'; }, function () {})
+              .then(function () { return dir.getFileHandle(bak, { create: true }); })
+              .then(function (bh) { j.bak = bak; return bh.createWritable().then(function (w) { return w.write(j.orig).then(function () { return w.close(); }); }); });
+          }).then(function () { return j.h.createWritable().then(function (w) { return w.write(j.data).then(function () { return w.close(); }); }); });
+        }, Promise.resolve());
+      }).then(function () {
+        var csvs = [[g.main.label + '_合併對照表.csv', b.tableCsv], [g.main.label + '_連線對照表.csv', b.lineCsv]];
+        return Promise.all(csvs.map(function (c) { return dir.getFileHandle(c[0], { create: true }).then(function (h) { return h.createWritable().then(function (w) { return w.write(c[1]).then(function () { return w.close(); }); }); }); }));
+      }).then(function () {
+        g.done = jobs.map(function (j) { return j.name + (j.bak ? '（原檔備份 ' + j.bak + '）' : '（新建）'); }).join('、') + '；對照表也存進去了。';
+        // 寫入後主要檔已經變了：更新記憶中的內容，避免重複寫入
+        jobs.forEach(function (j) { g.main.files[j.ext] = { ext: j.ext, name: j.name, bytes: j.data, db: Core.parseDbf(j.data) }; });
+        g.built = null; renderMerge();
+        toast('✓ 已寫入主要檔');
+      });
+    };
+    var fail = function (e) { if (e && e.name === 'AbortError') return; modal('<h3>❌ 沒有寫入</h3><p>' + esc(e.message || e) + '</p><div style="text-align:right"><button class="btn primary" id="mgErr">知道了</button></div>'); $('mgErr').onclick = closeModal; };
+    if (g.main.dir && g.main.dir.getFileHandle) {
+      ensurePermission(g.main.dir).then(function () { return go(g.main.dir); }).catch(fail);
+    } else {
+      toast('請選主要檔 ' + g.main.label + ' 所在的資料夾');
+      window.showDirectoryPicker({ mode: 'readwrite' }).then(go).catch(fail);
+    }
   }
 
   // ═════════════ 版本、更新歷程、新版本提醒 ═════════════
